@@ -33,7 +33,8 @@ export const VersionComparisonModal: React.FC<VersionComparisonModalProps> = ({
     try {
       setLoading(true);
       setError(null);
-      const res = await axios.get(`http://localhost:8000/api/trips/${tripId}/compare?v1=${versionA}&v2=${versionB}`);
+      const apiBase = import.meta.env.PROD ? '/api' : 'http://localhost:8000/api';
+      const res = await axios.get(`${apiBase}/trips/${tripId}/compare?v1=${versionA}&v2=${versionB}`);
       setDiff(res.data);
     } catch (err: any) {
       console.error(err);
