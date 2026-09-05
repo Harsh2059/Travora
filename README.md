@@ -343,14 +343,6 @@ Frontend will be live at: `http://localhost:5173`
 
 ---
 
-## 👥 Team
-
-Built for **[Hackathon Name]** · September 2026
-
-| Name | Role |
-|---|---|
-| **Harsh** | Backend Architecture, Graph Engine, ML Models |
-| **Shubham** | Frontend, UX Design, Deployment |
 
 ---
 
