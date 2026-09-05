@@ -95,6 +95,8 @@ class RecoveryHistory(Base):
     net_cost = Column(Float, default=0.0)
     additional_delay_minutes = Column(Integer, default=0)
     changes = Column(JSON, default=dict)
+    plan_details = Column(JSON, default=dict)
+    status = Column(String, default="COMPLETED")
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     trip = relationship("Trip")

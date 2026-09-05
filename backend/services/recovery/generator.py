@@ -14,7 +14,9 @@ class RecoveryEngine:
         cls,
         original_items: List[Dict[str, Any]],
         event: Dict[str, Any],
-        preferences: Optional[TravelerPreferences] = None
+        preferences: Optional[TravelerPreferences] = None,
+        source_itinerary_version: Optional[int] = None,
+        trip_id: Optional[int] = None
     ) -> List[RecoveryPlanModel]:
         """
         End-to-End Recovery Pipeline:
@@ -313,6 +315,35 @@ class RecoveryEngine:
             delay_m = p_raw["additional_delay_minutes"]
             delay_str = f"+{delay_m // 60}h {delay_m % 60}m" if delay_m >= 60 else f"+{delay_m}m"
 
+            # Quality Metrics Breakdown
+            quality_metrics = {
+                "critical_preservation_score": 100.0 if preserves_critical else 0.0,
+                "itinerary_preservation_score": round(max(0.0, 100.0 - affected_pct), 1),
+                "delay_score": round(max(0.0, 100.0 - (delay_m / 6.0)), 1),
+                "financial_score": round(max(0.0, 100.0 - (max(0.0, fin_breakdown.net_cost) / 500.0)), 1),
+                "inconvenience_score": round(min(100.0, affected_pct * 0.4 + (delay_m / 10.0) * 0.6), 1),
+                "preference_score": pref_score,
+                "overall_recovery_score": round(score, 1),
+                "components_preserved": len(p_raw["preserved_items"]),
+                "components_modified": len(p_raw["modified_items"]),
+                "components_removed": len(p_raw["removed_items"]),
+                "components_added": len(p_raw["added_items"]),
+                "affected_percentage": affected_pct,
+                "critical_components_affected": crit_affected
+            }
+
+            confidence = "HIGH" if (is_feasible and preserves_critical) else ("MEDIUM" if is_feasible else "LOW")
+            confidence_reasons = [
+                "Full route and schedule verification complete." if is_feasible else "Violates schedule constraints."
+            ]
+
+            traveler_summary = (
+                f"Your {event_type.lower().replace('_', ' ')} affects {components_affected} of {total_components} itinerary components. "
+                f"{p_raw['title']} {'preserves your critical commitments' if preserves_critical else 'jeopardizes your critical conference'}, "
+                f"{'adds ₹' + f'{int(fin_breakdown.net_cost):,}' if fin_breakdown.net_cost >= 0 else 'saves ₹' + f'{int(abs(fin_breakdown.net_cost)):,}'}, "
+                f"and results in {delay_str} of additional delay."
+            )
+
             plan_model = RecoveryPlanModel(
                 plan_id=p_raw["plan_id"],
                 title=p_raw["title"],
@@ -341,7 +372,13 @@ class RecoveryEngine:
                 feasibility=is_feasible,
                 infeasibility_reasons=infeas_reasons,
                 preserves_critical_commitment=preserves_critical,
-                is_recommended=False
+                is_recommended=False,
+                source_itinerary_version=source_itinerary_version,
+                trip_id=trip_id,
+                quality_metrics=quality_metrics,
+                confidence=confidence,
+                confidence_reasons=confidence_reasons,
+                traveler_summary=traveler_summary
             )
             processed_plans.append(plan_model)
 

@@ -43,6 +43,17 @@ class RecoveryPlanModel(BaseModel):
     preserves_critical_commitment: bool = True
     is_recommended: bool = False
 
+    # State & Audit Tracking
+    source_itinerary_version: Optional[int] = None
+    recovery_id: Optional[str] = None
+    trip_id: Optional[int] = None
+
+    # Confidence & Quality Metrics
+    confidence: str = "HIGH"
+    confidence_reasons: List[str] = Field(default_factory=list)
+    quality_metrics: Dict[str, Any] = Field(default_factory=dict)
+    traveler_summary: str = ""
+
     # Explanation
     explanation_summary: str = ""
     explanation_details: Dict[str, Any] = Field(default_factory=dict)

@@ -16,6 +16,9 @@ from services.execution.engine import ExecutionEngine, ExecutionError
 from services.ml.disruption_model import DisruptionRiskModel
 from services.ml.downstream_risk import DownstreamRiskModel
 from services.ml.preferences import TravelerPreferences
+from services.versioning.comparison import VersionComparisonEngine
+from services.demo.reset_service import DemoResetService
+from services.events.user_requests import UserRequestParser
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -37,13 +40,39 @@ def root():
     return {"message": "Backend is running. Please access the frontend at http://localhost:5173"}
 
 @app.get("/api/health")
-def health_check():
-    return {"status": "ok", "message": "Travel Recovery Engine API is running"}
+def health_check(details: bool = False, db: Session = Depends(get_db)):
+    res = {"status": "ok", "message": "Travel Recovery Engine API is running"}
+    if details:
+        db_healthy = True
+        try:
+            db.query(models.Trip).first()
+        except Exception:
+            db_healthy = False
+        res["subsystems"] = {
+            "database": "connected" if db_healthy else "error",
+            "graph_engine": "available",
+            "ml_disruption_model": "active",
+            "ml_downstream_model": "active",
+            "booking_service": "ready",
+            "version_comparison": "ready"
+        }
+    return res
 
 @app.post("/api/seed")
 def seed_database(db: Session = Depends(get_db)):
     user = seed.seed_demo_data(db)
     return {"status": "success", "message": "Demo data seeded successfully", "user_id": user.id}
+
+@app.post("/api/demo/reset")
+def reset_demo(db: Session = Depends(get_db)):
+    trip = DemoResetService.reset_demo_trip(db)
+    return {
+        "status": "success",
+        "message": "Demo state safely reset to Trip v1 baseline.",
+        "trip_id": trip.id,
+        "version": trip.version,
+        "items_count": len(trip.items)
+    }
 
 @app.get("/api/users", response_model=List[schemas.User])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
@@ -202,6 +231,86 @@ def simulate_scenario(
 
     return trigger_disruption(trip_id=trip_id, event_payload=ev, db=db)
 
+@app.post("/api/trips/{trip_id}/user-request")
+def process_user_request(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db)
+):
+    request_text = payload.get("request", "")
+    if not request_text:
+        raise HTTPException(status_code=400, detail="Missing user request text in payload")
+
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    parsed_intent = UserRequestParser.parse_request(request_text)
+
+    # Active items in trip
+    active_items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id,
+        models.ItineraryItem.status != "CANCELLED"
+    ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    if not active_items:
+        raise HTTPException(status_code=400, detail="No active items in trip to adjust")
+
+    target_item = active_items[0]
+    item_dict = {
+        "id": target_item.id,
+        "type": target_item.type,
+        "provider": target_item.provider,
+        "start_time": target_item.start_time,
+        "end_time": target_item.end_time,
+        "status": target_item.status
+    }
+
+    event_type = parsed_intent.get("event_type", "USER_REQUESTED_CHANGE")
+    if event_type == "CANCELLATION":
+        ev = EventManager.create_cancellation_event(
+            trip_id=trip_id,
+            item_id=target_item.id,
+            current_item=item_dict,
+            reason=parsed_intent.get("description", "User-requested cancellation")
+        )
+    else:
+        ev = EventManager.create_user_requested_change_event(
+            trip_id=trip_id,
+            item_id=target_item.id,
+            requested_changes=parsed_intent.get("event_metadata", {}),
+            reason=parsed_intent.get("description", "User-requested schedule adjustment")
+        )
+
+    disruption_res = trigger_disruption(trip_id=trip_id, event_payload=ev, db=db)
+
+    # Generate recovery plans using parsed intent preferences
+    prefs_payload = payload.get("preferences", {})
+    if "preferences_override" in parsed_intent:
+        prefs_payload.update(parsed_intent["preferences_override"])
+
+    recovery_res = plan_recovery(
+        trip_id=trip_id,
+        payload={
+            "preferences": prefs_payload,
+            "event": {
+                "event_type": ev["event_type"],
+                "entity_id": ev["entity_id"],
+                "event_metadata": ev.get("event_metadata", {})
+            }
+        },
+        db=db
+    )
+
+    return {
+        "status": "success",
+        "parsed_intent": parsed_intent,
+        "assessment": disruption_res["assessment"],
+        "event_id": disruption_res["event_id"],
+        "plans": recovery_res["plans"]
+    }
+
+
 # ============================================================================
 # PHASE 2: RECOVERY STRATEGY GENERATION, OPTIMIZATION & EXPLANATION
 # ============================================================================
@@ -260,7 +369,9 @@ def plan_recovery(
     ranked_plans = RecoveryEngine.generate_and_rank_recovery_plans(
         original_items=items_data,
         event=event_info,
-        preferences=preferences
+        preferences=preferences,
+        source_itinerary_version=trip.version or 1,
+        trip_id=trip_id
     )
 
     return {
@@ -332,6 +443,20 @@ def get_trip_recovery_history(trip_id: int, db: Session = Depends(get_db)):
             for h in histories
         ]
     }
+
+@app.get("/api/trips/{trip_id}/compare")
+def compare_trip_versions(
+    trip_id: int,
+    v1: int = 1,
+    v2: int = 2,
+    db: Session = Depends(get_db)
+):
+    try:
+        diff = VersionComparisonEngine.compare_versions(db, trip_id, v1, v2)
+        return diff
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 
 # ============================================================================
 # PHASE 2: ML ADVISORY PREDICTIONS

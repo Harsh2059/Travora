@@ -12,11 +12,15 @@ import type {
 import { Navbar } from './components/Navbar';
 import { DigitalTwinGraph } from './components/DigitalTwinGraph';
 import { DisruptionSimulator } from './components/DisruptionSimulator';
+import { DisruptionDashboard } from './components/DisruptionDashboard';
 import { ImpactAssessmentView } from './components/ImpactAssessmentView';
 import { RecoveryPlansView } from './components/RecoveryPlansView';
 import { VersionHistoryDrawer } from './components/VersionHistoryDrawer';
+import { VersionComparisonModal } from './components/VersionComparisonModal';
+import { UserRequestModal } from './components/UserRequestModal';
+import { EventTimeline } from './components/EventTimeline';
 import { MLAdvisoryCard } from './components/MLAdvisoryCard';
-import { CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Sparkles, RefreshCw } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -39,7 +43,11 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [simulating, setSimulating] = useState<boolean>(false);
   const [executing, setExecuting] = useState<boolean>(false);
+  const [requestLoading, setRequestLoading] = useState<boolean>(false);
+
   const [historyOpen, setHistoryOpen] = useState<boolean>(false);
+  const [compareOpen, setCompareOpen] = useState<boolean>(false);
+  const [userRequestOpen, setUserRequestOpen] = useState<boolean>(false);
 
   const [notification, setNotification] = useState<{
     type: 'success' | 'info' | 'error';
@@ -88,17 +96,17 @@ export default function App() {
     }
   };
 
-  const handleSeed = async () => {
+  const handleResetDemo = async () => {
     try {
       setLoading(true);
-      await axios.post(`${API_BASE_URL}/seed`);
+      await axios.post(`${API_BASE_URL}/demo/reset`);
       setAssessment(null);
       setRecoveryPlans([]);
-      showNotification('success', 'Demo data loaded successfully (6 items, v1 foundation).');
+      showNotification('success', 'Demo environment safely reset to Trip v1 pristine baseline.');
       await fetchData();
     } catch (error) {
-      console.error(error);
-      showNotification('error', 'Failed to seed database.');
+      console.error('Failed to reset demo:', error);
+      showNotification('error', 'Failed to reset demo environment.');
     } finally {
       setLoading(false);
     }
@@ -108,7 +116,7 @@ export default function App() {
     if (!activeTrip) return;
     try {
       setSimulating(true);
-      let payload: any = { scenario_type: scenarioType };
+      const payload: any = { scenario_type: scenarioType };
       if (scenarioType === 'FLIGHT_DELAY_4H' && customMinutes !== 240) {
         payload.custom_minutes = customMinutes;
       }
@@ -129,6 +137,31 @@ export default function App() {
       showNotification('error', 'Error simulating disruption event.');
     } finally {
       setSimulating(false);
+    }
+  };
+
+  const handleUserRequest = async (requestText: string) => {
+    if (!activeTrip) return;
+    try {
+      setRequestLoading(true);
+      const res = await axios.post(`${API_BASE_URL}/trips/${activeTrip.id}/user-request`, {
+        request: requestText,
+        preferences: preferences,
+      });
+
+      const impactAssessment: ImpactAssessment = res.data.assessment;
+      setAssessment(impactAssessment);
+      setRecoveryPlans(res.data.plans);
+
+      showNotification(
+        'success',
+        `Intent recognized: ${res.data.parsed_intent.description}. Recovery strategies generated.`
+      );
+    } catch (error: any) {
+      console.error(error);
+      showNotification('error', error.response?.data?.detail || 'Failed to process traveler request.');
+    } finally {
+      setRequestLoading(false);
     }
   };
 
@@ -170,7 +203,7 @@ export default function App() {
 
       showNotification(
         'success',
-        `Plan executed! Itinerary successfully updated to Version ${res.data.new_version}.`
+        `Execution complete! Itinerary updated to Version ${res.data.new_version}. Bookings & vouchers confirmed.`
       );
 
       // Reset disruption view
@@ -198,7 +231,9 @@ export default function App() {
       <Navbar
         tripVersion={activeTrip?.version || 1}
         isGraphValid={isGraphValid}
-        onSeed={handleSeed}
+        onResetDemo={handleResetDemo}
+        onOpenCompare={() => setCompareOpen(true)}
+        onOpenUserRequest={() => setUserRequestOpen(true)}
         onOpenHistory={() => setHistoryOpen(true)}
         historyCount={history.length}
         loading={loading}
@@ -206,9 +241,9 @@ export default function App() {
 
       {/* Floating Notification */}
       {notification && (
-        <div className="fixed top-20 right-6 z-50 max-w-md animate-bounce">
+        <div className="fixed top-20 right-6 z-50 max-w-md animate-fade-in">
           <div
-            className={`flex items-start gap-3 p-4 rounded-xl shadow-2xl border ${
+            className={`flex items-start gap-3 p-4 rounded-2xl shadow-2xl border backdrop-blur-md ${
               notification.type === 'success'
                 ? 'bg-emerald-950/90 border-emerald-700 text-emerald-200'
                 : notification.type === 'error'
@@ -217,11 +252,11 @@ export default function App() {
             }`}
           >
             {notification.type === 'success' ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+              <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
             ) : (
-              <AlertCircle className="h-5 w-5 text-amber-400 shrink-0" />
+              <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
             )}
-            <div className="text-xs font-semibold">{notification.message}</div>
+            <div className="text-xs font-semibold leading-relaxed">{notification.message}</div>
           </div>
         </div>
       )}
@@ -232,7 +267,7 @@ export default function App() {
           <div className="flex flex-col items-center justify-center h-96 space-y-4">
             <div className="h-12 w-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
             <p className="text-sm text-slate-400 font-medium">
-              Synchronizing with Digital Twin Graph Engine...
+              Synchronizing with Digital Twin State Platform...
             </p>
           </div>
         ) : trips.length === 0 ? (
@@ -240,15 +275,16 @@ export default function App() {
             <div className="h-16 w-16 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
               <Sparkles className="h-8 w-8" />
             </div>
-            <h2 className="text-xl font-bold text-white mb-2">No Active Trip Initialized</h2>
+            <h2 className="text-xl font-bold text-white mb-2">No Active Itinerary Initialized</h2>
             <p className="text-sm text-slate-400 mb-6 max-w-md mx-auto">
-              Initialize the database with the Mumbai-to-London business journey (Flights, Heathrow Express, Marriott Hotel, Tech Conference).
+              Initialize the stateful database with the Mumbai-to-London business journey (Air India, BA, Heathrow Express, Marriott Hotel, Tech Conference).
             </p>
             <button
-              onClick={handleSeed}
-              className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg shadow-blue-600/30 transition-all"
+              onClick={handleResetDemo}
+              className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg shadow-blue-600/30 transition-all flex items-center gap-2 mx-auto"
             >
-              Load Demo Itinerary (v1)
+              <RefreshCw className="h-4 w-4" />
+              <span>Initialize Trip v1 Baseline</span>
             </button>
           </div>
         ) : (
@@ -256,38 +292,53 @@ export default function App() {
             {/* Top Trip Header Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-slate-900 border border-slate-800">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-                  Active Business Itinerary
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400">
+                  Active Travel Digital Twin
                 </span>
                 <h2 className="text-lg font-bold text-white mt-0.5">{activeTrip?.title}</h2>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-slate-400">
-                  Total Commitments:{' '}
-                  <strong className="text-slate-200">{activeTrip?.items.length} items</strong>
+                  Total Items: <strong className="text-slate-200">{activeTrip?.items.length} components</strong>
                 </span>
                 <span className="h-4 w-px bg-slate-800" />
                 <span className="text-xs text-slate-400">
-                  Active Status:{' '}
-                  <strong className="text-emerald-400">Confirmed (Version {activeTrip?.version})</strong>
+                  Status: <strong className="text-emerald-400">Confirmed (Version {activeTrip?.version})</strong>
                 </span>
               </div>
             </div>
 
-            {/* Disruption Simulator */}
+            {/* Disruption Simulator Toolbar */}
             <DisruptionSimulator
               onSimulate={handleSimulate}
               loading={simulating}
               activeDisruption={assessment !== null}
             />
 
-            {/* Impact Assessment Radar */}
+            {/* Event Timeline Progression Bar */}
+            <EventTimeline
+              currentVersion={activeTrip?.version || 1}
+              hasDisruption={assessment !== null}
+              recoveryCount={recoveryPlans.length}
+              isExecuting={executing}
+            />
+
+            {/* Disruption Dashboard (Primary decision overview) */}
+            {assessment && (
+              <DisruptionDashboard
+                assessment={assessment}
+                feasiblePlansCount={recoveryPlans.filter((p) => p.feasibility).length}
+              />
+            )}
+
+            {/* Impact Assessment Graph Radar */}
             {assessment && <ImpactAssessmentView assessment={assessment} />}
 
             {/* Recovery Strategy Options & Personalized Ranking */}
             {recoveryPlans.length > 0 && (
               <RecoveryPlansView
                 plans={recoveryPlans}
+                originalItems={activeTrip?.items || []}
                 preferences={preferences}
                 onPreferencesChange={handlePreferencesChange}
                 onExecutePlan={handleExecutePlan}
@@ -302,7 +353,7 @@ export default function App() {
               isGraphValid={isGraphValid}
             />
 
-            {/* ML Advisory Card */}
+            {/* ML Advisory Risk Predictions Card */}
             <MLAdvisoryCard />
           </>
         )}
@@ -314,6 +365,24 @@ export default function App() {
         onClose={() => setHistoryOpen(false)}
         currentVersion={activeTrip?.version || 1}
         history={history}
+      />
+
+      {/* Version Comparison Modal */}
+      {activeTrip && (
+        <VersionComparisonModal
+          isOpen={compareOpen}
+          onClose={() => setCompareOpen(false)}
+          tripId={activeTrip.id}
+          currentVersion={activeTrip.version || 1}
+        />
+      )}
+
+      {/* User Request Natural Intent Modal */}
+      <UserRequestModal
+        isOpen={userRequestOpen}
+        onClose={() => setUserRequestOpen(false)}
+        onSubmit={handleUserRequest}
+        loading={requestLoading}
       />
     </div>
   );
