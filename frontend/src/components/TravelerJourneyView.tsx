@@ -10,11 +10,22 @@ import {
   CheckCircle2,
   Clock,
   ArrowRight,
-  Sparkles,
   ChevronRight,
   ShieldCheck,
   RotateCcw,
   Sliders,
+  TrendingDown,
+  Timer,
+  Star,
+  MapPin,
+  Compass,
+  Info,
+  ArrowUpRight,
+  PlaneTakeoff,
+  Ban,
+  Building2,
+  CalendarClock,
+  CalendarDays,
 } from 'lucide-react';
 import type { ItineraryItem, ImpactAssessment, RecoveryPlan, TravelerPreferences } from '../types';
 
@@ -33,6 +44,19 @@ interface TravelerJourneyViewProps {
   executing: boolean;
 }
 
+const SEGMENT_COLORS: Record<string, { border: string; icon: string; bg: string; text: string }> = {
+  FLIGHT:        { border: '#bae6fd', icon: '#0284c7', bg: '#f0f9ff', text: '#0369a1' },
+  TRAIN:         { border: '#a7f3d0', icon: '#059669', bg: '#ecfdf5', text: '#047857' },
+  RAIL:          { border: '#a7f3d0', icon: '#059669', bg: '#ecfdf5', text: '#047857' },
+  TRANSFER:      { border: '#bfdbfe', icon: '#2563eb', bg: '#eff6ff', text: '#1d4ed8' },
+  CAB:           { border: '#bfdbfe', icon: '#2563eb', bg: '#eff6ff', text: '#1d4ed8' },
+  CAR:           { border: '#bfdbfe', icon: '#2563eb', bg: '#eff6ff', text: '#1d4ed8' },
+  HOTEL:         { border: '#e9d5ff', icon: '#7c3aed', bg: '#faf5ff', text: '#6d28d9' },
+  ACCOMMODATION: { border: '#e9d5ff', icon: '#7c3aed', bg: '#faf5ff', text: '#6d28d9' },
+  EVENT:         { border: '#fde68a', icon: '#d97706', bg: '#fffbeb', text: '#b45309' },
+  ACTIVITY:      { border: '#99f6e4', icon: '#0d9488', bg: '#f0fdfa', text: '#0f766e' },
+};
+
 export const TravelerJourneyView: React.FC<TravelerJourneyViewProps> = ({
   items,
   tripTitle,
@@ -49,64 +73,42 @@ export const TravelerJourneyView: React.FC<TravelerJourneyViewProps> = ({
   const [showCelebration, setShowCelebration] = useState<boolean>(false);
   const [lastExecutedPlan, setLastExecutedPlan] = useState<RecoveryPlan | null>(null);
 
-  // Helper to get travel mode icon
-  const getModeIcon = (type: string) => {
+  const getModeIcon = (type: string, colorOverride?: string) => {
+    const color = colorOverride || '#64748b';
+    const style = { color };
     switch (type.toUpperCase()) {
-      case 'FLIGHT':
-        return <Plane className="h-4 w-4 text-sky-400" />;
+      case 'FLIGHT':        return <Plane className="h-5 w-5" style={style} />;
       case 'TRAIN':
-      case 'RAIL':
-        return <Train className="h-4 w-4 text-emerald-400" />;
+      case 'RAIL':          return <Train className="h-5 w-5" style={style} />;
       case 'TRANSFER':
       case 'CAB':
-      case 'CAR':
-        return <Car className="h-4 w-4 text-blue-400" />;
+      case 'CAR':           return <Car className="h-5 w-5" style={style} />;
       case 'HOTEL':
-      case 'ACCOMMODATION':
-        return <Hotel className="h-4 w-4 text-purple-400" />;
-      case 'EVENT':
-        return <Calendar className="h-4 w-4 text-amber-400" />;
-      case 'ACTIVITY':
-        return <Ticket className="h-4 w-4 text-teal-400" />;
-      default:
-        return <Sparkles className="h-4 w-4 text-slate-400" />;
+      case 'ACCOMMODATION': return <Hotel className="h-5 w-5" style={style} />;
+      case 'EVENT':         return <Calendar className="h-5 w-5" style={style} />;
+      case 'ACTIVITY':      return <Ticket className="h-5 w-5" style={style} />;
+      default:              return <Compass className="h-5 w-5" style={style} />;
     }
   };
 
   const formatTime = (iso: string) => {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return iso;
-    }
+    try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+    catch { return iso; }
   };
 
   const formatDate = (iso: string) => {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    } catch {
-      return '';
-    }
+    try { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+    catch { return ''; }
   };
 
-  // Categorize candidate recovery plans into Top 3 Traveler choices
   const feasiblePlans = recoveryPlans.filter((p) => p.feasibility);
   const bestPlan = feasiblePlans.find((p) => p.is_recommended) || feasiblePlans[0];
-  
-  // Cheapest plan (lowest net_cost, distinct from best if possible)
   const sortedByCost = [...feasiblePlans].sort((a, b) => a.net_cost - b.net_cost);
   const cheapestPlan = sortedByCost.find((p) => p.plan_id !== bestPlan?.plan_id) || sortedByCost[0];
-
-  // Fastest plan (lowest delay, distinct if possible)
-  const sortedByDelay = [...feasiblePlans].sort(
-    (a, b) => a.additional_delay_minutes - b.additional_delay_minutes
-  );
-  const fastestPlan =
-    sortedByDelay.find(
-      (p) => p.plan_id !== bestPlan?.plan_id && p.plan_id !== cheapestPlan?.plan_id
-    ) || sortedByDelay[0];
+  const sortedByDelay = [...feasiblePlans].sort((a, b) => a.additional_delay_minutes - b.additional_delay_minutes);
+  const fastestPlan = sortedByDelay.find(
+    (p) => p.plan_id !== bestPlan?.plan_id && p.plan_id !== cheapestPlan?.plan_id
+  ) || sortedByDelay[0];
 
   const handleConfirmAndExecute = async (plan: RecoveryPlan) => {
     await onExecutePlan(plan);
@@ -115,172 +117,278 @@ export const TravelerJourneyView: React.FC<TravelerJourneyViewProps> = ({
     setShowCelebration(true);
   };
 
+  const SECTION_HEADER = (
+    stepNumber: number,
+    title: string,
+    subtitle: string,
+    badgeText?: string
+  ) => (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 mb-6 border-b border-slate-200 gap-2">
+      <div className="flex items-center gap-3">
+        <div className="h-8 w-8 rounded-xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
+          {stepNumber}
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 tracking-tight">{title}</h2>
+          <p className="text-xs text-slate-500">{subtitle}</p>
+        </div>
+      </div>
+      {badgeText && (
+        <span className="self-start sm:self-auto text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+          {badgeText}
+        </span>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Traveler Header & Assistant Mode Toggle */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-blue-950/30 border border-slate-800 shadow-xl">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[11px] font-bold text-blue-400 uppercase tracking-wider">
-              Traveler Assistant
-            </span>
-            <span className="text-xs text-slate-500">•</span>
-            <span className="text-xs text-slate-400 font-medium">Trip Version {tripVersion}</span>
-          </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">{tripTitle}</h1>
-          <p className="text-xs text-slate-400 mt-1 max-w-xl">
-            Personalized, constraint-aware travel engine keeping your critical commitments intact.
-          </p>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onOpenTechnicalDrawer}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-bold text-slate-300 transition-all hover:text-white"
-          >
-            <Sliders className="h-4 w-4 text-blue-400" />
-            <span>View Technical Details (DAG & ML)</span>
-          </button>
+      {/* ── Travel Hero Banner ── */}
+      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-blue-600 via-sky-600 to-indigo-700 text-white p-6 sm:p-8 shadow-lg shadow-blue-500/10">
+        {/* Subtle decorative background circles */}
+        <div className="absolute -top-16 -right-16 w-80 h-80 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-60 h-60 rounded-full bg-sky-300/20 blur-xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="max-w-2xl">
+            {/* Top badges */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-white text-xs font-bold uppercase tracking-wider">
+                <Compass className="h-3 w-3" />
+                Autonomous Trip Protection
+              </span>
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-400/90 text-slate-950 text-xs font-black">
+                Trip Version {tripVersion}
+              </span>
+              {assessment && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-rose-500 text-white text-xs font-bold animate-pulse">
+                  ⚠ Disruption Active
+                </span>
+              )}
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white mb-2">
+              {tripTitle}
+            </h1>
+            <p className="text-sm sm:text-base text-blue-100 font-medium leading-relaxed">
+              Real-time disruption guardian. If flights are delayed or transfers break, Travora instantly resolves downstream connections so your conference and bookings remain 100% protected.
+            </p>
+          </div>
+
+          {/* Right Action */}
+          <div className="shrink-0 flex flex-col sm:flex-row lg:flex-col gap-3">
+            <button
+              onClick={onOpenTechnicalDrawer}
+              className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold bg-white text-blue-700 hover:bg-blue-50 shadow-md transition-all hover:scale-105"
+            >
+              <Sliders className="h-4 w-4 text-blue-600" />
+              <span>View Technical DAG & ML</span>
+            </button>
+            <button
+              onClick={onResetDemo}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-semibold bg-white/15 hover:bg-white/25 text-white border border-white/25 transition-all"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Reset to Baseline (Trip v1)</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Celebration State: Back on Track ✓ */}
-      {showCelebration && lastExecutedPlan && (
-        <div className="p-8 rounded-3xl bg-gradient-to-b from-emerald-950/50 to-slate-900 border border-emerald-500/30 shadow-2xl text-center relative overflow-hidden animate-fade-in">
-          <div className="inline-flex p-3.5 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 mb-4">
-            <CheckCircle2 className="h-8 w-8" />
+      {/* ── User Guidance: "How Travora Works" (Clear Explanation For Users) ── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-blue-600" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              How It Works · Traveler Quick Guide
+            </h3>
           </div>
-          <h2 className="text-2xl font-black text-white mb-2">Back on Track! ✓</h2>
-          <p className="text-sm text-slate-300 max-w-lg mx-auto mb-6">
-            Your itinerary has been seamlessly updated. All new reservations, confirmed vouchers, and
-            connecting transfers have been re-synchronized to Trip Version {tripVersion}.
+          {!assessment && (
+            <button
+              onClick={() => onSimulateScenario('FLIGHT_DELAY_4H')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all hover:scale-105"
+            >
+              <span>⚡ Click to Start: Run 4h Flight Delay Demo</span>
+              <ArrowRight className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="font-bold text-blue-700 mb-1">1. Active Itinerary</div>
+            <p className="text-slate-600">Review your scheduled flights, transfers, hotel, and conference commitments below.</p>
+          </div>
+          <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-300 ring-2 ring-amber-200/60 relative">
+            <span className="absolute -top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-600 text-white">
+              Start Here
+            </span>
+            <div className="font-bold text-amber-800 mb-1">2. Test an Emergency</div>
+            <p className="text-slate-700 mb-2">Simulate an incident (e.g. 4h flight delay, hotel overbooked) in Section 2.</p>
+            {!assessment && (
+              <button
+                onClick={() => onSimulateScenario('FLIGHT_DELAY_4H')}
+                className="text-[11px] font-bold text-amber-700 hover:text-amber-900 underline flex items-center gap-1"
+              >
+                <span>Trigger Flight Delay</span>
+                <ArrowRight className="h-2.5 w-2.5" />
+              </button>
+            )}
+          </div>
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="font-bold text-rose-700 mb-1">3. Automated Impact</div>
+            <p className="text-slate-600">Travora calculates cascading delays and highlights broken connections in real time.</p>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="font-bold text-emerald-700 mb-1">4. One-Click Rebook</div>
+            <p className="text-slate-600">Select the Recommended, Cheapest, or Fastest AI solution to update all bookings.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Celebration State (After Successful Recovery) ── */}
+      {showCelebration && lastExecutedPlan && (
+        <div className="p-8 rounded-3xl text-center bg-white border border-emerald-300 shadow-md animate-fade-in relative overflow-hidden">
+          <div className="inline-flex p-4 rounded-2xl mb-4 bg-emerald-50 border border-emerald-200">
+            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 mb-2">You're All Set! Trip Rebooked ✓</h2>
+          <p className="text-sm text-slate-600 max-w-lg mx-auto mb-6 leading-relaxed">
+            Your itinerary has been safely updated. All hotel vouchers, alternative flights, and transfers
+            are re-synchronized to <span className="font-bold text-slate-900">Trip Version {tripVersion}</span>.
           </p>
 
-          <div className="max-w-md mx-auto p-4 rounded-2xl bg-slate-950/80 border border-emerald-800/40 text-left mb-6">
-            <div className="flex justify-between items-center text-xs mb-2">
-              <span className="text-slate-400">Chosen Strategy:</span>
-              <span className="font-bold text-emerald-400">{lastExecutedPlan.title}</span>
+          <div className="max-w-md mx-auto p-4 rounded-2xl bg-slate-50 border border-slate-200 text-left text-xs space-y-2 mb-6">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Chosen Strategy:</span>
+              <span className="font-bold text-blue-700">{lastExecutedPlan.title}</span>
             </div>
-            <div className="flex justify-between items-center text-xs mb-2">
-              <span className="text-slate-400">Net Additional Cost:</span>
-              <span className="font-bold text-white">₹{lastExecutedPlan.net_cost.toLocaleString()}</span>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Additional Cost:</span>
+              <span className="font-bold text-slate-900 font-mono">
+                {(() => {
+                  const total = (lastExecutedPlan.additional_cost ?? lastExecutedPlan.new_booking_cost ?? 0)
+                    + (lastExecutedPlan.change_fees ?? 0)
+                    - (lastExecutedPlan.cancellation_fees ?? 0);
+                  return total > 0 ? `+₹${total.toLocaleString()}` : '₹0';
+                })()}
+              </span>
             </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-400">Critical Commitment (Tech Conference):</span>
-              <span className="font-bold text-emerald-400">✓ 100% Protected</span>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Tech Conference Keynote:</span>
+              <span className="font-bold text-emerald-600">✓ 100% Protected</span>
             </div>
           </div>
 
           <div className="flex items-center justify-center gap-3">
             <button
               onClick={() => setShowCelebration(false)}
-              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all"
+              className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-all"
             >
-              View Updated Trip
+              View Updated Timeline
             </button>
             <button
               onClick={onResetDemo}
-              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-all flex items-center gap-2"
+              className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              <span>Reset Demo State</span>
+              Reset Demo
             </button>
           </div>
         </div>
       )}
 
-      {/* STEP 1: My Trip Timeline */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
-          <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400">
-              Step 1
-            </span>
-            <h2 className="text-lg font-bold text-white tracking-tight">My Trip Timeline</h2>
-          </div>
-          <span className="text-xs text-slate-400">
-            {items.length} Multi-Modal Segments (Flights, Transfers, Hotels & Activities)
-          </span>
-        </div>
+      {/* ── STEP 1: Confirmed Trip Timeline ── */}
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs">
+        {SECTION_HEADER(
+          1,
+          'My Trip Timeline',
+          'Confirmed reservations & itinerary schedule',
+          `${items.length} segments in order`
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((item, idx) => {
             const isCritical = item.priority === 'CRITICAL';
             const nodeImpact = assessment?.node_impacts?.[String(item.id)];
-            const isDisrupted =
-              nodeImpact && nodeImpact.impact_status !== 'UNAFFECTED';
+            const isDisrupted = nodeImpact && nodeImpact.impact_status !== 'UNAFFECTED';
+            const colors = SEGMENT_COLORS[item.type.toUpperCase()] || SEGMENT_COLORS.ACTIVITY;
 
             return (
               <div
                 key={item.id}
-                className={`relative p-5 rounded-2xl border transition-all ${
+                className={`relative p-5 rounded-2xl transition-all duration-200 border ${
                   isDisrupted
-                    ? 'bg-red-950/20 border-red-800/60 shadow-lg shadow-red-950/30'
+                    ? 'bg-rose-50/60 border-rose-300 ring-2 ring-rose-200'
                     : isCritical
-                    ? 'bg-amber-950/10 border-amber-600/40'
-                    : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
+                    ? 'bg-amber-50/50 border-amber-300'
+                    : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
                 }`}
               >
-                {/* Mode & Sequence Number */}
+                {/* Top: Icon + Provider + Step Index */}
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-xl bg-slate-800/80 border border-slate-700">
-                      {getModeIcon(item.type)}
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="p-2 rounded-xl"
+                      style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
+                    >
+                      {getModeIcon(item.type, colors.icon)}
                     </div>
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <span className="text-[10px] font-black uppercase tracking-wider block" style={{ color: colors.text }}>
                         {item.type}
                       </span>
-                      <h3 className="text-sm font-bold text-white leading-none mt-0.5">
-                        {item.provider}
-                      </h3>
+                      <h3 className="text-sm font-bold text-slate-900 leading-tight">{item.provider}</h3>
                     </div>
                   </div>
-
-                  <span className="text-xs font-mono font-bold text-slate-500">#{idx + 1}</span>
+                  <span className="text-xs font-bold font-mono text-slate-400">#{idx + 1}</span>
                 </div>
 
-                {/* Route / Location */}
-                <div className="mb-3 text-xs">
+                {/* Route or Location */}
+                <div className="mb-3 text-xs font-semibold">
                   {item.origin && item.destination ? (
-                    <div className="flex items-center gap-1.5 text-slate-300 font-medium">
+                    <div className="flex items-center gap-1.5 text-slate-800">
                       <span>{item.origin}</span>
-                      <ArrowRight className="h-3 w-3 text-slate-500 shrink-0" />
+                      <ArrowRight className="h-3 w-3 text-slate-400 shrink-0" />
                       <span>{item.destination}</span>
                     </div>
                   ) : (
-                    <div className="text-slate-300 font-medium">{item.location || 'London City'}</div>
+                    <div className="flex items-center gap-1.5 text-slate-700">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                      <span>{item.location || 'London City Center'}</span>
+                    </div>
                   )}
                 </div>
 
-                {/* Times */}
-                <div className="flex items-center justify-between text-xs text-slate-400 py-2 border-t border-slate-800/60 mb-3">
+                {/* Timing */}
+                <div className="flex items-center justify-between text-xs text-slate-500 py-2 mb-3 border-t border-b border-slate-100">
                   <div className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5 text-slate-500" />
-                    <span>
-                      {formatTime(item.start_time)} - {formatTime(item.end_time)}
+                    <Clock className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="font-medium text-slate-700">
+                      {formatTime(item.start_time)} – {formatTime(item.end_time)}
                     </span>
                   </div>
-                  <span>{formatDate(item.start_time)}</span>
+                  <span className="font-medium text-slate-500">{formatDate(item.start_time)}</span>
                 </div>
 
                 {/* Status Badges */}
-                <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   {isDisrupted ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-400 bg-red-950/60 px-2 py-0.5 rounded-full border border-red-800/60">
-                      <AlertTriangle className="h-3 w-3" />
-                      <span>{nodeImpact?.reason || 'Disrupted'}</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                      <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+                      {nodeImpact?.reason || 'Disrupted'}
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-900/50">
-                      <CheckCircle2 className="h-3 w-3" />
-                      <span>Confirmed</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      Confirmed
                     </span>
                   )}
 
                   {isCritical && (
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-800/60">
-                      ★ Critical Event
+                    <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                      ★ Critical Meeting
                     </span>
                   )}
                 </div>
@@ -290,459 +398,416 @@ export const TravelerJourneyView: React.FC<TravelerJourneyViewProps> = ({
         </div>
       </div>
 
-      {/* STEP 2: What Happened? (Disruption Alert or Simulation Launcher) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-800">
-          <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400">
-              Step 2
-            </span>
-            <h2 className="text-lg font-bold text-white tracking-tight">What Happened?</h2>
-          </div>
-          {assessment ? (
-            <span className="px-3 py-1 rounded-full bg-red-950/80 border border-red-800 text-xs font-bold text-red-300 animate-pulse">
-              ⚠️ Active Disruption Detected
-            </span>
-          ) : (
-            <span className="text-xs text-slate-400">All trip items operating on schedule</span>
-          )}
-        </div>
+      {/* ── STEP 2: Disruption Simulation (Interactive Emergency Launcher) ── */}
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs">
+        {SECTION_HEADER(
+          2,
+          assessment ? 'Active Disruption Status' : 'Simulate a Disruption or Emergency',
+          assessment
+            ? 'Travora AI detected an operational event and computed recovery plans'
+            : 'Click any scenario below to see how Travora rescues the itinerary with 0 manual effort',
+          assessment ? 'Disruption Active' : 'Click to test'
+        )}
 
         {assessment ? (
-          <div className="p-5 rounded-2xl bg-red-950/30 border border-red-800/60">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30 shrink-0 mt-0.5">
-                <AlertTriangle className="h-5 w-5" />
+          /* Active Disruption Alert Box */
+          <div className="p-5 sm:p-6 rounded-2xl bg-rose-50/80 border border-rose-200">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-rose-100 border border-rose-200 shrink-0 text-rose-700">
+                <AlertTriangle className="h-6 w-6" />
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-bold text-white mb-1">
-                  Disruption on {assessment.event_type.replace(/_/g, ' ')}
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-rose-200 text-rose-900">
+                    Disruption Detected
+                  </span>
+                  <span className="text-xs font-mono text-slate-500">
+                    Impact: {assessment.components_affected} of {assessment.total_components} items affected
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-slate-900 mb-1">
+                  {assessment.event_type.replace(/_/g, ' ')}
                 </h3>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {assessment.summary ||
-                    'An operational disruption occurred. Our constraint engine evaluated downstream dependencies to determine affected connections.'}
+                <p className="text-sm text-slate-700 leading-relaxed mb-4">
+                  {assessment.summary || 'An operational disruption has invalidated your downstream itinerary. Travora has automatically generated 3 verified recovery options below.'}
                 </p>
 
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <span className="text-xs text-slate-400">
-                    Need to simulate a different scenario?
-                  </span>
-                  <div className="flex items-center gap-2">
+                {/* Quick switcher to test other scenarios */}
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-rose-200/80">
+                  <span className="text-xs font-semibold text-slate-600">Simulate another event:</span>
+                  {[
+                    { label: '4h Flight Delay', scenario: 'FLIGHT_DELAY_4H' },
+                    { label: 'Transfer Strike', scenario: 'TRANSFER_FAILURE' },
+                    { label: 'Hotel Overbooked', scenario: 'HOTEL_UNAVAILABLE' },
+                  ].map(({ label, scenario }) => (
                     <button
-                      onClick={() => onSimulateScenario('TRANSFER_FAILURE')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-300 transition-colors"
+                      key={scenario}
+                      onClick={() => onSimulateScenario(scenario)}
+                      className="px-3 py-1 rounded-lg text-xs font-semibold bg-white hover:bg-rose-100 text-slate-800 border border-rose-200 transition-colors"
                     >
-                      🚕 Transfer Failure
+                      {label}
                     </button>
-                    <button
-                      onClick={() => onSimulateScenario('HOTEL_UNAVAILABLE')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-300 transition-colors"
-                    >
-                      🏨 Hotel Overbooking
-                    </button>
-                    <button
-                      onClick={() => onSimulateScenario('FLIGHT_DELAY_4H')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-300 transition-colors"
-                    >
-                      ✈️ Flight 4h Delay
-                    </button>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="p-6 rounded-2xl bg-slate-950/60 border border-slate-800 text-center">
-            <p className="text-xs text-slate-400 mb-4">
-              Your journey is currently on track. Test how the engine responds to unexpected events by
-              selecting a scenario below:
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3">
+          <div>
+            {/* ── Onboarding Banner: Guided First Step ── */}
+            <div className="mb-4 p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-amber-500 text-white font-black text-xs shrink-0 tracking-wider">
+                  START HERE
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900">Choose an emergency scenario to begin the demo</h4>
+                  <p className="text-[11px] text-slate-600">
+                    Click <strong>"4h Inbound Flight Delay"</strong> below to see Travora detect broken downstream nodes and generate 3 ranked recovery strategies.
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={() => onSimulateScenario('FLIGHT_DELAY_4H')}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/40 hover:border-amber-600/50 border border-slate-700 text-xs font-bold text-slate-200 transition-all"
+                className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm transition-all hover:scale-105 flex items-center gap-1.5"
               >
-                ✈️ 4h Flight Delay
+                <span>Launch Flight Delay</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </button>
-              <button
-                onClick={() => onSimulateScenario('FLIGHT_CANCEL')}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-red-950/40 hover:border-red-600/50 border border-slate-700 text-xs font-bold text-slate-200 transition-all"
-              >
-                ✈️ Flight Cancelled
-              </button>
-              <button
-                onClick={() => onSimulateScenario('TRANSFER_FAILURE')}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-blue-950/40 hover:border-blue-600/50 border border-slate-700 text-xs font-bold text-slate-200 transition-all"
-              >
-                🚕 Heathrow Transfer Strike
-              </button>
-              <button
-                onClick={() => onSimulateScenario('HOTEL_UNAVAILABLE')}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-purple-950/40 hover:border-purple-600/50 border border-slate-700 text-xs font-bold text-slate-200 transition-all"
-              >
-                🏨 Marriott Unavailable
-              </button>
-              <button
-                onClick={() => onSimulateScenario('ACTIVITY_CANCELLED')}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-emerald-950/40 hover:border-emerald-600/50 border border-slate-700 text-xs font-bold text-slate-200 transition-all"
-              >
-                🎟️ Tech Conference Reschedule
-              </button>
+            </div>
+
+            {/* Scenarios Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {[
+                {
+                  label: '4h Inbound Flight Delay',
+                  desc: 'Breaks Delhi connection, misses London flight & puts conference at risk.',
+                  icon: <PlaneTakeoff className="h-4 w-4 text-amber-700" />,
+                  iconBg: 'bg-amber-100 border-amber-200',
+                  scenario: 'FLIGHT_DELAY_4H',
+                  accent: 'border-amber-300 hover:border-amber-400 bg-amber-50/50 ring-2 ring-amber-200/50',
+                  btnColor: 'bg-amber-600 hover:bg-amber-700',
+                },
+                {
+                  label: 'Flight Cancellation',
+                  desc: 'Full technical grounding at Mumbai. Complete re-routing required.',
+                  icon: <Ban className="h-4 w-4 text-rose-700" />,
+                  iconBg: 'bg-rose-100 border-rose-200',
+                  scenario: 'FLIGHT_CANCEL',
+                  accent: 'border-rose-200 hover:border-rose-400 bg-rose-50/40',
+                  btnColor: 'bg-rose-600 hover:bg-rose-700',
+                },
+                {
+                  label: 'Heathrow Transfer Strike',
+                  desc: 'Express trains halted. Auto-dispatches partner cabs or shuttles.',
+                  icon: <Car className="h-4 w-4 text-blue-700" />,
+                  iconBg: 'bg-blue-100 border-blue-200',
+                  scenario: 'TRANSFER_FAILURE',
+                  accent: 'border-blue-200 hover:border-blue-400 bg-blue-50/40',
+                  btnColor: 'bg-blue-600 hover:bg-blue-700',
+                },
+                {
+                  label: 'Hotel Overbooking',
+                  desc: 'Marriott London fully booked. Rebooks 4-star partner hotel within 1km.',
+                  icon: <Building2 className="h-4 w-4 text-purple-700" />,
+                  iconBg: 'bg-purple-100 border-purple-200',
+                  scenario: 'HOTEL_UNAVAILABLE',
+                  accent: 'border-purple-200 hover:border-purple-400 bg-purple-50/40',
+                  btnColor: 'bg-purple-600 hover:bg-purple-700',
+                },
+                {
+                  label: 'Conference Rescheduled',
+                  desc: 'Tech sessions moved to evening. Adjusts free time and hotel check-in.',
+                  icon: <CalendarClock className="h-4 w-4 text-teal-700" />,
+                  iconBg: 'bg-teal-100 border-teal-200',
+                  scenario: 'ACTIVITY_CANCELLED',
+                  accent: 'border-teal-200 hover:border-teal-400 bg-teal-50/40',
+                  btnColor: 'bg-teal-600 hover:bg-teal-700',
+                },
+                {
+                  label: 'Advance Trip by 24h',
+                  desc: 'User requests departing 1 day earlier. Re-evaluates entire digital twin.',
+                  icon: <CalendarDays className="h-4 w-4 text-cyan-700" />,
+                  iconBg: 'bg-cyan-100 border-cyan-200',
+                  scenario: 'USER_REQUEST_ADVANCE',
+                  accent: 'border-cyan-200 hover:border-cyan-400 bg-cyan-50/40',
+                  btnColor: 'bg-cyan-600 hover:bg-cyan-700',
+                },
+              ].map(({ label, desc, icon, iconBg, scenario, accent, btnColor }) => (
+                <div
+                  key={scenario}
+                  className={`relative p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between ${accent}`}
+                >
+                  {scenario === 'FLIGHT_DELAY_4H' && (
+                    <span className="absolute -top-2.5 right-4 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-600 text-white shadow-xs">
+                      ★ Recommended First Click
+                    </span>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2.5 mb-2.5">
+                      <div className={`p-2 rounded-xl border shrink-0 ${iconBg}`}>
+                        {icon}
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900 leading-snug">{label}</h3>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed mb-4">{desc}</p>
+                  </div>
+
+                  <button
+                    onClick={() => onSimulateScenario(scenario)}
+                    className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold text-white shadow-xs transition-all flex items-center justify-center gap-1.5 ${btnColor}`}
+                  >
+                    <span>Simulate This Scenario</span>
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}
       </div>
 
-      {/* STEP 3: What Does This Affect? (Plain-English Impact) */}
+      {/* ── STEP 3: Impact Summary (Only visible when disruption active) ── */}
       {assessment && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl animate-fade-in">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-800">
-            <div>
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-400">
-                Step 3
-              </span>
-              <h2 className="text-lg font-bold text-white tracking-tight">What Does This Affect?</h2>
-            </div>
-            <span className="text-xs text-slate-400">
-              {assessment.components_affected} of {assessment.total_components} items impacted
-            </span>
-          </div>
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs animate-fade-in">
+          {SECTION_HEADER(
+            3,
+            'What Does This Disruption Affect?',
+            'Automated dependency analysis across your itinerary nodes',
+            `${assessment.components_affected} segments breached`
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Connecting Flights
-              </span>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                {assessment.components_affected > 1
-                  ? 'Inbound delay breaches the minimum 60-minute connection window at Delhi (DEL). The flight to London will be missed without intervention.'
-                  : 'No connecting flight segments broken.'}
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-800/40">
-              <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block mb-1">
-                ★ Tech Conference 2026
-              </span>
-              <p className="text-xs text-emerald-200/90 leading-relaxed font-medium">
-                Protected! Our recovery engine prioritizes your arrival before 9:00 AM so you will
-                not miss your keynote presentation.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Hotel & City Transfer
-              </span>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Heathrow Express cab and Marriott hotel check-in timings will automatically adjust to
-                your new arrival schedule.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* STEP 4: Recovery Choices (Top 3 Simple Cards) */}
-      {feasiblePlans.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl animate-fade-in">
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
-            <div>
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">
-                Step 4
-              </span>
-              <h2 className="text-lg font-bold text-white tracking-tight">Recovery Choices</h2>
-            </div>
-            <span className="text-xs text-slate-400">
-              {feasiblePlans.length} verified feasible recovery options generated
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* 1. Best For You */}
-            {bestPlan && (
-              <div className="relative flex flex-col justify-between p-6 rounded-3xl bg-gradient-to-b from-blue-950/40 to-slate-950 border-2 border-blue-500/80 shadow-xl shadow-blue-500/10">
-                <div className="absolute -top-3 left-6 px-3 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md">
-                  ⭐ Best for You
+            <div className="p-5 rounded-2xl bg-rose-50/80 border border-rose-200">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-rose-100 text-rose-700 border border-rose-200">
+                  <Plane className="h-4 w-4" />
                 </div>
-
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 mt-2 mb-2">
-                    <span className="font-semibold text-blue-400">Recommended Plan</span>
-                    <span className="font-mono text-slate-400">
-                      +{bestPlan.additional_delay_minutes}m delay
-                    </span>
-                  </div>
-                  <h3 className="text-base font-bold text-white mb-2">{bestPlan.title}</h3>
-                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
-                    {bestPlan.traveler_summary || bestPlan.explanation_summary}
-                  </p>
-
-                  <div className="space-y-2.5 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs mb-4">
-                    <div>
-                      <span className="font-bold text-emerald-400 block mb-0.5">What you gain:</span>
-                      <span className="text-slate-300">
-                        {bestPlan.trade_offs?.what_you_gain ||
-                          'Preserves Tech Conference & avoids overnight hotel stay'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-amber-400 block mb-0.5">What you give up:</span>
-                      <span className="text-slate-300">
-                        {bestPlan.trade_offs?.what_you_give_up ||
-                          `Additional net cost: ₹${bestPlan.net_cost.toLocaleString()}`}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs py-2 border-t border-slate-800 mb-4">
-                    <span className="text-slate-400">Net Cost Impact:</span>
-                    <span className="text-sm font-bold text-white font-mono">
-                      {bestPlan.net_cost > 0
-                        ? `+ ₹${bestPlan.net_cost.toLocaleString()}`
-                        : `₹${bestPlan.net_cost.toLocaleString()}`}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setSelectedPlanForReview(bestPlan)}
-                  className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
-                >
-                  <span>Review & Choose This Plan</span>
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-
-            {/* 2. Cheapest Option */}
-            {cheapestPlan && (
-              <div className="relative flex flex-col justify-between p-6 rounded-3xl bg-slate-950 border border-slate-800 hover:border-slate-700 shadow-xl transition-all">
-                <div className="absolute -top-3 left-6 px-3 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md">
-                  💰 Cheapest Option
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 mt-2 mb-2">
-                    <span className="font-semibold text-emerald-400">Cost Saver</span>
-                    <span className="font-mono text-slate-400">
-                      +{cheapestPlan.additional_delay_minutes}m delay
-                    </span>
-                  </div>
-                  <h3 className="text-base font-bold text-white mb-2">{cheapestPlan.title}</h3>
-                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
-                    {cheapestPlan.traveler_summary || cheapestPlan.explanation_summary}
-                  </p>
-
-                  <div className="space-y-2.5 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs mb-4">
-                    <div>
-                      <span className="font-bold text-emerald-400 block mb-0.5">What you gain:</span>
-                      <span className="text-slate-300">
-                        {cheapestPlan.trade_offs?.what_you_gain ||
-                          'Minimizes out-of-pocket expenses'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-amber-400 block mb-0.5">What you give up:</span>
-                      <span className="text-slate-300">
-                        {cheapestPlan.trade_offs?.what_you_give_up ||
-                          `Later arrival time (+${cheapestPlan.additional_delay_minutes}m)`}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs py-2 border-t border-slate-800 mb-4">
-                    <span className="text-slate-400">Net Cost Impact:</span>
-                    <span className="text-sm font-bold text-emerald-400 font-mono">
-                      {cheapestPlan.net_cost > 0
-                        ? `+ ₹${cheapestPlan.net_cost.toLocaleString()}`
-                        : `₹${cheapestPlan.net_cost.toLocaleString()}`}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setSelectedPlanForReview(cheapestPlan)}
-                  className="w-full py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 transition-all flex items-center justify-center gap-2"
-                >
-                  <span>Review & Choose This Plan</span>
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-
-            {/* 3. Fastest / Direct Option */}
-            {fastestPlan && (
-              <div className="relative flex flex-col justify-between p-6 rounded-3xl bg-slate-950 border border-slate-800 hover:border-slate-700 shadow-xl transition-all">
-                <div className="absolute -top-3 left-6 px-3 py-0.5 rounded-full bg-purple-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md">
-                  ⚡ Fastest / Most Direct
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 mt-2 mb-2">
-                    <span className="font-semibold text-purple-400">Fast Express Upgrade</span>
-                    <span className="font-mono text-slate-400">
-                      +{fastestPlan.additional_delay_minutes}m delay
-                    </span>
-                  </div>
-                  <h3 className="text-base font-bold text-white mb-2">{fastestPlan.title}</h3>
-                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
-                    {fastestPlan.traveler_summary || fastestPlan.explanation_summary}
-                  </p>
-
-                  <div className="space-y-2.5 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs mb-4">
-                    <div>
-                      <span className="font-bold text-emerald-400 block mb-0.5">What you gain:</span>
-                      <span className="text-slate-300">
-                        {fastestPlan.trade_offs?.what_you_gain ||
-                          'Fastest arrival with minimal overall trip delay'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-amber-400 block mb-0.5">What you give up:</span>
-                      <span className="text-slate-300">
-                        {fastestPlan.trade_offs?.what_you_give_up ||
-                          `Net cost difference: ₹${fastestPlan.net_cost.toLocaleString()}`}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs py-2 border-t border-slate-800 mb-4">
-                    <span className="text-slate-400">Net Cost Impact:</span>
-                    <span className="text-sm font-bold text-purple-400 font-mono">
-                      {fastestPlan.net_cost > 0
-                        ? `+ ₹${fastestPlan.net_cost.toLocaleString()}`
-                        : `₹${fastestPlan.net_cost.toLocaleString()}`}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setSelectedPlanForReview(fastestPlan)}
-                  className="w-full py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 transition-all flex items-center justify-center gap-2"
-                >
-                  <span>Review & Choose This Plan</span>
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* STEP 5: Review Changes Modal (Before vs After Diff) */}
-      {selectedPlanForReview && (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-950/80">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400">
-                  Step 5
+                <span className="text-xs font-black uppercase tracking-wider text-rose-800">
+                  Connecting Flight Window
                 </span>
-                <h3 className="text-lg font-bold text-white">
-                  Review & Confirm: {selectedPlanForReview.title}
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed">
+                Inbound delay breaches the minimum 60-minute connection threshold at Delhi. Connecting flight to London will be missed without intervention.
+              </p>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-emerald-50/80 border border-emerald-200">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200">
+                  <CalendarClock className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-800">
+                  ★ Tech Conference 2026
+                </span>
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed">
+                <strong className="text-emerald-900 font-bold">100% Protected!</strong> The recovery solver strictly enforces your keynote arrival deadline before 09:00 AM.
+              </p>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-blue-50/80 border border-blue-200">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700 border border-blue-200">
+                  <Building2 className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-black uppercase tracking-wider text-blue-800">
+                  Hotel & Ground Transfer
+                </span>
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed">
+                Heathrow Express train ticket and Marriott London check-in window automatically synchronize with your new arrival time.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 4: Recovery Choices (Package cards matching Reference Image) ── */}
+      {feasiblePlans.length > 0 && (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs animate-fade-in">
+          {SECTION_HEADER(
+            4,
+            'Choose Your AI Recovery Plan',
+            'Select the optimal rebooking strategy based on your preferences',
+            `${feasiblePlans.length} verified solutions`
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Recommended Plan */}
+            {bestPlan && (
+              <PlanCardLight
+                plan={bestPlan}
+                badge="⭐ Best for You"
+                badgeBg="bg-blue-600 text-white"
+                tagLabel="Recommended"
+                tagBg="bg-blue-50 text-blue-700 border-blue-200"
+                icon={<Star className="h-4 w-4 text-blue-600" />}
+                cardBorder="border-blue-500 ring-2 ring-blue-100 shadow-md"
+                btnStyle="bg-blue-600 hover:bg-blue-700 text-white"
+                onSelect={() => setSelectedPlanForReview(bestPlan)}
+              />
+            )}
+
+            {/* Cheapest Plan */}
+            {cheapestPlan && (
+              <PlanCardLight
+                plan={cheapestPlan}
+                badge="💰 Lowest Cost"
+                badgeBg="bg-emerald-600 text-white"
+                tagLabel="Cost Saver"
+                tagBg="bg-emerald-50 text-emerald-700 border-emerald-200"
+                icon={<TrendingDown className="h-4 w-4 text-emerald-600" />}
+                cardBorder="border-slate-200 hover:border-emerald-400 hover:shadow-md"
+                btnStyle="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onSelect={() => setSelectedPlanForReview(cheapestPlan)}
+              />
+            )}
+
+            {/* Fastest Plan */}
+            {fastestPlan && (
+              <PlanCardLight
+                plan={fastestPlan}
+                badge="⚡ Fastest Arrival"
+                badgeBg="bg-purple-600 text-white"
+                tagLabel="Speed Priority"
+                tagBg="bg-purple-50 text-purple-700 border-purple-200"
+                icon={<Timer className="h-4 w-4 text-purple-600" />}
+                cardBorder="border-slate-200 hover:border-purple-400 hover:shadow-md"
+                btnStyle="bg-purple-600 hover:bg-purple-700 text-white"
+                onSelect={() => setSelectedPlanForReview(fastestPlan)}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 5: Review & Rebook Modal ── */}
+      {selectedPlanForReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-2xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 block mb-1">
+                  Step 5 · Final Confirmation
+                </span>
+                <h3 className="text-xl font-black text-slate-900">
+                  Review: {selectedPlanForReview.title}
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedPlanForReview(null)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Diff summary */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  What Will Change in Your Itinerary:
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Itinerary Diffs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200">
+                  <span className="text-xs font-bold text-rose-800 block mb-2">✕ Cancelled / Inbound Delayed</span>
+                  <ul className="space-y-1.5 text-xs text-slate-700">
+                    {selectedPlanForReview.removed_items.map((it: any, i: number) => (
+                      <li key={i} className="flex items-center gap-1.5">
+                        <span className="text-rose-600">•</span>
+                        <span>{it.provider || it.type} {it.origin ? `(${it.origin} → ${it.destination})` : ''}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+                  <span className="text-xs font-bold text-emerald-800 block mb-2">✓ Newly Rebooked Alternatives</span>
+                  <ul className="space-y-1.5 text-xs text-slate-700">
+                    {selectedPlanForReview.added_items.map((it: any, i: number) => (
+                      <li key={i} className="flex items-center gap-1.5">
+                        <span className="text-emerald-600">•</span>
+                        <span>{it.provider || it.type} {it.origin ? `(${it.origin} → ${it.destination})` : ''}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Financial Ledger */}
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 block mb-3">
+                  Cost Breakdown
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div className="p-3 rounded-xl bg-red-950/20 border border-red-900/40">
-                    <span className="font-bold text-red-400 block mb-1">Removed / Cancelled:</span>
-                    <ul className="space-y-1 text-slate-300">
-                      {selectedPlanForReview.removed_items.map((it: any, i: number) => (
-                        <li key={i}>
-                          ✕ {it.provider || it.type} ({it.origin ? `${it.origin} → ${it.destination}` : it.location})
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-900/40">
-                    <span className="font-bold text-emerald-400 block mb-1">Added / Rebooked:</span>
-                    <ul className="space-y-1 text-slate-300">
-                      {selectedPlanForReview.added_items.map((it: any, i: number) => (
-                        <li key={i}>
-                          ✓ {it.provider || it.type} ({it.origin ? `${it.origin} → ${it.destination}` : it.location})
-                        </li>
-                      ))}
-                    </ul>
+                <div className="space-y-2 text-xs">
+                  {(selectedPlanForReview.additional_cost ?? selectedPlanForReview.new_booking_cost ?? 0) > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>New Booking (Alternative Flight / Hotel):</span>
+                      <span className="font-mono font-semibold text-slate-900">
+                        +₹{(selectedPlanForReview.additional_cost ?? selectedPlanForReview.new_booking_cost ?? 0).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {selectedPlanForReview.change_fees > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>Reschedule / Change Fee:</span>
+                      <span className="font-mono font-semibold text-amber-700">
+                        +₹{selectedPlanForReview.change_fees.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {selectedPlanForReview.cancellation_fees > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>Refund from Cancelled Booking:</span>
+                      <span className="font-mono font-semibold text-emerald-600">
+                        −₹{selectedPlanForReview.cancellation_fees.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-bold pt-3 border-t border-slate-200">
+                    <span className="text-slate-900">Total Additional Expense:</span>
+                    <span className="font-mono text-base text-blue-600 font-extrabold">
+                      {(() => {
+                        const total = (selectedPlanForReview.additional_cost ?? selectedPlanForReview.new_booking_cost ?? 0)
+                          + (selectedPlanForReview.change_fees ?? 0)
+                          - (selectedPlanForReview.cancellation_fees ?? 0);
+                        return total > 0 ? `+₹${total.toLocaleString()}` : '₹0 (No extra cost)';
+                      })()}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Financial summary breakdown */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-2">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  Pricing & Refund Ledger
-                </span>
-                <div className="flex justify-between text-slate-400">
-                  <span>New Booking Cost:</span>
-                  <span className="font-mono text-white">
-                    ₹{(selectedPlanForReview.additional_cost ?? selectedPlanForReview.new_booking_cost ?? 0).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Airline / Hotel Refund Credit:</span>
-                  <span className="font-mono text-emerald-400">
-                    - ₹{(selectedPlanForReview.refund_received ?? selectedPlanForReview.refunds_recovered ?? 0).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Change & Cancellation Fees:</span>
-                  <span className="font-mono text-amber-400">
-                    + ₹{(selectedPlanForReview.change_fees + selectedPlanForReview.cancellation_fees).toLocaleString()}
-                  </span>
-                </div>
-                <div className="pt-2 border-t border-slate-800 flex justify-between text-sm font-bold text-white">
-                  <span>Net Additional Out-of-Pocket:</span>
-                  <span className="font-mono text-blue-400">
-                    ₹{selectedPlanForReview.net_cost.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Guarantee */}
-              <div className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-950/30 border border-emerald-800/40 text-xs text-emerald-200">
-                <ShieldCheck className="h-5 w-5 text-emerald-400 shrink-0" />
+              {/* Constraint Guarantee */}
+              <div className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
+                <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0" />
                 <span>
-                  <strong>Constraint Invariant Guarantee:</strong> Tech Conference 2026 arrival
-                  is guaranteed by deterministic solver proof.
+                  <strong>Conference Safe:</strong> Tech Conference 2026 arrival is mathematically verified before keynote begins.
                 </span>
               </div>
             </div>
 
-            <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
+            {/* Modal Footer */}
+            <div className="p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
               <button
                 onClick={() => setSelectedPlanForReview(null)}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors"
               >
-                Cancel
+                Go Back
               </button>
               <button
                 onClick={() => handleConfirmAndExecute(selectedPlanForReview)}
                 disabled={executing}
-                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition-all disabled:opacity-50 flex items-center gap-2"
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 transition-all disabled:opacity-50"
               >
                 {executing ? (
                   <>
-                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Executing Recovery...</span>
+                    <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Executing Rebooking...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Confirm Recovery & Update Itinerary</span>
+                    Confirm & Rebook Itinerary
                   </>
                 )}
               </button>
@@ -753,3 +818,93 @@ export const TravelerJourneyView: React.FC<TravelerJourneyViewProps> = ({
     </div>
   );
 };
+
+/* ── Light Plan Card Sub-Component (Matching Pricing Style from Ref Image) ── */
+interface PlanCardLightProps {
+  plan: RecoveryPlan;
+  badge: string;
+  badgeBg: string;
+  tagLabel: string;
+  tagBg: string;
+  icon: React.ReactNode;
+  cardBorder: string;
+  btnStyle: string;
+  onSelect: () => void;
+}
+
+const PlanCardLight: React.FC<PlanCardLightProps> = ({
+  plan,
+  badge,
+  badgeBg,
+  tagLabel,
+  tagBg,
+  icon,
+  cardBorder,
+  btnStyle,
+  onSelect,
+}) => (
+  <div className={`relative flex flex-col bg-white rounded-3xl overflow-hidden transition-all duration-200 ${cardBorder}`}>
+    {/* Top Ribbon */}
+    <div className={`px-4 py-2 text-xs font-black uppercase tracking-wider text-center ${badgeBg}`}>
+      {badge}
+    </div>
+
+    <div className="flex-1 p-6 flex flex-col justify-between">
+      <div>
+        {/* Tag & Delay indicator */}
+        <div className="flex items-center justify-between mb-3">
+          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${tagBg}`}>
+            {icon}
+            <span>{tagLabel}</span>
+          </div>
+          <span className="text-xs font-bold font-mono text-slate-500">
+            +{plan.additional_delay_minutes}m delay
+          </span>
+        </div>
+
+        <h3 className="text-base font-extrabold text-slate-900 mb-2 leading-snug">
+          {plan.title}
+        </h3>
+        <p className="text-xs text-slate-600 leading-relaxed mb-4">
+          {plan.traveler_summary || plan.explanation_summary}
+        </p>
+
+        {/* What you gain / What you give up */}
+        <div className="rounded-xl p-3.5 bg-slate-50 border border-slate-200 text-xs space-y-2 mb-5">
+          <div>
+            <span className="font-bold text-emerald-700 block mb-0.5">✓ What you gain</span>
+            <span className="text-slate-600">{plan.trade_offs?.what_you_gain || 'Protects keynote presentation'}</span>
+          </div>
+          <div className="pt-2 border-t border-slate-200">
+            <span className="font-bold text-amber-700 block mb-0.5">✕ Trade-off</span>
+            <span className="text-slate-600">{plan.trade_offs?.what_you_give_up || `Net cost: ₹${plan.net_cost.toLocaleString()}`}</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        {/* Net Price */}
+        <div className="flex items-center justify-between py-3 border-t border-slate-100 mb-4">
+          <span className="text-xs text-slate-500 font-medium">Additional Cost</span>
+          <span className="text-xl font-black font-mono text-slate-900">
+            {(() => {
+              const total = (plan.additional_cost ?? plan.new_booking_cost ?? 0)
+                + (plan.change_fees ?? 0)
+                - (plan.cancellation_fees ?? 0);
+              return total > 0 ? `+₹${total.toLocaleString()}` : '₹0 (No extra cost)';
+            })()}
+          </span>
+        </div>
+
+        {/* Select Button */}
+        <button
+          onClick={onSelect}
+          className={`w-full py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all hover:scale-[1.01] ${btnStyle}`}
+        >
+          <span>Select & Review Plan</span>
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  </div>
+);

@@ -27,27 +27,27 @@ export const BeforeAfterItinerary: React.FC<BeforeAfterItineraryProps> = ({
   const modifiedIds = new Set(plan.modified_items.map((it: any) => it.id));
 
   return (
-    <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-6">
+    <div className="rounded-2xl bg-white border border-slate-200 p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
             Before & After Recovery Comparison
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             Transparently highlights what is preserved, modified, removed, and newly booked.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
             Preserved
           </span>
-          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+          <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium">
             Modified
           </span>
-          <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 font-medium">
+          <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-medium">
             Removed
           </span>
-          <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
+          <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">
             Added
           </span>
         </div>
@@ -56,11 +56,11 @@ export const BeforeAfterItinerary: React.FC<BeforeAfterItineraryProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* BEFORE COLUMN */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Current Itinerary (Before)
             </span>
-            <span className="text-xs text-slate-500">{originalItems.length} items</span>
+            <span className="text-xs text-slate-400">{originalItems.length} items</span>
           </div>
 
           <div className="space-y-2">
@@ -73,43 +73,38 @@ export const BeforeAfterItinerary: React.FC<BeforeAfterItineraryProps> = ({
                   key={item.id}
                   className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all ${
                     isRemoved
-                      ? 'bg-red-950/20 border-red-800/40 text-red-300 opacity-75'
+                      ? 'bg-rose-50 border-rose-200 text-rose-800'
                       : isModified
-                      ? 'bg-amber-950/20 border-amber-800/40 text-amber-200'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                      ? 'bg-amber-50 border-amber-200 text-amber-800'
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="p-1.5 rounded-lg bg-slate-800 text-slate-300">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600">
                       {getItemIcon(item.type)}
-                    </div>
+                    </span>
                     <div>
-                      <div className="font-bold text-white flex items-center gap-1.5">
-                        {item.provider}
-                        {item.priority === 'CRITICAL' && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-red-500/20 text-red-300 font-extrabold">
-                            CRITICAL
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {item.origin && item.destination ? `${item.origin} → ${item.destination}` : item.location}
+                      <div className="font-semibold">{item.provider}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {item.origin && item.destination
+                          ? `${item.origin} → ${item.destination}`
+                          : item.location || item.type}
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-right">
+                  <div>
                     {isRemoved ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1">
-                        <X className="h-3 w-3" /> REMOVED
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-rose-600">
+                        <X className="h-3 w-3" /> Replaced
                       </span>
                     ) : isModified ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                        <RefreshCw className="h-3 w-3" /> MODIFIED
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600">
+                        <RefreshCw className="h-3 w-3" /> Rescheduled
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                        <Check className="h-3 w-3" /> PRESERVED
+                      <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                        <Check className="h-3 w-3" /> Kept
                       </span>
                     )}
                   </div>
@@ -121,99 +116,79 @@ export const BeforeAfterItinerary: React.FC<BeforeAfterItineraryProps> = ({
 
         {/* AFTER COLUMN */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-              Recovered Itinerary (After: {plan.title})
+          <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Recovered Itinerary (After)
             </span>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-blue-600 font-semibold">
               {originalItems.length - plan.removed_items.length + plan.added_items.length} items
             </span>
           </div>
 
           <div className="space-y-2">
-            {/* 1. Preserved items */}
+            {/* Preserved & Modified items */}
             {originalItems
-              .filter((it) => !removedIds.has(it.id) && !modifiedIds.has(it.id))
-              .map((item) => (
-                <div
-                  key={`pres-${item.id}`}
-                  className="p-3 rounded-xl border border-emerald-900/30 bg-emerald-950/10 text-emerald-200 flex items-center justify-between text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-1.5 rounded-lg bg-emerald-950/60 text-emerald-400">
-                      {getItemIcon(item.type)}
-                    </div>
-                    <div>
-                      <div className="font-bold text-white flex items-center gap-1.5">
-                        {item.provider}
-                        {item.priority === 'CRITICAL' && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-red-500/20 text-red-300 font-extrabold">
-                            CRITICAL
-                          </span>
-                        )}
+              .filter((it) => !removedIds.has(it.id))
+              .map((item) => {
+                const isModified = modifiedIds.has(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
+                      isModified
+                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                        : 'bg-emerald-50/50 border-emerald-200 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600">
+                        {getItemIcon(item.type)}
+                      </span>
+                      <div>
+                        <div className="font-semibold">{item.provider}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {item.origin && item.destination
+                            ? `${item.origin} → ${item.destination}`
+                            : item.location || item.type}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-400">
-                        {item.origin && item.destination ? `${item.origin} → ${item.destination}` : item.location}
-                      </div>
                     </div>
+
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                      <Check className="h-3 w-3" /> Active
+                    </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    INTACT
+                );
+              })}
+
+            {/* Added Alternative items */}
+            {plan.added_items.map((item: any, i: number) => (
+              <div
+                key={`added-${i}`}
+                className="p-3 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-900 flex items-center justify-between text-xs"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="p-1.5 rounded-lg bg-white border border-blue-200 text-blue-600">
+                    {getItemIcon(item.type || 'flight')}
                   </span>
-                </div>
-              ))}
-
-            {/* 2. Modified items */}
-            {plan.modified_items.map((item: any) => (
-              <div
-                key={`mod-${item.id}`}
-                className="p-3 rounded-xl border border-amber-800/40 bg-amber-950/20 text-amber-200 flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded-lg bg-amber-950/60 text-amber-400">
-                    {getItemIcon(item.type || 'FLIGHT')}
-                  </div>
                   <div>
-                    <div className="font-bold text-white">{item.provider || 'Rescheduled Service'}</div>
-                    <div className="text-[11px] text-amber-300 font-mono">
-                      Rescheduled: {new Date(item.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                  <RefreshCw className="h-3 w-3" /> RESCHEDULED
-                </span>
-              </div>
-            ))}
-
-            {/* 3. Newly Added items */}
-            {plan.added_items.map((item: any, idx: number) => (
-              <div
-                key={`add-${idx}`}
-                className="p-3 rounded-xl border border-blue-700/50 bg-blue-950/20 text-blue-200 flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded-lg bg-blue-950/60 text-blue-400">
-                    {getItemIcon(item.type || 'FLIGHT')}
-                  </div>
-                  <div>
-                    <div className="font-bold text-white flex items-center gap-1.5">
-                      {item.provider}
-                      <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold">
-                        NEW BOOKING
+                    <div className="font-bold flex items-center gap-1.5">
+                      <span>{item.provider || item.type}</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-200 text-blue-900 uppercase font-black">
+                        New
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      {item.origin && item.destination ? `${item.origin} → ${item.destination}` : item.location || 'Express Route'}
+                    <div className="text-[11px] text-blue-700">
+                      {item.origin && item.destination
+                        ? `${item.origin} → ${item.destination}`
+                        : item.location || 'Confirmed Booking'}
                     </div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-bold text-white font-mono">₹{item.cost?.toLocaleString()}</div>
-                  <span className="text-[10px] text-blue-300 flex items-center gap-1 justify-end">
-                    <PlusCircle className="h-3 w-3" /> ADDED
-                  </span>
-                </div>
+
+                <span className="flex items-center gap-1 text-[11px] font-bold text-blue-700">
+                  <PlusCircle className="h-3 w-3" /> New Booking
+                </span>
               </div>
             ))}
           </div>

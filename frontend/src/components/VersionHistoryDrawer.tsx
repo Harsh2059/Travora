@@ -1,7 +1,6 @@
 import { X, History, ArrowRight, ShieldCheck } from 'lucide-react';
 import type { RecoveryHistoryEntry } from '../types';
 
-
 interface VersionHistoryDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -18,28 +17,28 @@ export const VersionHistoryDrawer = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm transition-opacity">
-      <div className="w-full max-w-lg bg-slate-900 h-full shadow-2xl border-l border-slate-800 flex flex-col justify-between">
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs transition-opacity">
+      <div className="w-full max-w-lg bg-white h-full shadow-2xl border-l border-slate-200 flex flex-col justify-between">
         {/* Header */}
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
               <History className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">
+              <h2 className="text-base font-black text-slate-900">
                 Itinerary Version & Audit Log
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 Current Active Version:{' '}
-                <span className="font-bold text-amber-400">v{currentVersion}</span>
+                <span className="font-bold text-amber-700">Version {currentVersion}</span>
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -48,9 +47,9 @@ export const VersionHistoryDrawer = ({
         {/* History Timeline */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
           {history.length === 0 ? (
-            <div className="text-center py-16 text-slate-400 text-xs">
-              <History className="h-8 w-8 mx-auto mb-2 text-slate-600 opacity-50" />
-              <p>No disruptions recovered yet.</p>
+            <div className="text-center py-16 text-slate-500 text-xs">
+              <History className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+              <p className="font-bold text-slate-700">No disruptions recovered yet.</p>
               <p className="text-slate-500 mt-1">
                 Trigger a disruption simulation and execute a plan to log version transitions.
               </p>
@@ -59,16 +58,16 @@ export const VersionHistoryDrawer = ({
             history.map((entry, idx) => (
               <div
                 key={entry.id || idx}
-                className="p-4 rounded-xl bg-slate-850 border border-slate-700/80 space-y-3"
+                className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3"
               >
                 {/* Version transition */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded">
+                    <span className="text-xs font-mono font-bold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded">
                       v{entry.previous_version}
                     </span>
-                    <ArrowRight className="h-3.5 w-3.5 text-blue-400" />
-                    <span className="text-xs font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
+                    <ArrowRight className="h-3.5 w-3.5 text-blue-600" />
+                    <span className="text-xs font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
                       v{entry.new_version}
                     </span>
                   </div>
@@ -80,17 +79,17 @@ export const VersionHistoryDrawer = ({
 
                 {/* Plan Info */}
                 <div>
-                  <h4 className="text-sm font-bold text-white">{entry.plan_title}</h4>
-                  <div className="flex items-center gap-4 text-xs text-slate-400 mt-1">
+                  <h4 className="text-sm font-bold text-slate-900">{entry.plan_title}</h4>
+                  <div className="flex items-center gap-4 text-xs text-slate-600 mt-1">
                     <span>
                       Net Cost:{' '}
-                      <strong className="text-slate-200">
-                        INR {entry.net_cost.toLocaleString()}
+                      <strong className="text-slate-900 font-mono">
+                        ₹{entry.net_cost.toLocaleString()}
                       </strong>
                     </span>
                     <span>
                       Delay:{' '}
-                      <strong className="text-amber-400">
+                      <strong className="text-amber-700 font-mono">
                         +{entry.additional_delay_minutes}m
                       </strong>
                     </span>
@@ -99,24 +98,24 @@ export const VersionHistoryDrawer = ({
 
                 {/* Changes metadata */}
                 {entry.changes && (
-                  <div className="p-2.5 rounded-lg bg-slate-900 text-[11px] text-slate-300 font-mono space-y-1">
+                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-[11px] text-slate-700 font-mono space-y-1">
                     <div className="flex justify-between">
-                      <span>Strategy:</span>
-                      <span className="text-blue-400">{entry.changes.strategy}</span>
+                      <span className="text-slate-500">Strategy:</span>
+                      <span className="text-blue-700 font-semibold">{entry.changes.strategy}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Modifications:</span>
-                      <span className="text-slate-400">
+                      <span className="text-slate-500">Modifications:</span>
+                      <span className="text-slate-700">
                         +{entry.changes.added_count} added, -{entry.changes.removed_count} cancelled
                       </span>
                     </div>
                   </div>
                 )}
 
-                <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-800 flex justify-between items-center">
+                <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-200 flex justify-between items-center">
                   <span>{new Date(entry.timestamp).toLocaleString()}</span>
-                  <span className="flex items-center gap-1 text-emerald-400">
-                    <ShieldCheck className="h-3 w-3" />
+                  <span className="flex items-center gap-1 text-emerald-700 font-semibold">
+                    <ShieldCheck className="h-3 w-3 text-emerald-600" />
                     Atomic DB Execution
                   </span>
                 </div>
@@ -126,10 +125,10 @@ export const VersionHistoryDrawer = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-800 text-center">
+        <div className="p-4 border-t border-slate-200 text-center">
           <button
             onClick={onClose}
-            className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 rounded-lg transition-colors"
+            className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 rounded-xl transition-colors"
           >
             Close History
           </button>
