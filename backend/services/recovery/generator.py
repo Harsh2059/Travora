@@ -6,6 +6,7 @@ from services.policy.engine import PolicyEngine
 from services.constraints.engine import ConstraintEngine
 from services.ml.preferences import TravelerPreferences
 from services.explanation.engine import ExplanationEngine
+from services.availability.provider import MockAvailabilityProvider
 from .models import RecoveryPlanModel
 
 class RecoveryEngine:
@@ -39,220 +40,435 @@ class RecoveryEngine:
         total_components = len(items)
         raw_plans = []
 
-        # =========================================================================
-        # Strategy A: Direct Reroute (Direct Flight BOM -> LHR)
-        # Replaces Flight 1 & Flight 2 with a Direct Express flight
-        # =========================================================================
-        plan_a_items = []
-        flight_a = next((it for it in items if it.get("id") == 1 or "mumbai" in str(it.get("origin", "")).lower()), None)
-        flight_b = next((it for it in items if it.get("id") == 2 or "london" in str(it.get("destination", "")).lower()), None)
-        
-        if flight_a and flight_b:
-            # Direct flight departing 1 hour after initial scheduled start
-            direct_dep = flight_a["start_time"] + timedelta(hours=1)
-            direct_arr = direct_dep + timedelta(hours=9, minutes=30) # Direct Mumbai to London is ~9.5h
-            
-            direct_flight = {
-                "id": 101,
-                "type": "FLIGHT",
-                "provider": "Air India Direct Express",
-                "origin": "Mumbai (BOM)",
-                "destination": "London (LHR)",
-                "start_time": direct_arr - timedelta(hours=9, minutes=30),
-                "end_time": direct_arr,
-                "cost": 52000,
-                "currency": "INR",
-                "priority": "HIGH",
-                "flexibility": "FLEXIBLE",
-                "status": "CONFIRMED",
-                "booking_id": "AI-DIR-99",
-                "available": True
-            }
-            # Direct arrival arrives earlier than delayed connecting flight!
-            additional_delay_a = max(0, int((direct_arr - flight_b["end_time"]).total_seconds() / 60.0))
-
-            removed_a = [flight_a, flight_b]
-            added_a = [direct_flight]
-            # Downstream items preserved intact
-            preserved_a = [it for it in items if it["id"] not in [flight_a["id"], flight_b["id"]]]
-            modified_a = []
-
-            raw_plans.append({
-                "plan_id": "plan_a",
-                "title": "Direct Express Reroute",
-                "strategy_type": "REROUTE_DIRECT",
-                "added_items": added_a,
-                "removed_items": removed_a,
-                "modified_items": modified_a,
-                "preserved_items": preserved_a,
-                "additional_delay_minutes": additional_delay_a,
-                "is_direct": True,
-                "hotel_preserved": True
-            })
+        disrupted_item = next((it for it in items if it.get("id") == entity_id), None)
+        item_type = (disrupted_item.get("type", "") if disrupted_item else "").upper()
+        availability = MockAvailabilityProvider()
 
         # =========================================================================
-        # Strategy B: Rebook Same Route with Next Available Connection
-        # Keeps Flight A delayed, Rebooks Flight B on later flight, updates transfer
+        # MULTI-MODAL MODE 1: TRAIN DISRUPTIONS
         # =========================================================================
-        if flight_a and flight_b:
-            flight_a_delayed = copy.deepcopy(flight_a)
-            flight_a_delayed["start_time"] += timedelta(minutes=delay_minutes)
-            flight_a_delayed["end_time"] += timedelta(minutes=delay_minutes)
-            flight_a_delayed["status"] = "CONFIRMED_DELAYED"
+        if item_type == "TRAIN" or "TRAIN" in event_type:
+            target_train = disrupted_item or next((it for it in items if it.get("type") == "TRAIN"), None)
+            if target_train:
+                train_alts = availability.find_alternate_trains(
+                    target_train.get("origin", "Delhi (NDLS)"),
+                    target_train.get("destination", "Jaipur (JP)"),
+                    target_train["start_time"]
+                )
+                flight_alts = availability.find_alternate_flights(
+                    target_train.get("origin", "Delhi (DEL)"),
+                    target_train.get("destination", "Jaipur (JAI)"),
+                    target_train["start_time"]
+                )
+                transfer_item = next((it for it in items if it.get("type") == "TRANSFER"), None)
 
-            # Connecting flight from Delhi departed or missed -> Rebook next BA/Virgin connecting flight
-            new_flight_b_dep = flight_a_delayed["end_time"] + timedelta(hours=2)
-            new_flight_b_arr = new_flight_b_dep + timedelta(hours=9)
+                # Plan 1: Recommended (Vande Bharat Superfast Express + Rescheduled Transfer)
+                vb_train = copy.deepcopy(train_alts[0])
+                new_trans_b = None
+                if transfer_item:
+                    new_trans_b = copy.deepcopy(transfer_item)
+                    new_trans_b["id"] = 351
+                    new_trans_b["start_time"] = vb_train["end_time"] + timedelta(minutes=20)
+                    new_trans_b["end_time"] = new_trans_b["start_time"] + timedelta(minutes=40)
+                    new_trans_b["booking_id"] = "TRX-REBOOK-VB"
 
-            rebooked_flight_b = {
-                "id": 102,
-                "type": "FLIGHT",
-                "provider": "British Airways (Rebooked)",
-                "origin": "Delhi (DEL)",
-                "destination": "London (LHR)",
-                "start_time": new_flight_b_dep,
-                "end_time": new_flight_b_arr,
-                "cost": 48000,
-                "currency": "INR",
-                "priority": "HIGH",
-                "flexibility": "FLEXIBLE",
-                "status": "CONFIRMED",
-                "booking_id": "BA-REBOOK-404",
-                "available": True
-            }
+                delay_vb = max(0, int((vb_train["end_time"] - target_train["end_time"]).total_seconds() / 60.0))
+                rem_1 = [target_train]
+                add_1 = [vb_train]
+                if transfer_item and new_trans_b:
+                    rem_1.append(transfer_item)
+                    add_1.append(new_trans_b)
+                pres_1 = [it for it in items if it["id"] not in [it2["id"] for it2 in rem_1]]
 
-            # Transfer in London also pushed
-            transfer = next((it for it in items if it.get("type") == "TRANSFER"), None)
-            new_transfer = None
-            if transfer:
-                new_transfer = copy.deepcopy(transfer)
-                new_transfer["id"] = 103
-                new_transfer["start_time"] = new_flight_b_arr + timedelta(minutes=45)
-                new_transfer["end_time"] = new_transfer["start_time"] + timedelta(minutes=45)
-                new_transfer["cost"] = 2500
-                new_transfer["booking_id"] = "HEX-NEW-1"
+                raw_plans.append({
+                    "plan_id": "plan_train_vande_bharat",
+                    "title": "Next Vande Bharat Express & Rescheduled Transfer",
+                    "strategy_type": "TRAIN_REBOOK_EXPRESS",
+                    "added_items": add_1,
+                    "removed_items": rem_1,
+                    "modified_items": [],
+                    "preserved_items": pres_1,
+                    "additional_delay_minutes": delay_vb,
+                    "is_direct": True,
+                    "hotel_preserved": True
+                })
 
-            additional_delay_b = int((new_flight_b_arr - flight_b["end_time"]).total_seconds() / 60.0)
+                # Plan 2: Cheapest (Later Budget Superfast Train)
+                sht_train = copy.deepcopy(train_alts[1] if len(train_alts) > 1 else train_alts[0])
+                delay_sht = max(0, int((sht_train["end_time"] - target_train["end_time"]).total_seconds() / 60.0))
+                rem_2 = [target_train]
+                add_2 = [sht_train]
+                if transfer_item:
+                    new_trans_sht = copy.deepcopy(transfer_item)
+                    new_trans_sht["id"] = 352
+                    new_trans_sht["start_time"] = sht_train["end_time"] + timedelta(minutes=20)
+                    new_trans_sht["end_time"] = new_trans_sht["start_time"] + timedelta(minutes=40)
+                    rem_2.append(transfer_item)
+                    add_2.append(new_trans_sht)
+                pres_2 = [it for it in items if it["id"] not in [it2["id"] for it2 in rem_2]]
 
-            removed_b = [flight_b]
-            if transfer:
-                removed_b.append(transfer)
-            added_b = [rebooked_flight_b]
-            if new_transfer:
-                added_b.append(new_transfer)
-            modified_b = [flight_a_delayed]
-            preserved_b = [it for it in items if it["id"] not in [flight_a["id"], flight_b["id"], (transfer["id"] if transfer else -1)]]
+                raw_plans.append({
+                    "plan_id": "plan_train_budget",
+                    "title": "Later Superfast Train (Cost Saver)",
+                    "strategy_type": "TRAIN_REBOOK_BUDGET",
+                    "added_items": add_2,
+                    "removed_items": rem_2,
+                    "modified_items": [],
+                    "preserved_items": pres_2,
+                    "additional_delay_minutes": delay_sht,
+                    "is_direct": False,
+                    "hotel_preserved": True
+                })
 
-            raw_plans.append({
-                "plan_id": "plan_b",
-                "title": "Next Connection & Rescheduled Transfer",
-                "strategy_type": "REBOOK_SAME_ROUTE",
-                "added_items": added_b,
-                "removed_items": removed_b,
-                "modified_items": modified_b,
-                "preserved_items": preserved_b,
-                "additional_delay_minutes": max(0, additional_delay_b),
-                "is_direct": False,
-                "hotel_preserved": True
-            })
+                # Plan 3: Fastest / Cross-Modal (Domestic Express Flight)
+                alt_flight = copy.deepcopy(flight_alts[0])
+                delay_flight = max(0, int((alt_flight["end_time"] - target_train["end_time"]).total_seconds() / 60.0))
+                rem_3 = [target_train]
+                add_3 = [alt_flight]
+                pres_3 = [it for it in items if it["id"] not in [target_train["id"]]]
+
+                raw_plans.append({
+                    "plan_id": "plan_train_crossmodal_flight",
+                    "title": "Fast Express Flight Upgrade (Cross-Modal)",
+                    "strategy_type": "CROSSMODAL_FLIGHT_REROUTE",
+                    "added_items": add_3,
+                    "removed_items": rem_3,
+                    "modified_items": [],
+                    "preserved_items": pres_3,
+                    "additional_delay_minutes": delay_flight,
+                    "is_direct": True,
+                    "hotel_preserved": True
+                })
+
+                # Plan 4: Infeasible (Next-Day Standby Train arriving after conference)
+                late_dep = target_train["start_time"] + timedelta(hours=28)
+                late_arr = late_dep + timedelta(hours=6)
+                late_train = {
+                    "id": 399,
+                    "type": "TRAIN",
+                    "provider": "Next-Day Standby Train",
+                    "origin": target_train.get("origin", "Delhi (NDLS)"),
+                    "destination": target_train.get("destination", "Jaipur (JP)"),
+                    "start_time": late_dep,
+                    "end_time": late_arr,
+                    "cost": 450,
+                    "currency": "INR",
+                    "priority": "LOW",
+                    "flexibility": "FLEXIBLE",
+                    "status": "CONFIRMED",
+                    "booking_id": "STANDBY-TRN-99",
+                    "available": True
+                }
+                raw_plans.append({
+                    "plan_id": "plan_train_infeasible",
+                    "title": "Next-Day Standby Train",
+                    "strategy_type": "STANDBY_DELAYED",
+                    "added_items": [late_train],
+                    "removed_items": [target_train],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] != target_train["id"]],
+                    "additional_delay_minutes": int((late_arr - target_train["end_time"]).total_seconds() / 60.0),
+                    "is_direct": True,
+                    "hotel_preserved": False
+                })
 
         # =========================================================================
-        # Strategy C: Alternate Hub Reroute (e.g. via Doha / Dubai)
+        # MULTI-MODAL MODE 2: HOTEL DISRUPTIONS
         # =========================================================================
-        if flight_a and flight_b:
-            dep_c = flight_a["start_time"] + timedelta(hours=2)
-            mid_c = dep_c + timedelta(hours=3, minutes=30)
-            dep_c2 = mid_c + timedelta(hours=1, minutes=45)
-            arr_c = dep_c2 + timedelta(hours=7, minutes=30)
+        elif item_type == "HOTEL" or "HOTEL" in event_type:
+            target_hotel = disrupted_item or next((it for it in items if it.get("type") == "HOTEL"), None)
+            if target_hotel:
+                hotel_alts = availability.find_alternate_hotels(
+                    target_hotel.get("location", "Jaipur"),
+                    target_hotel["start_time"],
+                    target_hotel["end_time"]
+                )
+                h1 = copy.deepcopy(hotel_alts[0])
+                h2 = copy.deepcopy(hotel_alts[1] if len(hotel_alts) > 1 else hotel_alts[0])
 
-            hub_flight_1 = {
-                "id": 104,
-                "type": "FLIGHT",
-                "provider": "Qatar Airways Leg 1",
-                "origin": "Mumbai (BOM)",
-                "destination": "Doha (DOH)",
-                "start_time": dep_c,
-                "end_time": mid_c,
-                "cost": 22000,
-                "currency": "INR",
-                "priority": "HIGH",
-                "flexibility": "FLEXIBLE",
-                "status": "CONFIRMED",
-                "booking_id": "QR-LEG1",
-                "available": True
-            }
-            hub_flight_2 = {
-                "id": 105,
-                "type": "FLIGHT",
-                "provider": "Qatar Airways Leg 2",
-                "origin": "Doha (DOH)",
-                "destination": "London (LHR)",
-                "start_time": dep_c2,
-                "end_time": arr_c,
-                "cost": 32000,
-                "currency": "INR",
-                "priority": "HIGH",
-                "flexibility": "FLEXIBLE",
-                "status": "CONFIRMED",
-                "booking_id": "QR-LEG2",
-                "available": True
-            }
-
-            additional_delay_c = int((arr_c - flight_b["end_time"]).total_seconds() / 60.0)
-
-            removed_c = [flight_a, flight_b]
-            added_c = [hub_flight_1, hub_flight_2]
-            modified_c = []
-            preserved_c = [it for it in items if it["id"] not in [flight_a["id"], flight_b["id"]]]
-
-            raw_plans.append({
-                "plan_id": "plan_c",
-                "title": "Alternate Hub Reroute (via Doha)",
-                "strategy_type": "REROUTE_HUB",
-                "added_items": added_c,
-                "removed_items": removed_c,
-                "modified_items": modified_c,
-                "preserved_items": preserved_c,
-                "additional_delay_minutes": max(0, additional_delay_c),
-                "is_direct": False,
-                "hotel_preserved": True
-            })
+                raw_plans.append({
+                    "plan_id": "plan_hotel_heritage",
+                    "title": "Heritage Grand Palace Rebooking",
+                    "strategy_type": "HOTEL_REBOOK_LUXURY",
+                    "added_items": [h1],
+                    "removed_items": [target_hotel],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] != target_hotel["id"]],
+                    "additional_delay_minutes": 0,
+                    "is_direct": True,
+                    "hotel_preserved": True
+                })
+                raw_plans.append({
+                    "plan_id": "plan_hotel_budget",
+                    "title": "Courtyard Convention Hotel",
+                    "strategy_type": "HOTEL_REBOOK_BUDGET",
+                    "added_items": [h2],
+                    "removed_items": [target_hotel],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] != target_hotel["id"]],
+                    "additional_delay_minutes": 0,
+                    "is_direct": True,
+                    "hotel_preserved": True
+                })
 
         # =========================================================================
-        # Strategy D: INFEASIBLE Plan (Fails Critical Commitment Invariant)
-        # Arrives 24h later, missing the Tech Conference (CRITICAL commitment)
+        # MULTI-MODAL MODE 3: TRANSFER DISRUPTIONS
         # =========================================================================
-        if flight_a and flight_b:
-            late_dep = flight_a["start_time"] + timedelta(hours=28)
-            late_arr = late_dep + timedelta(hours=10)
-            late_flight = {
-                "id": 106,
-                "type": "FLIGHT",
-                "provider": "Next-Day Standby Flight",
-                "origin": "Mumbai (BOM)",
-                "destination": "London (LHR)",
-                "start_time": late_dep,
-                "end_time": late_arr,
-                "cost": 15000, # Cheap but misses conference
-                "currency": "INR",
-                "priority": "HIGH",
-                "flexibility": "FLEXIBLE",
-                "status": "CONFIRMED",
-                "booking_id": "STANDBY-99",
-                "available": True
-            }
-            raw_plans.append({
-                "plan_id": "plan_infeasible",
-                "title": "Standby Next-Day Budget Flight",
-                "strategy_type": "STANDBY_DELAYED",
-                "added_items": [late_flight],
-                "removed_items": [flight_a, flight_b],
-                "modified_items": [],
-                "preserved_items": [it for it in items if it["id"] not in [flight_a["id"], flight_b["id"]]],
-                "additional_delay_minutes": int((late_arr - flight_b["end_time"]).total_seconds() / 60.0),
-                "is_direct": True,
-                "hotel_preserved": False
-            })
+        elif item_type == "TRANSFER" or "TRANSFER" in event_type:
+            target_trans = disrupted_item or next((it for it in items if it.get("type") == "TRANSFER"), None)
+            if target_trans:
+                trans_alts = availability.find_alternate_transfers(
+                    target_trans.get("origin", "Jaipur Station"),
+                    target_trans.get("destination", "Hotel"),
+                    target_trans["start_time"]
+                )
+                t1 = copy.deepcopy(trans_alts[0])
+                t2 = copy.deepcopy(trans_alts[1] if len(trans_alts) > 1 else trans_alts[0])
+
+                raw_plans.append({
+                    "plan_id": "plan_transfer_prime",
+                    "title": "Priority Express Cab Dispatch",
+                    "strategy_type": "TRANSFER_REBOOK_CAB",
+                    "added_items": [t1],
+                    "removed_items": [target_trans],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] != target_trans["id"]],
+                    "additional_delay_minutes": 0,
+                    "is_direct": True,
+                    "hotel_preserved": True
+                })
+                raw_plans.append({
+                    "plan_id": "plan_transfer_shuttle",
+                    "title": "Station EV Shuttle Service",
+                    "strategy_type": "TRANSFER_REBOOK_SHUTTLE",
+                    "added_items": [t2],
+                    "removed_items": [target_trans],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] != target_trans["id"]],
+                    "additional_delay_minutes": 15,
+                    "is_direct": False,
+                    "hotel_preserved": True
+                })
+
+        # =========================================================================
+        # MULTI-MODAL MODE 4: ACTIVITY DISRUPTIONS
+        # =========================================================================
+        elif item_type == "ACTIVITY" or "ACTIVITY" in event_type:
+            target_act = disrupted_item or next((it for it in items if it.get("type") == "ACTIVITY"), None)
+            if target_act:
+                act_alts = availability.find_alternate_activities(
+                    target_act.get("location", "Jaipur"),
+                    target_act["start_time"]
+                )
+                a1 = copy.deepcopy(act_alts[0])
+                raw_plans.append({
+                    "plan_id": "plan_activity_twilight",
+                    "title": "Twilight Guided Walk Reschedule",
+                    "strategy_type": "ACTIVITY_RESCHEDULE",
+                    "added_items": [a1],
+                    "removed_items": [target_act],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] != target_act["id"]],
+                    "additional_delay_minutes": 0,
+                    "is_direct": True,
+                    "hotel_preserved": True
+                })
+                raw_plans.append({
+                    "plan_id": "plan_activity_refund",
+                    "title": "Cancel Activity & Full Refund",
+                    "strategy_type": "ACTIVITY_CANCEL_REFUND",
+                    "added_items": [],
+                    "removed_items": [target_act],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] != target_act["id"]],
+                    "additional_delay_minutes": 0,
+                    "is_direct": True,
+                    "hotel_preserved": True
+                })
+
+        # =========================================================================
+        # DEFAULT / FLIGHT DISRUPTIONS (Preserves 100% of Phase 1-3 Regression)
+        # =========================================================================
+        else:
+            flight_a = next((it for it in items if it.get("id") == 1 or "mumbai" in str(it.get("origin", "")).lower()), None)
+            flight_b = next((it for it in items if it.get("id") == 2 or "delhi" in str(it.get("origin", "")).lower() or "london" in str(it.get("destination", "")).lower()), None)
+
+            if flight_a and flight_b:
+                # Strategy A: Direct Express Reroute
+                direct_dep = flight_a["start_time"] + timedelta(hours=1)
+                direct_arr = direct_dep + timedelta(hours=9, minutes=30)
+                direct_flight = {
+                    "id": 101,
+                    "type": "FLIGHT",
+                    "provider": "Air India Direct Express",
+                    "origin": flight_a.get("origin", "Mumbai (BOM)"),
+                    "destination": flight_b.get("destination", "London (LHR)"),
+                    "start_time": direct_dep,
+                    "end_time": direct_arr,
+                    "cost": 52000,
+                    "currency": "INR",
+                    "priority": "HIGH",
+                    "flexibility": "FLEXIBLE",
+                    "status": "CONFIRMED",
+                    "booking_id": "AI-DIR-99",
+                    "available": True
+                }
+                additional_delay_a = max(0, int((direct_arr - flight_b["end_time"]).total_seconds() / 60.0))
+                raw_plans.append({
+                    "plan_id": "plan_a",
+                    "title": "Direct Express Reroute",
+                    "strategy_type": "REROUTE_DIRECT",
+                    "added_items": [direct_flight],
+                    "removed_items": [flight_a, flight_b],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] not in [flight_a["id"], flight_b["id"]]],
+                    "additional_delay_minutes": additional_delay_a,
+                    "is_direct": True,
+                    "hotel_preserved": True
+                })
+
+                # Strategy B: Rebook Same Route with Next Available Connection
+                flight_a_delayed = copy.deepcopy(flight_a)
+                flight_a_delayed["start_time"] += timedelta(minutes=delay_minutes)
+                flight_a_delayed["end_time"] += timedelta(minutes=delay_minutes)
+                flight_a_delayed["status"] = "CONFIRMED_DELAYED"
+
+                new_flight_b_dep = flight_a_delayed["end_time"] + timedelta(hours=2)
+                new_flight_b_arr = new_flight_b_dep + timedelta(hours=9)
+                rebooked_flight_b = {
+                    "id": 102,
+                    "type": "FLIGHT",
+                    "provider": "British Airways (Rebooked)",
+                    "origin": flight_b.get("origin", "Delhi (DEL)"),
+                    "destination": flight_b.get("destination", "London (LHR)"),
+                    "start_time": new_flight_b_dep,
+                    "end_time": new_flight_b_arr,
+                    "cost": 48000,
+                    "currency": "INR",
+                    "priority": "HIGH",
+                    "flexibility": "FLEXIBLE",
+                    "status": "CONFIRMED",
+                    "booking_id": "BA-REBOOK-404",
+                    "available": True
+                }
+
+                transfer = next((it for it in items if it.get("type") == "TRANSFER"), None)
+                new_transfer = None
+                if transfer:
+                    new_transfer = copy.deepcopy(transfer)
+                    new_transfer["id"] = 103
+                    new_transfer["start_time"] = new_flight_b_arr + timedelta(minutes=45)
+                    new_transfer["end_time"] = new_transfer["start_time"] + timedelta(minutes=45)
+                    new_transfer["cost"] = 2500
+                    new_transfer["booking_id"] = "HEX-NEW-1"
+
+                additional_delay_b = int((new_flight_b_arr - flight_b["end_time"]).total_seconds() / 60.0)
+                removed_b = [flight_b]
+                if transfer:
+                    removed_b.append(transfer)
+                added_b = [rebooked_flight_b]
+                if new_transfer:
+                    added_b.append(new_transfer)
+                modified_b = [flight_a_delayed]
+                preserved_b = [it for it in items if it["id"] not in [flight_a["id"], flight_b["id"], (transfer["id"] if transfer else -1)]]
+
+                raw_plans.append({
+                    "plan_id": "plan_b",
+                    "title": "Next Connection & Rescheduled Transfer",
+                    "strategy_type": "REBOOK_SAME_ROUTE",
+                    "added_items": added_b,
+                    "removed_items": removed_b,
+                    "modified_items": modified_b,
+                    "preserved_items": preserved_b,
+                    "additional_delay_minutes": max(0, additional_delay_b),
+                    "is_direct": False,
+                    "hotel_preserved": True
+                })
+
+                # Strategy C: Alternate Hub Reroute
+                dep_c = flight_a["start_time"] + timedelta(hours=2)
+                mid_c = dep_c + timedelta(hours=3, minutes=30)
+                dep_c2 = mid_c + timedelta(hours=1, minutes=45)
+                arr_c = dep_c2 + timedelta(hours=7, minutes=30)
+
+                hub_flight_1 = {
+                    "id": 104,
+                    "type": "FLIGHT",
+                    "provider": "Qatar Airways Leg 1",
+                    "origin": "Mumbai (BOM)",
+                    "destination": "Doha (DOH)",
+                    "start_time": dep_c,
+                    "end_time": mid_c,
+                    "cost": 22000,
+                    "currency": "INR",
+                    "priority": "HIGH",
+                    "flexibility": "FLEXIBLE",
+                    "status": "CONFIRMED",
+                    "booking_id": "QR-LEG1",
+                    "available": True
+                }
+                hub_flight_2 = {
+                    "id": 105,
+                    "type": "FLIGHT",
+                    "provider": "Qatar Airways Leg 2",
+                    "origin": "Doha (DOH)",
+                    "destination": "London (LHR)",
+                    "start_time": dep_c2,
+                    "end_time": arr_c,
+                    "cost": 32000,
+                    "currency": "INR",
+                    "priority": "HIGH",
+                    "flexibility": "FLEXIBLE",
+                    "status": "CONFIRMED",
+                    "booking_id": "QR-LEG2",
+                    "available": True
+                }
+                additional_delay_c = int((arr_c - flight_b["end_time"]).total_seconds() / 60.0)
+
+                raw_plans.append({
+                    "plan_id": "plan_c",
+                    "title": "Alternate Hub Reroute (via Doha)",
+                    "strategy_type": "REROUTE_HUB",
+                    "added_items": [hub_flight_1, hub_flight_2],
+                    "removed_items": [flight_a, flight_b],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] not in [flight_a["id"], flight_b["id"]]],
+                    "additional_delay_minutes": max(0, additional_delay_c),
+                    "is_direct": False,
+                    "hotel_preserved": True
+                })
+
+                # Strategy D: Infeasible Plan
+                late_dep = flight_a["start_time"] + timedelta(hours=28)
+                late_arr = late_dep + timedelta(hours=10)
+                late_flight = {
+                    "id": 106,
+                    "type": "FLIGHT",
+                    "provider": "Next-Day Standby Flight",
+                    "origin": "Mumbai (BOM)",
+                    "destination": "London (LHR)",
+                    "start_time": late_dep,
+                    "end_time": late_arr,
+                    "cost": 15000,
+                    "currency": "INR",
+                    "priority": "HIGH",
+                    "flexibility": "FLEXIBLE",
+                    "status": "CONFIRMED",
+                    "booking_id": "STANDBY-99",
+                    "available": True
+                }
+                raw_plans.append({
+                    "plan_id": "plan_infeasible",
+                    "title": "Standby Next-Day Budget Flight",
+                    "strategy_type": "STANDBY_DELAYED",
+                    "added_items": [late_flight],
+                    "removed_items": [flight_a, flight_b],
+                    "modified_items": [],
+                    "preserved_items": [it for it in items if it["id"] not in [flight_a["id"], flight_b["id"]]],
+                    "additional_delay_minutes": int((late_arr - flight_b["end_time"]).total_seconds() / 60.0),
+                    "is_direct": True,
+                    "hotel_preserved": False
+                })
 
         # =========================================================================
         # Policy & Constraint Evaluation + Optimization + Ranking Pipeline
@@ -397,5 +613,9 @@ class RecoveryEngine:
             exp = ExplanationEngine.generate_explanation(p.model_dump())
             p.explanation_summary = exp["summary"]
             p.explanation_details = exp
+            p.trade_offs = {
+                "what_you_gain": exp.get("what_was_preserved", "Preserves key trip segments and on-time arrival"),
+                "what_you_give_up": exp.get("what_was_sacrificed", "Minimal trade-offs required")
+            }
 
         return all_ordered

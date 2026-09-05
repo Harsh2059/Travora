@@ -20,7 +20,9 @@ import { VersionComparisonModal } from './components/VersionComparisonModal';
 import { UserRequestModal } from './components/UserRequestModal';
 import { EventTimeline } from './components/EventTimeline';
 import { MLAdvisoryCard } from './components/MLAdvisoryCard';
-import { CheckCircle2, AlertCircle, Sparkles, RefreshCw } from 'lucide-react';
+import { TravelerJourneyView } from './components/TravelerJourneyView';
+import { TechnicalDetailsDrawer } from './components/TechnicalDetailsDrawer';
+import { CheckCircle2, AlertCircle, Sparkles, RefreshCw, UserCheck, Terminal } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -39,6 +41,9 @@ export default function App() {
     comfort_weight: 0.2,
     directness_weight: 0.1,
   });
+
+  const [viewMode, setViewMode] = useState<'traveler' | 'technical'>('traveler');
+  const [technicalDrawerOpen, setTechnicalDrawerOpen] = useState<boolean>(false);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [simulating, setSimulating] = useState<boolean>(false);
@@ -289,72 +294,109 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Top Trip Header Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-slate-900 border border-slate-800">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400">
-                  Active Travel Digital Twin
-                </span>
-                <h2 className="text-lg font-bold text-white mt-0.5">{activeTrip?.title}</h2>
+            {/* View Mode Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 rounded-2xl bg-slate-900/90 border border-slate-800">
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800/80">
+                <button
+                  onClick={() => setViewMode('traveler')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    viewMode === 'traveler'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <UserCheck className="h-4 w-4" />
+                  <span>Traveler Experience (Human Flow)</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('technical')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    viewMode === 'technical'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Terminal className="h-4 w-4" />
+                  <span>System Engineering (DAG & ML)</span>
+                </button>
               </div>
-              <div className="flex items-center gap-3">
+
+              <div className="flex items-center gap-2 px-3">
                 <span className="text-xs text-slate-400">
-                  Total Items: <strong className="text-slate-200">{activeTrip?.items.length} components</strong>
-                </span>
-                <span className="h-4 w-px bg-slate-800" />
-                <span className="text-xs text-slate-400">
-                  Status: <strong className="text-emerald-400">Confirmed (Version {activeTrip?.version})</strong>
+                  Active Mode:{' '}
+                  <strong className="text-slate-200">
+                    {viewMode === 'traveler' ? '6-Step Traveler Assistant' : 'Full Architecture Inspector'}
+                  </strong>
                 </span>
               </div>
             </div>
 
-            {/* Disruption Simulator Toolbar */}
-            <DisruptionSimulator
-              onSimulate={handleSimulate}
-              loading={simulating}
-              activeDisruption={assessment !== null}
-            />
-
-            {/* Event Timeline Progression Bar */}
-            <EventTimeline
-              currentVersion={activeTrip?.version || 1}
-              hasDisruption={assessment !== null}
-              recoveryCount={recoveryPlans.length}
-              isExecuting={executing}
-            />
-
-            {/* Disruption Dashboard (Primary decision overview) */}
-            {assessment && (
-              <DisruptionDashboard
+            {viewMode === 'traveler' ? (
+              <TravelerJourneyView
+                items={(activeTrip?.items || []).filter((it: any) => it.status !== 'CANCELLED')}
+                tripTitle={activeTrip?.title || 'Trip'}
+                tripVersion={activeTrip?.version || 1}
                 assessment={assessment}
-                feasiblePlansCount={recoveryPlans.filter((p) => p.feasibility).length}
-              />
-            )}
-
-            {/* Impact Assessment Graph Radar */}
-            {assessment && <ImpactAssessmentView assessment={assessment} />}
-
-            {/* Recovery Strategy Options & Personalized Ranking */}
-            {recoveryPlans.length > 0 && (
-              <RecoveryPlansView
-                plans={recoveryPlans}
-                originalItems={activeTrip?.items || []}
+                recoveryPlans={recoveryPlans}
                 preferences={preferences}
                 onPreferencesChange={handlePreferencesChange}
                 onExecutePlan={handleExecutePlan}
+                onOpenTechnicalDrawer={() => setTechnicalDrawerOpen(true)}
+                onResetDemo={handleResetDemo}
+                onSimulateScenario={handleSimulate}
                 executing={executing}
               />
+            ) : (
+              <>
+                {/* Disruption Simulator Toolbar */}
+                <DisruptionSimulator
+                  onSimulate={handleSimulate}
+                  loading={simulating}
+                  activeDisruption={assessment !== null}
+                />
+
+                {/* Event Timeline Progression Bar */}
+                <EventTimeline
+                  currentVersion={activeTrip?.version || 1}
+                  hasDisruption={assessment !== null}
+                  recoveryCount={recoveryPlans.length}
+                  isExecuting={executing}
+                />
+
+                {/* Disruption Dashboard (Primary decision overview) */}
+                {assessment && (
+                  <DisruptionDashboard
+                    assessment={assessment}
+                    feasiblePlansCount={recoveryPlans.filter((p) => p.feasibility).length}
+                  />
+                )}
+
+                {/* Impact Assessment Graph Radar */}
+                {assessment && <ImpactAssessmentView assessment={assessment} />}
+
+                {/* Recovery Strategy Options & Personalized Ranking */}
+                {recoveryPlans.length > 0 && (
+                  <RecoveryPlansView
+                    plans={recoveryPlans}
+                    originalItems={(activeTrip?.items || []).filter((it: any) => it.status !== 'CANCELLED')}
+                    preferences={preferences}
+                    onPreferencesChange={handlePreferencesChange}
+                    onExecutePlan={handleExecutePlan}
+                    executing={executing}
+                  />
+                )}
+
+                {/* Digital Twin Graph Canvas */}
+                <DigitalTwinGraph
+                  graphData={graphData}
+                  nodeImpacts={assessment?.node_impacts}
+                  isGraphValid={isGraphValid}
+                />
+
+                {/* ML Advisory Risk Predictions Card */}
+                <MLAdvisoryCard />
+              </>
             )}
-
-            {/* Digital Twin Graph Canvas */}
-            <DigitalTwinGraph
-              graphData={graphData}
-              nodeImpacts={assessment?.node_impacts}
-              isGraphValid={isGraphValid}
-            />
-
-            {/* ML Advisory Risk Predictions Card */}
-            <MLAdvisoryCard />
           </>
         )}
       </main>
@@ -383,6 +425,18 @@ export default function App() {
         onClose={() => setUserRequestOpen(false)}
         onSubmit={handleUserRequest}
         loading={requestLoading}
+      />
+
+      {/* Technical Details Slide-Over Drawer */}
+      <TechnicalDetailsDrawer
+        isOpen={technicalDrawerOpen}
+        onClose={() => setTechnicalDrawerOpen(false)}
+        graphData={graphData}
+        nodeImpacts={assessment?.node_impacts}
+        isGraphValid={isGraphValid}
+        activePlan={recoveryPlans[0] || null}
+        preferences={preferences}
+        onPreferencesChange={handlePreferencesChange}
       />
     </div>
   );

@@ -60,7 +60,7 @@ class ImpactEngine:
 
         # 1. Evaluate Direct Impact on entity_id
         if entity_id and graph.has_node(entity_id):
-            if event_type == "DELAY":
+            if event_type in ["DELAY", "TRAIN_DELAY", "TRANSFER_DELAY"]:
                 curr_st = simulated_times[entity_id]["start_time"]
                 curr_et = simulated_times[entity_id]["end_time"]
                 new_st = curr_st + timedelta(minutes=delay_minutes)
@@ -71,9 +71,13 @@ class ImpactEngine:
                 node_impacts[entity_id].reason = f"Delayed by {delay_minutes} minutes"
                 node_impacts[entity_id].details["delay_minutes"] = delay_minutes
 
-            elif event_type in ["CANCELLATION", "AIRPORT_CLOSURE"]:
+            elif event_type in [
+                "CANCELLATION", "AIRPORT_CLOSURE", "TRAIN_CANCEL", 
+                "HOTEL_UNAVAILABLE", "TRANSFER_FAILURE", "ACTIVITY_CANCELLED",
+                "MISSED_TRAIN", "CHECKIN_MISSED", "ACTIVITY_MISSED"
+            ]:
                 node_impacts[entity_id].impact_status = ImpactStatus.CANCELLED
-                node_impacts[entity_id].reason = f"Cancelled due to {event_type.lower().replace('_', ' ')}"
+                node_impacts[entity_id].reason = f"Cancelled or unavailable due to {event_type.lower().replace('_', ' ')}"
 
             elif event_type == "USER_REQUESTED_CHANGE":
                 node_impacts[entity_id].impact_status = ImpactStatus.AFFECTED

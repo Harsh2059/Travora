@@ -57,3 +57,4 @@ class RecoveryPlanModel(BaseModel):
     # Explanation
     explanation_summary: str = ""
     explanation_details: Dict[str, Any] = Field(default_factory=dict)
+    trade_offs: Dict[str, str] = Field(default_factory=dict)

@@ -154,6 +154,10 @@ export interface RecoveryPlan {
   confidence_reasons?: string[];
   quality_metrics?: QualityMetrics;
   traveler_summary?: string;
+  trade_offs?: {
+    what_you_gain?: string;
+    what_you_give_up?: string;
+  };
 }
 
 export interface RecoveryHistoryEntry {

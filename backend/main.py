@@ -86,12 +86,53 @@ def read_user_trips(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     return db_user.trips
 
-@app.get("/api/trips/{trip_id}", response_model=schemas.Trip)
+@app.get("/api/trips/{trip_id}")
 def get_trip_details(trip_id: int, db: Session = Depends(get_db)):
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
-    return trip
+
+    # Only return ACTIVE (non-cancelled) items so the timeline stays clean after recovery execution
+    active_items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id,
+        models.ItineraryItem.status != "CANCELLED"
+    ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    return {
+        "id": trip.id,
+        "title": trip.title,
+        "version": trip.version or 1,
+        "user_id": trip.user_id,
+        "items": [
+            {
+                "id": it.id,
+                "trip_id": it.trip_id,
+                "type": it.type,
+                "provider": it.provider,
+                "origin": it.origin,
+                "destination": it.destination,
+                "location": it.location,
+                "start_time": it.start_time.isoformat() if it.start_time else None,
+                "end_time": it.end_time.isoformat() if it.end_time else None,
+                "cost": it.cost,
+                "currency": it.currency,
+                "priority": it.priority,
+                "flexibility": it.flexibility,
+                "status": it.status,
+                "booking_id": it.booking_id,
+                "refundable": it.refundable,
+                "refund_percentage": it.refund_percentage,
+                "cancellation_fee": it.cancellation_fee,
+                "changeable": it.changeable,
+                "change_fee": it.change_fee,
+                "cancellation_deadline": it.cancellation_deadline.isoformat() if it.cancellation_deadline else None,
+                "change_deadline": it.change_deadline.isoformat() if it.change_deadline else None,
+                "non_refundable_amount": it.non_refundable_amount,
+                "item_metadata": it.item_metadata or {}
+            }
+            for it in active_items
+        ]
+    }
 
 # ============================================================================
 # PHASE 2: ITINERARY DIGITAL TWIN & DEPENDENCY GRAPH
@@ -180,7 +221,7 @@ def trigger_disruption(
 @app.post("/api/trips/{trip_id}/simulate")
 def simulate_scenario(
     trip_id: int,
-    scenario_type: str = Body(..., embed=True), # FLIGHT_DELAY_4H, FLIGHT_CANCEL, USER_REQUEST_ADVANCE
+    payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db)
 ):
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
@@ -195,7 +236,31 @@ def simulate_scenario(
     if not items:
         raise HTTPException(status_code=400, detail="No active items in trip to disrupt")
 
-    target_item = items[0] # Default to first flight leg (e.g. Flight A Mumbai -> Delhi)
+    scenario_type = payload.get("scenario_type", "FLIGHT_DELAY_4H")
+    explicit_item_id = payload.get("item_id")
+
+    # Select target item according to scenario or explicit ID
+    target_item = items[0]
+    if explicit_item_id is not None:
+        matched = next((it for it in items if it.id == explicit_item_id), None)
+        if matched:
+            target_item = matched
+    elif scenario_type in ["TRANSFER_FAILURE", "TRANSFER_DELAY"]:
+        matched = next((it for it in items if it.type in ["TRANSFER", "CAB", "CAR"]), None)
+        if matched:
+            target_item = matched
+    elif scenario_type in ["HOTEL_UNAVAILABLE", "CHECKIN_MISSED"]:
+        matched = next((it for it in items if it.type in ["HOTEL", "ACCOMMODATION", "LODGING"]), None)
+        if matched:
+            target_item = matched
+    elif scenario_type in ["ACTIVITY_CANCELLED", "ACTIVITY_MISSED"]:
+        matched = next((it for it in items if it.type in ["EVENT", "ACTIVITY"]), None)
+        if matched:
+            target_item = matched
+    elif scenario_type in ["TRAIN_CANCEL", "TRAIN_DELAY", "TRAIN_DELAY_3H"]:
+        matched = next((it for it in items if it.type in ["TRAIN", "RAIL"]), None)
+        if matched:
+            target_item = matched
 
     item_dict = {
         "id": target_item.id,
@@ -213,6 +278,46 @@ def simulate_scenario(
             current_item=item_dict,
             reason="Severe fog and technical aircraft grounding"
         )
+    elif scenario_type == "TRAIN_CANCEL":
+        ev = {
+            "trip_id": trip_id,
+            "event_type": "TRAIN_CANCEL",
+            "entity_id": target_item.id,
+            "severity": "CRITICAL",
+            "old_state": {"status": target_item.status},
+            "new_state": {"status": "CANCELLED"},
+            "event_metadata": {"reason": "Overhead traction wire failure and track closure"}
+        }
+    elif scenario_type == "HOTEL_UNAVAILABLE":
+        ev = {
+            "trip_id": trip_id,
+            "event_type": "HOTEL_UNAVAILABLE",
+            "entity_id": target_item.id,
+            "severity": "HIGH",
+            "old_state": {"status": target_item.status},
+            "new_state": {"status": "CANCELLED"},
+            "event_metadata": {"reason": "Burst pipe emergency and room overbooking"}
+        }
+    elif scenario_type == "TRANSFER_FAILURE":
+        ev = {
+            "trip_id": trip_id,
+            "event_type": "TRANSFER_FAILURE",
+            "entity_id": target_item.id,
+            "severity": "HIGH",
+            "old_state": {"status": target_item.status},
+            "new_state": {"status": "CANCELLED"},
+            "event_metadata": {"reason": "Express rail power outage & highway gridlock"}
+        }
+    elif scenario_type == "ACTIVITY_CANCELLED":
+        ev = {
+            "trip_id": trip_id,
+            "event_type": "ACTIVITY_CANCELLED",
+            "entity_id": target_item.id,
+            "severity": "MEDIUM",
+            "old_state": {"status": target_item.status},
+            "new_state": {"status": "CANCELLED"},
+            "event_metadata": {"reason": "Venue maintenance closure"}
+        }
     elif scenario_type == "USER_REQUEST_ADVANCE":
         ev = EventManager.create_user_requested_change_event(
             trip_id=trip_id,
