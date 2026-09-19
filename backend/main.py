@@ -86,6 +86,136 @@ def read_user_trips(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     return db_user.trips
 
+# ============================================================================
+# JOURNEY BUILDER — CREATE & MANAGE USER TRIPS
+# ============================================================================
+
+@app.post("/api/users/{user_id}/trips")
+def create_trip(user_id: int, payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """Create a new trip for a user (journey builder flow)."""
+    db_user = crud.get_user(db, user_id=user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    title = payload.get("title", "My Journey")
+    trip = models.Trip(title=title, version=1, user_id=user_id)
+    db.add(trip)
+    db.commit()
+    db.refresh(trip)
+    return {"id": trip.id, "title": trip.title, "version": trip.version, "user_id": trip.user_id, "items": []}
+
+@app.post("/api/trips/{trip_id}/items")
+def add_trip_item(trip_id: int, payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """Add a single itinerary item to an existing trip."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    def parse_dt(val: Optional[str]) -> Optional[datetime]:
+        if not val:
+            return None
+        try:
+            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    start_time = parse_dt(payload.get("start_time"))
+    end_time = parse_dt(payload.get("end_time"))
+
+    item = models.ItineraryItem(
+        trip_id=trip_id,
+        type=payload.get("type", "FLIGHT"),
+        provider=payload.get("provider", ""),
+        origin=payload.get("origin"),
+        destination=payload.get("destination"),
+        location=payload.get("location"),
+        start_time=start_time,
+        end_time=end_time,
+        cost=float(payload.get("cost", 0.0)),
+        currency=payload.get("currency", "INR"),
+        priority=payload.get("priority", "MEDIUM"),
+        flexibility=payload.get("flexibility", "FLEXIBLE"),
+        status=payload.get("status", "CONFIRMED"),
+        booking_id=payload.get("booking_id"),
+        refundable=bool(payload.get("refundable", False)),
+        refund_percentage=float(payload.get("refund_percentage", 0.0)),
+        cancellation_fee=float(payload.get("cancellation_fee", 0.0)),
+        changeable=bool(payload.get("changeable", False)),
+        change_fee=float(payload.get("change_fee", 0.0)),
+        non_refundable_amount=float(payload.get("non_refundable_amount", 0.0)),
+        item_metadata=payload.get("item_metadata", {}),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {
+        "id": item.id, "trip_id": item.trip_id, "type": item.type, "provider": item.provider,
+        "origin": item.origin, "destination": item.destination, "location": item.location,
+        "start_time": item.start_time.isoformat() if item.start_time else None,
+        "end_time": item.end_time.isoformat() if item.end_time else None,
+        "cost": item.cost, "currency": item.currency, "priority": item.priority,
+        "flexibility": item.flexibility, "status": item.status, "booking_id": item.booking_id,
+        "item_metadata": item.item_metadata or {}
+    }
+
+@app.put("/api/trips/{trip_id}/items/{item_id}")
+def update_trip_item(trip_id: int, item_id: int, payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """Update an existing itinerary item."""
+    item = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.id == item_id,
+        models.ItineraryItem.trip_id == trip_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    def parse_dt(val: Optional[str]) -> Optional[datetime]:
+        if not val:
+            return None
+        try:
+            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    updatable = ["type", "provider", "origin", "destination", "location",
+                 "cost", "currency", "priority", "flexibility", "status", "booking_id"]
+    for field in updatable:
+        if field in payload:
+            setattr(item, field, payload[field])
+    if "start_time" in payload:
+        dt = parse_dt(payload["start_time"])
+        if dt:
+            item.start_time = dt
+    if "end_time" in payload:
+        dt = parse_dt(payload["end_time"])
+        if dt:
+            item.end_time = dt
+    if "item_metadata" in payload:
+        item.item_metadata = payload["item_metadata"]
+
+    db.commit()
+    db.refresh(item)
+    return {
+        "id": item.id, "trip_id": item.trip_id, "type": item.type, "provider": item.provider,
+        "origin": item.origin, "destination": item.destination, "location": item.location,
+        "start_time": item.start_time.isoformat() if item.start_time else None,
+        "end_time": item.end_time.isoformat() if item.end_time else None,
+        "cost": item.cost, "currency": item.currency, "priority": item.priority,
+        "flexibility": item.flexibility, "status": item.status, "booking_id": item.booking_id,
+        "item_metadata": item.item_metadata or {}
+    }
+
+@app.delete("/api/trips/{trip_id}/items/{item_id}")
+def delete_trip_item(trip_id: int, item_id: int, db: Session = Depends(get_db)):
+    """Delete an itinerary item from a trip."""
+    item = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.id == item_id,
+        models.ItineraryItem.trip_id == trip_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    db.delete(item)
+    db.commit()
+    return {"status": "deleted", "item_id": item_id}
+
 @app.get("/api/trips/{trip_id}")
 def get_trip_details(trip_id: int, db: Session = Depends(get_db)):
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
@@ -174,11 +304,25 @@ def trigger_disruption(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    event_type = event_payload.get("event_type", "DELAY")
-    entity_id = event_payload.get("entity_id")
-    event_metadata = event_payload.get("event_metadata", {})
+    event_type = event_payload.get("event_type") or event_payload.get("type") or "FLIGHT_CANCELLED"
+    entity_id = event_payload.get("entity_id") or event_payload.get("affected_node_id")
+    event_metadata = dict(event_payload.get("event_metadata", {}))
 
-    # Save disruption event in DB
+    if "detected_at" in event_payload:
+        event_metadata["detected_at"] = event_payload["detected_at"]
+    if "reason" in event_payload:
+        event_metadata["reason"] = event_payload["reason"]
+    if "delay_minutes" in event_payload:
+        event_metadata["delay_minutes"] = event_payload["delay_minutes"]
+
+    dt_now = datetime.utcnow()
+    if event_payload.get("detected_at"):
+        try:
+            raw_dt = str(event_payload["detected_at"]).replace("Z", "+00:00")
+            dt_now = datetime.fromisoformat(raw_dt)
+        except Exception as dt_err:
+            print(f"Warning: Could not parse detected_at '{event_payload.get('detected_at')}': {dt_err}")
+
     disruption_record = models.DisruptionEvent(
         trip_id=trip_id,
         event_type=event_type,
@@ -187,33 +331,172 @@ def trigger_disruption(
         old_state=event_payload.get("old_state", {}),
         new_state=event_payload.get("new_state", {}),
         event_metadata=event_metadata,
-        timestamp=datetime.utcnow()
+        timestamp=dt_now
     )
     db.add(disruption_record)
     db.commit()
     db.refresh(disruption_record)
 
-    # Fetch active items and construct digital twin
-    active_items = db.query(models.ItineraryItem).filter(
-        models.ItineraryItem.trip_id == trip_id,
-        models.ItineraryItem.status != "CANCELLED"
-    ).order_by(models.ItineraryItem.start_time.asc()).all()
+    assessment_dict = {}
+    try:
+        active_items = db.query(models.ItineraryItem).filter(
+            models.ItineraryItem.trip_id == trip_id,
+            models.ItineraryItem.status != "CANCELLED"
+        ).order_by(models.ItineraryItem.start_time.asc()).all()
 
-    G = build_dependency_graph(active_items)
-
-    # Propagate impact through network graph
-    assessment = ImpactEngine.propagate_impact(G, {
-        "trip_id": trip_id,
-        "event_type": event_type,
-        "entity_id": entity_id,
-        "event_metadata": event_metadata
-    })
+        G = build_dependency_graph(active_items)
+        assessment = ImpactEngine.propagate_impact(G, {
+            "trip_id": trip_id,
+            "event_type": event_type,
+            "entity_id": entity_id,
+            "event_metadata": event_metadata
+        })
+        assessment_dict = assessment.model_dump()
+    except Exception:
+        assessment_dict = {"affected_items": [], "total_delay": 0}
 
     return {
+        "id": disruption_record.id,
         "event_id": disruption_record.id,
         "trip_id": trip_id,
-        "assessment": assessment.model_dump()
+        "entity_id": entity_id,
+        "affected_node_id": entity_id,
+        "event_type": event_type,
+        "type": event_type,
+        "severity": disruption_record.severity,
+        "timestamp": disruption_record.timestamp.isoformat() if disruption_record.timestamp else None,
+        "event_metadata": event_metadata,
+        "assessment": assessment_dict
     }
+
+@app.get("/api/trips/{trip_id}/disruptions")
+def get_trip_disruptions(trip_id: int, db: Session = Depends(get_db)):
+    """Fetch active disruption history for a given trip."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    events = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.trip_id == trip_id
+    ).order_by(models.DisruptionEvent.timestamp.desc()).all()
+
+    return [
+        {
+            "id": ev.id,
+            "event_id": ev.id,
+            "trip_id": ev.trip_id,
+            "entity_id": ev.entity_id,
+            "affected_node_id": ev.entity_id,
+            "event_type": ev.event_type,
+            "type": ev.event_type,
+            "severity": ev.severity,
+            "timestamp": ev.timestamp.isoformat() if ev.timestamp else None,
+            "event_metadata": ev.event_metadata or {},
+        }
+        for ev in events
+    ]
+
+@app.post("/api/trips/{trip_id}/disruptions/reset")
+def reset_trip_disruptions(trip_id: int, db: Session = Depends(get_db)):
+    """Reset simulation state for a trip by clearing disruption events without deleting the trip or items."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    db.query(models.DisruptionEvent).filter(models.DisruptionEvent.trip_id == trip_id).delete()
+    db.commit()
+
+    return {"status": "success", "message": "Simulation disruption state reset successfully", "trip_id": trip_id}
+
+@app.delete("/api/trips/{trip_id}/disruptions/{disruption_id}")
+@app.post("/api/trips/{trip_id}/disruptions/{disruption_id}/reset")
+def reset_individual_disruption(trip_id: int, disruption_id: int, db: Session = Depends(get_db)):
+    """Reset/remove an individual disruption event for a trip."""
+    event = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.id == disruption_id,
+        models.DisruptionEvent.trip_id == trip_id
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Disruption event not found")
+
+    db.delete(event)
+    db.commit()
+    return {"status": "success", "message": f"Disruption #{disruption_id} reset successfully", "trip_id": trip_id, "disruption_id": disruption_id}
+
+@app.post("/api/disruptions/reset-all")
+def reset_all_simulations(db: Session = Depends(get_db)):
+    """Reset all simulation disruption events across all trips."""
+    deleted_count = db.query(models.DisruptionEvent).delete()
+    db.commit()
+    return {"status": "success", "message": f"Reset {deleted_count} simulation disruptions across all trips", "deleted_count": deleted_count}
+
+# ============================================================================
+# PART 3: IMPACT & RIPPLE ENGINE ENDPOINTS
+# ============================================================================
+@app.post("/api/trips/{trip_id}/impact/analyze")
+def analyze_trip_impact(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db)
+):
+    """
+    Analyzes downstream impact of a disruption event on a trip's dependency graph.
+    Does NOT mutate itinerary items or attempt recovery.
+    """
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    disruption_ids_param = payload.get("disruption_ids")
+    single_disruption_id = payload.get("disruption_id")
+
+    if disruption_ids_param and isinstance(disruption_ids_param, list):
+        disruption_events = db.query(models.DisruptionEvent).filter(
+            models.DisruptionEvent.id.in_(disruption_ids_param),
+            models.DisruptionEvent.trip_id == trip_id
+        ).all()
+    elif single_disruption_id:
+        ev = db.query(models.DisruptionEvent).filter(
+            models.DisruptionEvent.id == single_disruption_id,
+            models.DisruptionEvent.trip_id == trip_id
+        ).first()
+        disruption_events = [ev] if ev else []
+    else:
+        disruption_events = db.query(models.DisruptionEvent).filter(
+            models.DisruptionEvent.trip_id == trip_id
+        ).order_by(models.DisruptionEvent.timestamp.asc()).all()
+
+    items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id,
+        models.ItineraryItem.status != "CANCELLED"
+    ).all()
+
+    G = build_dependency_graph(items)
+
+    if not disruption_events:
+        empty_res = ImpactEngine.propagate_impact(G, {"trip_id": trip_id})
+        return empty_res.model_dump()
+
+    event_dicts = [
+        {
+            "id": de.id,
+            "disruption_id": de.id,
+            "trip_id": trip_id,
+            "entity_id": de.entity_id,
+            "affected_node_id": de.entity_id,
+            "event_type": de.event_type,
+            "event_metadata": de.event_metadata or {}
+        }
+        for de in disruption_events
+    ]
+
+    result = ImpactEngine.propagate_impact(G, event_dicts)
+    return result.model_dump()
+
+@app.get("/api/trips/{trip_id}/impact")
+def get_trip_impact(trip_id: int, db: Session = Depends(get_db)):
+    """Fetch active impact result for a trip."""
+    return analyze_trip_impact(trip_id=trip_id, payload={}, db=db)
 
 # ============================================================================
 # PHASE 2: DISRUPTION SIMULATOR PRESETS

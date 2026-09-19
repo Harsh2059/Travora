@@ -14,14 +14,12 @@ class DependencyType:
     CUSTOM = "CUSTOM"
 
 def normalize_loc(location: Optional[str]) -> List[str]:
-    """Extract normalized tokens from location string like 'London (LHR)' -> ['london', 'lhr']"""
+    """Extract normalized tokens from location string like 'Mumbai (BOM)' -> ['mumbai', 'bom']"""
     if not location:
         return []
     cleaned = location.lower()
-    # extract code in parens if any
     parens = re.findall(r'\(([a-z0-9]+)\)', cleaned)
-    # extract main words
-    words = re.findall(r'\b[a-z]{3,}\b', cleaned)
+    words = re.findall(r'\b[a-z0-9]+\b', cleaned)
     tokens = list(set(parens + words))
     return tokens
 
@@ -39,7 +37,8 @@ def build_dependency_graph(
 ) -> nx.DiGraph:
     """
     Dynamically builds a NetworkX DiGraph representing the digital twin itinerary and its dependencies.
-    Items can be ItineraryItem SQLAlchemy models, Pydantic schemas, or dicts.
+    DOES NOT use array order as a dependency — edges are constructed based strictly on location continuity,
+    transport connections, stay attachments, and explicit dependency metadata.
     """
     G = nx.DiGraph()
 
@@ -56,146 +55,118 @@ def build_dependency_graph(
         else:
             d = dict(item)
         
-        # Remove SQLAlchemy instance state if present
         d.pop("_sa_instance_state", None)
         item_nodes.append(d)
 
-    # Sort items chronologically by start_time
-    item_nodes.sort(key=lambda x: x["start_time"] if isinstance(x["start_time"], datetime) else datetime.fromisoformat(str(x["start_time"])))
+    # Retain original index for structural ordering
+    for idx, d in enumerate(item_nodes):
+        d["_orig_idx"] = idx
+
+    def parse_time(val):
+        if not val:
+            return datetime.max
+        if isinstance(val, datetime):
+            return val
+        try:
+            return datetime.fromisoformat(str(val))
+        except Exception:
+            return datetime.max
+
+    item_nodes.sort(key=lambda x: x["_orig_idx"])
 
     # Add nodes to graph
     for d in item_nodes:
-        node_id = d["id"]
+        node_id = str(d.get("id"))
         G.add_node(node_id, **d)
 
     # If explicit dependencies are provided, apply them
     explicit_edge_pairs = set()
     if explicit_dependencies:
         for dep in explicit_dependencies:
-            src = dep.source_id if hasattr(dep, "source_id") else dep.get("source_id")
-            tgt = dep.target_id if hasattr(dep, "target_id") else dep.get("target_id")
+            src = str(dep.source_id if hasattr(dep, "source_id") else dep.get("source_id"))
+            tgt = str(dep.target_id if hasattr(dep, "target_id") else dep.get("target_id"))
             dep_type = dep.dependency_type if hasattr(dep, "dependency_type") else dep.get("dependency_type", DependencyType.CUSTOM)
             meta = dep.item_metadata if hasattr(dep, "item_metadata") else dep.get("item_metadata", {})
             if G.has_node(src) and G.has_node(tgt):
                 G.add_edge(src, tgt, dependency_type=dep_type, **meta)
                 explicit_edge_pairs.add((src, tgt))
 
-    # Dynamic Inference of Dependencies
+    # Dynamic Inference of Explicit Dependencies
     n = len(item_nodes)
     for i in range(n):
         curr = item_nodes[i]
-        curr_id = curr["id"]
-        curr_type = curr.get("type")
+        curr_id = str(curr["id"])
+        curr_type = str(curr.get("type", "")).upper()
         curr_dest = curr.get("destination") or curr.get("location")
-        curr_end = curr.get("end_time")
-        if isinstance(curr_end, str):
-            curr_end = datetime.fromisoformat(curr_end)
+        curr_end_dt = parse_time(curr.get("end_time") or curr.get("endTime"))
 
-        # Look forward to find candidates
         for j in range(i + 1, n):
             nxt = item_nodes[j]
-            nxt_id = nxt["id"]
+            nxt_id = str(nxt["id"])
             if (curr_id, nxt_id) in explicit_edge_pairs:
                 continue
 
-            nxt_type = nxt.get("type")
+            nxt_type = str(nxt.get("type", "")).upper()
             nxt_orig = nxt.get("origin") or nxt.get("location")
-            nxt_start = nxt.get("start_time")
-            if isinstance(nxt_start, str):
-                nxt_start = datetime.fromisoformat(nxt_start)
+            nxt_start_dt = parse_time(nxt.get("start_time") or nxt.get("startTime"))
 
-            # Rule 1: Transport Connection (FLIGHT -> FLIGHT / TRAIN)
-            if curr_type in ["FLIGHT", "TRAIN"] and nxt_type in ["FLIGHT", "TRAIN"]:
+            # Rule 1: Transport Connection (FLIGHT / TRAIN / METRO -> FLIGHT / TRAIN / METRO)
+            if curr_type in ["FLIGHT", "TRAIN", "METRO"] and nxt_type in ["FLIGHT", "TRAIN", "METRO"]:
                 if locations_match(curr.get("destination"), nxt.get("origin")):
-                    # Direct connection
-                    wait_minutes = (nxt_start - curr_end).total_seconds() / 60.0
-                    if 0 <= wait_minutes <= 720: # connection within 12 hours
-                        G.add_edge(
-                            curr_id, nxt_id,
-                            dependency_type=DependencyType.CONNECTION,
-                            minimum_connection_minutes=60,
-                            maximum_wait_minutes=720,
-                            buffer_minutes=int(wait_minutes)
-                        )
-                        break # Only connect to the immediate next connecting leg
+                    if curr_end_dt != datetime.max and nxt_start_dt != datetime.max:
+                        wait_minutes = (nxt_start_dt - curr_end_dt).total_seconds() / 60.0
+                        if 0 <= wait_minutes <= 1440: # connection within 24h
+                            G.add_edge(
+                                curr_id, nxt_id,
+                                dependency_type=DependencyType.CONNECTION,
+                                minimum_connection_minutes=60,
+                                buffer_minutes=int(wait_minutes)
+                            )
+                            break
 
-            # Rule 2: Transport -> Transfer
-            elif curr_type in ["FLIGHT", "TRAIN"] and nxt_type == "TRANSFER":
-                if locations_match(curr.get("destination"), nxt.get("origin")):
-                    wait_minutes = (nxt_start - curr_end).total_seconds() / 60.0
-                    if 0 <= wait_minutes <= 360:
+            # Rule 2: Transport -> Cab / Transfer
+            elif curr_type in ["FLIGHT", "TRAIN", "METRO"] and nxt_type in ["CAB", "TAXI", "TRANSFER"]:
+                if locations_match(curr.get("destination"), nxt.get("origin") or nxt.get("location")):
+                    if curr_end_dt != datetime.max and nxt_start_dt != datetime.max:
+                        wait_minutes = (nxt_start_dt - curr_end_dt).total_seconds() / 60.0
+                        if 0 <= wait_minutes <= 360:
+                            G.add_edge(
+                                curr_id, nxt_id,
+                                dependency_type=DependencyType.TRANSFER,
+                                minimum_buffer_minutes=30,
+                                buffer_minutes=int(wait_minutes)
+                            )
+                            break
+                    else:
+                        # Unknown timing but location matches -> add TRANSFER edge for feasibility checking
                         G.add_edge(
                             curr_id, nxt_id,
                             dependency_type=DependencyType.TRANSFER,
-                            minimum_buffer_minutes=30,
-                            buffer_minutes=int(wait_minutes)
+                            minimum_buffer_minutes=30
                         )
                         break
 
             # Rule 3: Transport / Transfer -> Accommodation (Hotel)
-            elif curr_type in ["FLIGHT", "TRAIN", "TRANSFER"] and nxt_type == "HOTEL":
+            elif curr_type in ["FLIGHT", "TRAIN", "METRO", "CAB", "TAXI", "TRANSFER"] and nxt_type in ["HOTEL", "STAY"]:
                 dest = curr.get("destination") or curr.get("location")
                 if locations_match(dest, nxt.get("location")):
-                    wait_minutes = (nxt_start - curr_end).total_seconds() / 60.0
-                    if wait_minutes >= 0:
-                        G.add_edge(
-                            curr_id, nxt_id,
-                            dependency_type=DependencyType.ACCOMMODATION,
-                            minimum_buffer_minutes=30,
-                            buffer_minutes=int(wait_minutes)
-                        )
-                        break
+                    G.add_edge(
+                        curr_id, nxt_id,
+                        dependency_type=DependencyType.ACCOMMODATION
+                    )
+                    break
 
-            # Rule 4: Hotel or Arrival Transport -> Event / Activity
-            elif curr_type in ["HOTEL", "TRANSFER", "FLIGHT", "TRAIN"] and nxt_type in ["EVENT", "ACTIVITY"]:
+            # Rule 4: Hotel or Transport -> Event / Activity
+            elif curr_type in ["HOTEL", "STAY", "CAB", "TAXI", "TRANSFER", "FLIGHT", "TRAIN", "METRO"] and nxt_type in ["EVENT", "ACTIVITY", "TICKET"]:
                 loc_match = locations_match(curr.get("destination") or curr.get("location"), nxt.get("location"))
                 if loc_match:
-                    wait_minutes = (nxt_start - curr_end).total_seconds() / 60.0
-                    # For Hotel, the event might happen during the stay
-                    if curr_type == "HOTEL":
-                        # Event during hotel stay
-                        curr_start = curr.get("start_time")
-                        if isinstance(curr_start, str):
-                            curr_start = datetime.fromisoformat(curr_start)
-                        if curr_start <= nxt_start <= curr_end:
-                            G.add_edge(
-                                curr_id, nxt_id,
-                                dependency_type=DependencyType.EVENT if nxt_type == "EVENT" else DependencyType.ACTIVITY,
-                                required_arrival_buffer_minutes=60
-                            )
-                    elif 0 <= wait_minutes <= 1440: # within 24h of arrival
-                        G.add_edge(
-                            curr_id, nxt_id,
-                            dependency_type=DependencyType.EVENT if nxt_type == "EVENT" else DependencyType.ACTIVITY,
-                            required_arrival_buffer_minutes=60,
-                            buffer_minutes=int(wait_minutes)
-                        )
+                    G.add_edge(
+                        curr_id, nxt_id,
+                        dependency_type=DependencyType.EVENT if nxt_type == "EVENT" else DependencyType.ACTIVITY,
+                        required_arrival_buffer_minutes=30
+                    )
 
-            # Rule 5: Event / Hotel -> Return Transport
-            elif curr_type in ["EVENT", "HOTEL"] and nxt_type in ["FLIGHT", "TRAIN"]:
-                orig = nxt.get("origin") or nxt.get("location")
-                if locations_match(curr.get("location"), orig):
-                    wait_minutes = (nxt_start - curr_end).total_seconds() / 60.0
-                    if wait_minutes >= 0:
-                        G.add_edge(
-                            curr_id, nxt_id,
-                            dependency_type=DependencyType.TEMPORAL,
-                            required_buffer_minutes=120,
-                            buffer_minutes=int(wait_minutes)
-                        )
-                        break
-
-    # Sequential Fallback: Ensure no disconnected components in a single sequential trip
-    # If any node (except the first) has in_degree == 0, link from predecessor chronologically
-    for i in range(1, n):
-        prev_id = item_nodes[i-1]["id"]
-        curr_id = item_nodes[i]["id"]
-        if G.in_degree(curr_id) == 0:
-            # Add general temporal dependency
-            G.add_edge(
-                prev_id, curr_id,
-                dependency_type=DependencyType.TEMPORAL,
-                inferred=True
-            )
+    # NOTE: Array-order fallback loop intentionally omitted to preserve core rule:
+    # "Chronological adjacency is NOT automatically a dependency."
 
     return G

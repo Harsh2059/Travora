@@ -7,7 +7,7 @@ import type {
   DigitalTwinGraphData,
   RecoveryPlan,
   RecoveryHistoryEntry,
-  ImpactAssessment,
+  ImpactResult as ImpactAssessment,
 } from './types';
 
 // ── Trip ──────────────────────────────────────────────────────────────────
@@ -178,9 +178,10 @@ export const MOCK_RECOVERY_PLANS: RecoveryPlan[] = [
   },
 ];
 
-// ── Impact Assessment (Flight Delay) ──────────────────────────────────────
+// ── Impact Assessment (Flight Delay) ────────────────────────────────────────────
 export const MOCK_IMPACT_FLIGHT_DELAY: ImpactAssessment = {
   trip_id: 1,
+  // Legacy display-layer fields
   event_type: 'FLIGHT_DELAY_4H',
   entity_id: 1,
   total_components: 6,
@@ -189,13 +190,59 @@ export const MOCK_IMPACT_FLIGHT_DELAY: ImpactAssessment = {
   critical_components: 1,
   critical_components_affected: 1,
   impact_score: 85,
-  node_impacts: {
-    '1': { id: '1', type: 'FLIGHT', title: 'Air India Mumbai\u2192Delhi', priority: 'HIGH', impact_status: 'AFFECTED', reason: 'Delayed 240 minutes \u2014 departure pushed to 12:30', original_start: '2026-09-07T08:30:00', simulated_start: '2026-09-07T12:30:00', details: { delay_minutes: 240 } },
-    '2': { id: '2', type: 'FLIGHT', title: 'British Airways Delhi\u2192London', priority: 'HIGH', impact_status: 'MISSED', reason: 'Missed connection \u2014 arrives after BA-5521 departure', original_start: '2026-09-07T13:10:00', simulated_start: '2026-09-07T13:10:00', details: {} },
-    '5': { id: '5', type: 'EVENT', title: 'Tech Conference 2026 Keynote', priority: 'CRITICAL', impact_status: 'AT_RISK', reason: 'Conference attendance at risk if no alternative found', original_start: '2026-09-08T07:10:00', simulated_start: '2026-09-08T07:10:00', details: {} },
-  },
   cascade_paths: [['1', '2', '5']],
-  summary: 'Air India flight delayed 4 hours. This causes a missed connection in Delhi, putting the Tech Conference 2026 keynote at serious risk. Immediate rebooking required.',
+  summary_text: 'Air India flight delayed 4 hours. This causes a missed connection in Delhi, putting the Tech Conference 2026 keynote at serious risk. Immediate rebooking required.',
+  // Structured summary counts (required by ImpactSummaryCounts)
+  summary: { intact: 2, at_risk: 1, needs_change: 0, broken: 3 },
+  // Journey-level feasibility status
+  journey_status: 'DISRUPTED' as const,
+  // Flat array form (mirrors node_impacts)
+  nodes: [
+    {
+      node_id: '1', item_id: 1, type: 'FLIGHT',
+      title: 'Air India Mumbai→Delhi', priority: 'HIGH', flexibility: 'FLEXIBLE',
+      original_status: 'CONFIRMED', status: 'BROKEN',
+      reason: 'Delayed 240 minutes — departure pushed to 12:30',
+      details: { delay_minutes: 240, original_start: '2026-09-07T08:30:00', simulated_start: '2026-09-07T12:30:00' },
+    },
+    {
+      node_id: '2', item_id: 2, type: 'FLIGHT',
+      title: 'British Airways Delhi→London', priority: 'HIGH', flexibility: 'STRICT',
+      original_status: 'CONFIRMED', status: 'BROKEN',
+      reason: 'Missed connection — arrives after BA-5521 departure',
+      details: { original_start: '2026-09-07T13:10:00' },
+    },
+    {
+      node_id: '5', item_id: 5, type: 'EVENT',
+      title: 'Tech Conference 2026 Keynote', priority: 'CRITICAL', flexibility: 'FIXED',
+      original_status: 'CONFIRMED', status: 'AT_RISK',
+      reason: 'Conference attendance at risk if no alternative found',
+      details: { original_start: '2026-09-08T07:10:00' },
+    },
+  ],
+  node_impacts: {
+    '1': {
+      node_id: '1', item_id: 1, type: 'FLIGHT',
+      title: 'Air India Mumbai→Delhi', priority: 'HIGH', flexibility: 'FLEXIBLE',
+      original_status: 'CONFIRMED', status: 'BROKEN',
+      reason: 'Delayed 240 minutes — departure pushed to 12:30',
+      details: { delay_minutes: 240, original_start: '2026-09-07T08:30:00', simulated_start: '2026-09-07T12:30:00' },
+    },
+    '2': {
+      node_id: '2', item_id: 2, type: 'FLIGHT',
+      title: 'British Airways Delhi→London', priority: 'HIGH', flexibility: 'STRICT',
+      original_status: 'CONFIRMED', status: 'BROKEN',
+      reason: 'Missed connection — arrives after BA-5521 departure',
+      details: { original_start: '2026-09-07T13:10:00' },
+    },
+    '5': {
+      node_id: '5', item_id: 5, type: 'EVENT',
+      title: 'Tech Conference 2026 Keynote', priority: 'CRITICAL', flexibility: 'FIXED',
+      original_status: 'CONFIRMED', status: 'AT_RISK',
+      reason: 'Conference attendance at risk if no alternative found',
+      details: { original_start: '2026-09-08T07:10:00' },
+    },
+  },
 };
 
 // ── History ────────────────────────────────────────────────────────────────
