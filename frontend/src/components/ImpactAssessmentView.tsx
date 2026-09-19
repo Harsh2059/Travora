@@ -102,7 +102,7 @@ export const ImpactAssessmentView = ({ assessment }: ImpactAssessmentViewProps) 
       {/* Narrative Summary */}
       <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 mb-4">
         <div className="text-xs font-bold text-amber-900 mb-1">Situation Summary</div>
-        <p className="text-xs text-slate-700 leading-relaxed">{assessment.summary}</p>
+        <p className="text-xs text-slate-700 leading-relaxed">{(assessment as any).summary_text || assessment.event_type}</p>
       </div>
 
       {/* Missed flight — no compensation banner */}
@@ -127,12 +127,12 @@ export const ImpactAssessmentView = ({ assessment }: ImpactAssessmentViewProps) 
           </h3>
           <div className="space-y-2">
             {Object.entries(assessment.node_impacts).map(([nodeId, impact]) => {
-              const isMissedOrInvalid = impact.impact_status === 'MISSED' || impact.impact_status === 'INVALID' || impact.impact_status === 'CANCELLED';
-              const isAffected = impact.impact_status === 'AFFECTED' || impact.impact_status === 'AT_RISK';
+              const isBroken = impact.status === 'BROKEN' || impact.status === 'NEEDS_CHANGE';
+              const isAtRisk = impact.status === 'AT_RISK';
 
-              const badgeColor = isMissedOrInvalid
+              const badgeColor = isBroken
                 ? 'bg-rose-100 text-rose-800 border-rose-200'
-                : isAffected
+                : isAtRisk
                 ? 'bg-amber-100 text-amber-800 border-amber-200'
                 : 'bg-slate-100 text-slate-700 border-slate-200';
 
@@ -148,7 +148,7 @@ export const ImpactAssessmentView = ({ assessment }: ImpactAssessmentViewProps) 
                     <span
                       className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border uppercase tracking-wider ${badgeColor}`}
                     >
-                      {impact.impact_status.replace(/_/g, ' ')}
+                      {impact.status.replace(/_/g, ' ')}
                     </span>
                     <span className="text-xs text-slate-700 font-medium">
                       {impact.reason || impact.title || 'Impact registered'}

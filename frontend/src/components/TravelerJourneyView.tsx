@@ -27,7 +27,7 @@ import {
   CalendarClock,
   CalendarDays,
 } from 'lucide-react';
-import type { ItineraryItem, ImpactAssessment, RecoveryPlan, TravelerPreferences } from '../types';
+import type { ItineraryItem, ImpactResult as ImpactAssessment, RecoveryPlan, TravelerPreferences } from '../types';
 
 interface TravelerJourneyViewProps {
   items: ItineraryItem[];
@@ -312,7 +312,7 @@ export const TravelerJourneyView: React.FC<TravelerJourneyViewProps> = ({
           {items.map((item, idx) => {
             const isCritical = item.priority === 'CRITICAL';
             const nodeImpact = assessment?.node_impacts?.[String(item.id)];
-            const isDisrupted = nodeImpact && nodeImpact.impact_status !== 'UNAFFECTED';
+            const isDisrupted = nodeImpact && nodeImpact.status !== 'INTACT';
             const colors = SEGMENT_COLORS[item.type.toUpperCase()] || SEGMENT_COLORS.ACTIVITY;
 
             return (
@@ -426,10 +426,10 @@ export const TravelerJourneyView: React.FC<TravelerJourneyViewProps> = ({
                   </span>
                 </div>
                 <h3 className="text-base font-bold text-slate-900 mb-1">
-                  {assessment.event_type.replace(/_/g, ' ')}
+                  {(assessment.event_type ?? '').replace(/_/g, ' ')}
                 </h3>
                 <p className="text-sm text-slate-700 leading-relaxed mb-4">
-                  {assessment.summary || 'An operational disruption has invalidated your downstream itinerary. Travora has automatically generated 3 verified recovery options below.'}
+                  {assessment.summary_text || 'An operational disruption has invalidated your downstream itinerary. Travora has automatically generated 3 verified recovery options below.'}
                 </p>
 
                 {/* Quick switcher to test other scenarios */}

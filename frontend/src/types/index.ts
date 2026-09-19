@@ -70,32 +70,95 @@ export interface DigitalTwinGraphData {
   edge_count: number;
 }
 
-export interface NodeImpact {
-  id: string;
+export type ImpactNodeStatus = 'INTACT' | 'AT_RISK' | 'NEEDS_CHANGE' | 'BROKEN';
+
+/**
+ * Journey-level feasibility status produced by the Part 3 engine.
+ *
+ * NORMAL    — the original journey is executable as planned.
+ * DISRUPTED — an active disruption makes the original journey no longer
+ *              executable as planned (at least one node is BROKEN or NEEDS_CHANGE).
+ *
+ * AT_RISK alone does NOT make the journey DISRUPTED — it means the journey
+ * may be at risk but is not yet confirmed infeasible.
+ */
+export type JourneyStatus = 'NORMAL' | 'DISRUPTED';
+
+export interface ImpactSource {
+  disruption_id?: any;
+  kind: 'DIRECT' | 'PROPAGATED';
+  reason: string;
+  status: ImpactNodeStatus;
+  cause?: string;
+  scope?: string;
+}
+
+export interface NodeImpactItem {
+  node_id: string;
+  item_id?: number;
   type: string;
   title: string;
   priority: string;
-  impact_status: 'UNAFFECTED' | 'AFFECTED' | 'AT_RISK' | 'MISSED' | 'INVALID' | 'CANCELLED';
+  flexibility: string;
+  original_status: string;
+  status: ImpactNodeStatus;
   reason: string;
-  original_start: string;
-  simulated_start: string;
-  details: Record<string, any>;
+  impact_sources?: ImpactSource[];
+  details?: Record<string, any>;
 }
 
-export interface ImpactAssessment {
-  trip_id: number;
-  event_type: string;
-  entity_id: number;
-  total_components: number;
-  components_affected: number;
-  affected_percentage: number;
-  critical_components: number;
-  critical_components_affected: number;
-  impact_score: number;
-  node_impacts: Record<string, NodeImpact>;
-  cascade_paths: string[][];
-  summary: string;
+export interface ImpactSummaryCounts {
+  intact: number;
+  at_risk: number;
+  needs_change: number;
+  broken: number;
 }
+
+export interface ImpactResult {
+  trip_id: number;
+  disruption_ids?: any[];
+  root_node_ids?: string[];
+  disruption_id?: any;
+  root_node_id?: string;
+  summary: ImpactSummaryCounts;
+  nodes: NodeImpactItem[];
+  node_impacts: Record<string, NodeImpactItem>;
+  /**
+   * Journey-level feasibility — authoritative value from the backend engine.
+   * DISRUPTED when any active disruption produces a BROKEN or NEEDS_CHANGE node.
+   * AT_RISK alone keeps the journey NORMAL.
+   */
+  journey_status?: JourneyStatus;
+
+  // ── Legacy / display-layer fields (produced by older API shape) ──────────
+  /** Human-readable disruption event label, e.g. "FLIGHT_DELAY_4H" */
+  event_type?: string;
+  /** ID of the primary affected itinerary item */
+  entity_id?: number;
+  /** Total number of itinerary components evaluated */
+  total_components?: number;
+  /** Number of components with a non-INTACT status */
+  components_affected?: number;
+  /** Percentage of itinerary affected (0-100) */
+  affected_percentage?: number;
+  /** Total number of CRITICAL-priority components */
+  critical_components?: number;
+  /** Number of CRITICAL components that are affected */
+  critical_components_affected?: number;
+  /** Composite impact severity score (0-100) */
+  impact_score?: number;
+  /** Ordered chains of affected node IDs */
+  cascade_paths?: string[][];
+  /**
+   * Human-readable disruption summary shown in the traveler UI.
+   * NOTE: conflicts with ImpactSummaryCounts on `summary` — this field
+   * is only present on the legacy API shape where `summary` is a string.
+   * When both are present prefer the ImpactSummaryCounts form.
+   */
+  summary_text?: string;
+}
+
+export interface ImpactAssessment extends ImpactResult {}
 
 export interface QualityMetrics {
   critical_preservation_score: number;
@@ -226,4 +289,92 @@ export interface VersionComparisonData {
     additional_delay_minutes: number;
     timestamp: string;
   }>;
+}
+
+// ============================================================================
+// JOURNEY BUILDER — Part 1 Types
+// ============================================================================
+
+export type JourneyNodeType =
+  | 'FLIGHT' | 'TRAIN' | 'HOTEL' | 'CAB' | 'ACTIVITY'
+  | 'flight' | 'train' | 'hotel' | 'activity' | 'taxi'
+  | (string & {});
+
+/**
+ * API RESPONSE CONTRACT
+ *
+ * POST /api/users/{user_id}/trips  → { id: number, ... }
+ * POST /api/trips/{trip_id}/items  → { id: number, ... }
+ *
+ * The frontend MUST populate backendId from the returned `id`.
+ * Do NOT generate or guess backend IDs on the frontend.
+ */
+export type TimeStatus = 'FIXED' | 'FLEXIBLE' | 'UNKNOWN';
+export type TravelerPriority = 'MUST_PRESERVE' | 'PREFER_TO_PRESERVE' | 'OPTIMIZE';
+
+export interface JourneyNode {
+  /** Frontend UUID — generated locally, used as React key and for draft mutations */
+  id: string;
+  /**
+   * Set after backend persists the item.
+   * Used for PUT /api/trips/:tripId/items/:backendId and
+   *         DELETE /api/trips/:tripId/items/:backendId
+   */
+  backendId?: number;
+
+  type: JourneyNodeType;
+
+  /** Human-readable label (airline, hotel name, cab provider, etc.) */
+  title: string;
+
+  /** Exact ISO datetime strings (optional when exact time is unknown/flexible) */
+  startTime?: string;
+  endTime?: string;
+
+  /** Date strings YYYY-MM-DD (e.g., "2026-09-24") */
+  startDate?: string;
+  endDate?: string;
+
+  /** Time status indicating constraint rigidity: FIXED (exact time known), FLEXIBLE (time window flexible), UNKNOWN (time not decided) */
+  timeStatus?: TimeStatus;
+  isTimeFlexible?: boolean;
+
+  /** Traveler Priority separate from timing flexibility */
+  priority?: TravelerPriority;
+
+  /** Transport mode override (e.g. "METRO" vs intercity train) */
+  transportMode?: string;
+
+  /** For FLIGHT / TRAIN / CAB */
+  origin?: string;
+  destination?: string;
+
+  /** For HOTEL / CAB pickup location */
+  location?: string;
+
+  /** Optional booking reference / PNR */
+  bookingRef?: string;
+
+  /**
+   * Extensible metadata bag.
+   * Part 3 will introduce JourneyEdge for dependency relationships —
+   * do NOT encode dependency logic here.
+   */
+  metadata?: Record<string, unknown>;
+}
+
+export interface Journey {
+  /** Set once backend trip is created. Populated from API response. */
+  id?: number;
+  title: string;
+  /** Nodes always ordered chronologically by startTime for Part 1 display */
+  nodes: JourneyNode[];
+  /**
+   * 'draft'  — in sessionStorage only, not persisted to backend yet
+   * 'saved'  — successfully persisted to backend (source of truth)
+   * 'local'  — backend was unreachable during creation; stored on device only.
+   *             Must NOT be consumed by the disruption/recovery engine.
+   *             Will retry sync on next load.
+   */
+  syncStatus: 'draft' | 'saved' | 'local';
 }

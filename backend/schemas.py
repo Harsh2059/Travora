@@ -8,8 +8,8 @@ class ItineraryItemBase(BaseModel):
     origin: Optional[str] = None
     destination: Optional[str] = None
     location: Optional[str] = None
-    start_time: datetime
-    end_time: datetime
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     cost: float
     currency: str = "INR"
     priority: str = "MEDIUM"
