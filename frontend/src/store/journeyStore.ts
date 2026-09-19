@@ -331,6 +331,108 @@ export async function fetchActiveJourney(): Promise<Journey | null> {
   return fetchTripById(tripId);
 }
 
+export function getBaselineDemoNodes(): JourneyNode[] {
+  return [
+    {
+      id: 'demo_1',
+      type: 'flight',
+      title: 'Air India AI-2091',
+      origin: 'Mumbai (BOM)',
+      destination: 'Delhi (DEL)',
+      startTime: '2026-09-20T08:30:00',
+      endTime: '2026-09-20T10:30:00',
+      startDate: '2026-09-20',
+      endDate: '2026-09-20',
+      timeStatus: 'FIXED',
+      isTimeFlexible: false,
+      priority: 'MUST_PRESERVE',
+      bookingRef: 'AI-2091',
+    },
+    {
+      id: 'demo_2',
+      type: 'flight',
+      title: 'British Airways BA-5521',
+      origin: 'Delhi (DEL)',
+      destination: 'London (LHR)',
+      startTime: '2026-09-20T13:10:00',
+      endTime: '2026-09-20T19:10:00',
+      startDate: '2026-09-20',
+      endDate: '2026-09-20',
+      timeStatus: 'FIXED',
+      isTimeFlexible: false,
+      priority: 'MUST_PRESERVE',
+      bookingRef: 'BA-5521',
+    },
+    {
+      id: 'demo_3',
+      type: 'cab',
+      title: 'Heathrow Express HEX-007',
+      origin: 'London (LHR)',
+      destination: 'London City',
+      startTime: '2026-09-20T21:55:00',
+      endTime: '2026-09-20T22:40:00',
+      startDate: '2026-09-20',
+      endDate: '2026-09-20',
+      timeStatus: 'FIXED',
+      isTimeFlexible: false,
+      priority: 'PREFER_TO_PRESERVE',
+      bookingRef: 'HEX-007',
+    },
+    {
+      id: 'demo_4',
+      type: 'hotel',
+      title: 'Marriott London',
+      location: 'London',
+      startTime: '2026-09-20T23:30:00',
+      endTime: '2026-09-24T11:30:00',
+      startDate: '2026-09-20',
+      endDate: '2026-09-24',
+      timeStatus: 'FIXED',
+      isTimeFlexible: false,
+      priority: 'MUST_PRESERVE',
+      bookingRef: 'MAR-LON-8821',
+    },
+    {
+      id: 'demo_5',
+      type: 'activity',
+      title: 'Tech Conference 2026',
+      location: 'ExCeL London',
+      startTime: '2026-09-21T09:00:00',
+      endTime: '2026-09-21T17:00:00',
+      startDate: '2026-09-21',
+      endDate: '2026-09-21',
+      timeStatus: 'FIXED',
+      isTimeFlexible: false,
+      priority: 'MUST_PRESERVE',
+      bookingRef: 'TC2026-KN',
+    },
+    {
+      id: 'demo_6',
+      type: 'flight',
+      title: 'Virgin Atlantic VS-9901',
+      origin: 'London (LHR)',
+      destination: 'Mumbai (BOM)',
+      startTime: '2026-09-24T14:30:00',
+      endTime: '2026-09-25T04:00:00',
+      startDate: '2026-09-24',
+      endDate: '2026-09-25',
+      timeStatus: 'FIXED',
+      isTimeFlexible: false,
+      priority: 'MUST_PRESERVE',
+      bookingRef: 'VS-9901',
+    },
+  ];
+}
+
+export function getBaselineDemoJourney(): Journey {
+  return {
+    id: 1,
+    title: 'Mumbai to London Business Trip',
+    nodes: getBaselineDemoNodes(),
+    syncStatus: 'saved',
+  };
+}
+
 // ── useJourney hook ───────────────────────────────────────────────────────────
 
 export interface JourneyState {
@@ -352,28 +454,40 @@ export function useJourney(): JourneyState {
     setLoading(true);
     setError(null);
 
-    // 1. Check if there is an active backend trip
-    const tripId = getActiveTripId();
-    if (tripId) {
-      try {
-        const j = await fetchActiveJourney();
-        setJourney(j);
-        return;
-      } catch {
-        // Backend unreachable — fall through to check local fallback
+    // 1. Try fetching from backend first
+    try {
+      const userTrips = await fetchUserTrips();
+      if (userTrips && userTrips.length > 0) {
+        // ALWAYS select the latest trip created on the backend if active ID is not set or points to old trip
+        const storedActiveId = getActiveTripId();
+        let targetId = storedActiveId;
+
+        if (!targetId || !userTrips.some((t) => t.id === targetId)) {
+          targetId = userTrips[userTrips.length - 1].id;
+          setActiveTripId(targetId);
+        }
+
+        const j = await fetchTripById(targetId);
+        if (j && j.nodes && j.nodes.length > 0) {
+          clearLocalJourney(); // Clear unsynced local cache when backend trip exists
+          setJourney(j);
+          return;
+        }
       }
+    } catch {
+      // Backend unreachable — fall through to local fallback
     }
 
-    // 2. No backend trip or backend down — check local unsynced journey
+    // 2. Check local unsynced journey
     const local = getLocalJourney();
-    if (local) {
+    if (local && local.nodes && local.nodes.length > 0) {
       setJourney(local);
-      setError('not_synced'); // signals HomeScreen to show the unsynced banner
       return;
     }
 
-    // 3. No journey at all
-    setJourney(null);
+    // 3. Fallback to Baseline Demo Journey
+    const baseline = getBaselineDemoJourney();
+    setJourney(baseline);
   }, []);
 
   useEffect(() => {
