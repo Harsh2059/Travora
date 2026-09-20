@@ -12,6 +12,7 @@ from services.events.manager import EventManager
 from services.impact.engine import ImpactEngine
 from services.recovery.generator import RecoveryEngine
 from services.recovery.models import RecoveryPlanModel
+from services.recovery.engine import analyze_part4_recovery
 from services.execution.engine import ExecutionEngine, ExecutionError
 from services.ml.disruption_model import DisruptionRiskModel
 from services.ml.downstream_risk import DownstreamRiskModel
@@ -406,6 +407,8 @@ def reset_trip_disruptions(trip_id: int, db: Session = Depends(get_db)):
     db.query(models.DisruptionEvent).filter(models.DisruptionEvent.trip_id == trip_id).delete()
     db.commit()
 
+    LATEST_PART4_RECOVERY.pop(trip_id, None)
+
     return {"status": "success", "message": "Simulation disruption state reset successfully", "trip_id": trip_id}
 
 @app.delete("/api/trips/{trip_id}/disruptions/{disruption_id}")
@@ -421,6 +424,9 @@ def reset_individual_disruption(trip_id: int, disruption_id: int, db: Session = 
 
     db.delete(event)
     db.commit()
+
+    LATEST_PART4_RECOVERY.pop(trip_id, None)
+
     return {"status": "success", "message": f"Disruption #{disruption_id} reset successfully", "trip_id": trip_id, "disruption_id": disruption_id}
 
 @app.post("/api/disruptions/reset-all")
@@ -428,7 +434,11 @@ def reset_all_simulations(db: Session = Depends(get_db)):
     """Reset all simulation disruption events across all trips."""
     deleted_count = db.query(models.DisruptionEvent).delete()
     db.commit()
+
+    LATEST_PART4_RECOVERY.clear()
+
     return {"status": "success", "message": f"Reset {deleted_count} simulation disruptions across all trips", "deleted_count": deleted_count}
+
 
 # ============================================================================
 # PART 3: IMPACT & RIPPLE ENGINE ENDPOINTS
@@ -497,6 +507,91 @@ def analyze_trip_impact(
 def get_trip_impact(trip_id: int, db: Session = Depends(get_db)):
     """Fetch active impact result for a trip."""
     return analyze_trip_impact(trip_id=trip_id, payload={}, db=db)
+
+# ============================================================================
+# PART 4: RECOVERY ENGINE ENDPOINTS
+# ============================================================================
+LATEST_PART4_RECOVERY: Dict[int, Any] = {}
+
+@app.post("/api/trips/{trip_id}/recovery/analyze")
+def analyze_part4_recovery_endpoint(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db)
+):
+    """
+    Generates Part 4 Recovery Plans consuming the latest Part 3 ImpactResult.
+    Does NOT mutate original itinerary or execute bookings.
+    """
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    # Get active items
+    items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id,
+        models.ItineraryItem.status != "CANCELLED"
+    ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    journey = {
+        "id": trip.id,
+        "title": trip.title,
+        "nodes": [
+            {
+                "id": it.id,
+                "backendId": it.id,
+                "type": it.type,
+                "title": f"{it.provider or it.type} ({it.origin or ''} → {it.destination or it.location or ''})".strip(),
+                "provider": it.provider,
+                "origin": it.origin,
+                "destination": it.destination,
+                "location": it.location,
+                "start_time": it.start_time.isoformat() if it.start_time else None,
+                "end_time": it.end_time.isoformat() if it.end_time else None,
+                "cost": it.cost,
+                "currency": it.currency,
+                "priority": it.priority or "MUST_PRESERVE",
+                "status": it.status
+            }
+            for it in items
+        ]
+    }
+
+    # Fetch Part 3 ImpactResult
+    impact_res_dict = analyze_trip_impact(trip_id=trip_id, payload=payload, db=db)
+
+    # Fetch active disruptions
+    disruptions = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.trip_id == trip_id
+    ).all()
+    disruption_dicts = [
+        {
+            "id": d.id,
+            "disruption_id": d.id,
+            "event_type": d.event_type,
+            "entity_id": d.entity_id,
+            "event_metadata": d.event_metadata or {}
+        }
+        for d in disruptions
+    ]
+
+    recovery_res = analyze_part4_recovery(
+        journey=journey,
+        impact_result=impact_res_dict,
+        disruptions=disruption_dicts
+    )
+
+    res_dump = recovery_res.model_dump()
+    LATEST_PART4_RECOVERY[trip_id] = res_dump
+    return res_dump
+
+@app.get("/api/trips/{trip_id}/recovery")
+def get_part4_recovery(trip_id: int, db: Session = Depends(get_db)):
+    """Fetch latest Part 4 Recovery Result for a trip."""
+    if trip_id in LATEST_PART4_RECOVERY:
+        return LATEST_PART4_RECOVERY[trip_id]
+    return analyze_part4_recovery_endpoint(trip_id=trip_id, payload={}, db=db)
+
 
 # ============================================================================
 # PHASE 2: DISRUPTION SIMULATOR PRESETS

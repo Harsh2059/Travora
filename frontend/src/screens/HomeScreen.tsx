@@ -15,9 +15,10 @@ import {
   Activity,
   AlertCircle,
 } from 'lucide-react';
-import { useJourney, fetchTripDisruptions, fetchTripImpact } from '../store/journeyStore';
+import { useJourney, fetchTripDisruptions, fetchTripImpact, updateItemOnBackend, saveLocalJourney, getSelectedRecoveryPlan, clearSelectedRecoveryPlan } from '../store/journeyStore';
 import { Part1JourneyView } from '../components/Part1JourneyView';
-import type { ImpactResult, ImpactNodeStatus } from '../types';
+import { RecoveryPlanView } from '../components/recovery/RecoveryPlanView';
+import type { Journey, ImpactResult, ImpactNodeStatus, TravelerPriority, Part4RecoveryPlan } from '../types';
 import {
   getJourneyStatus,
   getJourneyStatusDisplay,
@@ -99,18 +100,28 @@ export default function HomeScreen() {
   const [impactResult, setImpactResult] = useState<ImpactResult | null>(null);
   const [showToast, setShowToast] = useState<boolean>(false);
   const [showImpactModal, setShowImpactModal] = useState<boolean>(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState<boolean>(false);
+
+
+  const [selectedRecoveryPlan, setSelectedRecoveryPlanState] = useState<Part4RecoveryPlan | null>(null);
 
   // Real-time polling & focus/storage listeners for disruption events & impact engine
   useEffect(() => {
-    if (!journey?.id) {
+    const tripId = journey?.id;
+    if (!tripId) {
       setActiveDisruption(null);
       setImpactResult(null);
       setShowToast(false);
+      setSelectedRecoveryPlanState(null);
       return;
     }
 
     const checkDisruptions = () => {
-      fetchTripDisruptions(journey.id)
+      // Sync selected recovery plan for tripId
+      const storedPlan = getSelectedRecoveryPlan(tripId);
+      setSelectedRecoveryPlanState(storedPlan);
+
+      fetchTripDisruptions(tripId)
         .then((history) => {
           if (history && history.length > 0) {
             const latest = history[0];
@@ -119,7 +130,7 @@ export default function HomeScreen() {
             setActiveDisruption((prev: any) => {
               const prevId = prev ? String(prev.id || prev.timestamp || prev.detected_at) : null;
               if (prevId !== activeId) {
-                const lastSeen = localStorage.getItem(`travora_last_seen_disruption_${journey.id}`);
+                const lastSeen = localStorage.getItem(`travora_last_seen_disruption_${tripId}`);
                 if (lastSeen !== activeId) {
                   setShowToast(true);
                 }
@@ -128,14 +139,17 @@ export default function HomeScreen() {
             });
 
             // Fetch impact analysis from Part 3 Impact Engine
-            fetchTripImpact(journey.id)
+            fetchTripImpact(tripId)
               .then((impact) => setImpactResult(impact))
               .catch((err) => console.error('Failed to fetch impact analysis:', err));
 
           } else {
+            // Disruption reset
             setActiveDisruption(null);
             setImpactResult(null);
             setShowToast(false);
+            clearSelectedRecoveryPlan(tripId);
+            setSelectedRecoveryPlanState(null);
           }
         })
         .catch((err) => console.error('Failed to poll active disruptions on HomeScreen:', err));
@@ -164,6 +178,33 @@ export default function HomeScreen() {
       const activeId = String(activeDisruption.id || activeDisruption.timestamp || activeDisruption.detected_at);
       localStorage.setItem(`travora_last_seen_disruption_${journey.id}`, activeId);
     }
+  };
+
+  const handleUpdatePriority = async (nodeId: string, newPriority: TravelerPriority) => {
+    if (!journey) return;
+
+    // Update in memory & storage
+    const updatedNodes = journey.nodes.map((n) =>
+      n.id === nodeId ? { ...n, priority: newPriority } : n
+    );
+    const updatedJourney: Journey = { ...journey, nodes: updatedNodes };
+    saveLocalJourney(updatedJourney);
+
+    // Persist to backend if persisted node exists
+    const targetNode = journey.nodes.find((n) => n.id === nodeId);
+    if (journey.id && targetNode && targetNode.backendId) {
+      try {
+        await updateItemOnBackend(journey.id, targetNode.backendId, {
+          ...targetNode,
+          priority: newPriority,
+        });
+      } catch (err) {
+        console.error('Failed to update priority on backend:', err);
+      }
+    }
+
+    // Refresh journey
+    await refresh();
   };
 
   if (loading) {
@@ -334,6 +375,50 @@ export default function HomeScreen() {
               const journeyStatus = getJourneyStatus(impactResult);
               const jDisplay = getJourneyStatusDisplay(journeyStatus);
               const buckets = getImpactSummaryBuckets(impactResult);
+
+              if (selectedRecoveryPlan) {
+                return (
+                  <div className="bg-gradient-to-r from-amber-500/10 via-amber-50/50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-300 dark:border-amber-800/80 rounded-3xl p-5 shadow-lg shadow-amber-500/5 transition-all">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                        <div className="h-10 w-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20 mt-0.5">
+                          <ShieldCheck className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                              🟠 RECOVERY PLAN SELECTED
+                            </span>
+                            <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
+                              {selectedRecoveryPlan.title}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-700 dark:text-slate-200 mt-1 leading-relaxed font-medium">
+                            A recovery plan is ready to restore your journey. {selectedRecoveryPlan.changed_node_ids.length} booking{selectedRecoveryPlan.changed_node_ids.length === 1 ? '' : 's'} will be replaced · {selectedRecoveryPlan.preserved_node_ids.length} remain unchanged.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 self-start shrink-0">
+                        <button
+                          onClick={() => setShowRecoveryModal(true)}
+                          className="px-4 py-2 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          <span>Review Recovery</span>
+                        </button>
+                        <button
+                          onClick={() => setShowImpactModal(true)}
+                          className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 hover:bg-amber-100 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5"
+                        >
+                          <Activity className="h-4 w-4" />
+                          <span>View Impact</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div className="bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-3xl p-5 shadow-lg shadow-rose-500/5 transition-all">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -384,23 +469,89 @@ export default function HomeScreen() {
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => setShowImpactModal(true)}
-                      className="px-4 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all shrink-0 shadow-md shadow-rose-600/20 flex items-center gap-1.5 self-start"
-                    >
-                      <Activity className="h-4 w-4" />
-                      <span>View Impact</span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 self-start shrink-0">
+                      <button
+                        onClick={() => setShowImpactModal(true)}
+                        className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5"
+                      >
+                        <Activity className="h-4 w-4" />
+                        <span>View Impact</span>
+                      </button>
+                      {journeyStatus === 'DISRUPTED' && (
+                        <button
+                          onClick={() => setShowRecoveryModal(true)}
+                          className="px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all shadow-md shadow-rose-600/20 flex items-center gap-1.5"
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          <span>Find Recovery Options</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })()}
+
+            {/* RECOVERY PLAN SUMMARY CARD (Requirement 9) */}
+            {selectedRecoveryPlan && (
+              <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-3xl p-5 border border-amber-300 dark:border-amber-800 shadow-md space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-amber-500" />
+                    <span>🟠 Selected Proposed Recovery Plan</span>
+                  </span>
+                  <button
+                    onClick={() => setShowRecoveryModal(true)}
+                    className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1"
+                  >
+                    <span>Change Plan</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
+                  <div>
+                    <h4 className="font-bold text-base text-slate-900 dark:text-white">
+                      {selectedRecoveryPlan.title}
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300 mt-1 font-medium">
+                      <span>{selectedRecoveryPlan.changed_node_ids.length} replacements proposed</span>
+                      <span>·</span>
+                      <span>{selectedRecoveryPlan.preserved_node_ids.length} bookings kept unchanged</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-5 text-xs font-semibold">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Est. Addl Cost</span>
+                      <span className="text-sky-600 dark:text-sky-400 font-extrabold text-sm">
+                        ₹{selectedRecoveryPlan.estimated_additional_cost.toLocaleString()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Est. Refund</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
+                        ₹{selectedRecoveryPlan.estimated_refund.toLocaleString()}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setShowRecoveryModal(true)}
+                      className="px-4 py-2.5 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs transition-all shadow-md shadow-sky-500/20 flex items-center gap-1.5 shrink-0"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>Review Recovery Plan</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* HERO HORIZONTAL JOURNEY ROUTE RAIL (With Impact Status Badges) */}
             <Part1JourneyView
               journey={journey}
               impactNodeMap={impactNodeMap}
               impactResult={impactResult}
+              selectedRecoveryPlan={selectedRecoveryPlan}
+              onUpdatePriority={handleUpdatePriority}
               onEditDraft={() => navigate('/build', { state: { mode: 'edit' } })}
               onResetJourney={() => {
                 if (window.confirm('Are you sure you want to clear your active journey?')) {
@@ -547,11 +698,23 @@ export default function HomeScreen() {
                 </div>
               </div>
 
-              {/* Close CTA */}
-              <div className="pt-2">
+              {/* Action Buttons */}
+              <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
+                {journeyStatus === 'DISRUPTED' && (
+                  <button
+                    onClick={() => {
+                      setShowImpactModal(false);
+                      setShowRecoveryModal(true);
+                    }}
+                    className="w-full sm:w-auto flex-1 py-3 px-4 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs transition-all shadow-md shadow-sky-500/20 flex items-center justify-center gap-2"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Find Recovery Options</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setShowImpactModal(false)}
-                  className="w-full py-3 rounded-2xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs transition-colors"
+                  className="w-full sm:w-auto py-3 px-6 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
                   Close Impact Analysis
                 </button>
@@ -560,6 +723,14 @@ export default function HomeScreen() {
           </div>
         );
       })()}
+
+      {/* PART 4 RECOVERY ENGINE MODAL */}
+      {showRecoveryModal && journey?.id && (
+        <RecoveryPlanView
+          tripId={journey.id}
+          onClose={() => setShowRecoveryModal(false)}
+        />
+      )}
     </div>
   );
 }

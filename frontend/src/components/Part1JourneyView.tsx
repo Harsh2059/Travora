@@ -16,7 +16,7 @@ import {
   AlertCircle,
   CheckCircle2,
 } from 'lucide-react';
-import type { Journey, JourneyNode, TravelerPriority, ImpactNodeStatus, ImpactResult } from '../types';
+import type { Journey, JourneyNode, TravelerPriority, ImpactNodeStatus, ImpactResult, Part4RecoveryPlan } from '../types';
 import { buildJourneyRoute, routeStats, type JourneyRoute } from '../utils/routeBuilder';
 import { getNodeImpactDisplay, getJourneyStatus, getImpactSummaryBuckets } from '../utils/impactUtils';
 import { JourneyRouteMap } from './JourneyRouteMap';
@@ -26,12 +26,15 @@ interface Part1JourneyViewProps {
   journey: Journey;
   onEditNode?: (node: JourneyNode) => void;
   onDeleteNode?: (nodeId: string) => void;
+  onUpdatePriority?: (nodeId: string, priority: TravelerPriority) => void;
   onAddNextStop?: () => void;
   onResetJourney?: () => void;
   onEditDraft?: () => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
   /** Full ImpactResult — drives journey-level status badge and summary strip */
   impactResult?: ImpactResult | null;
+  /** Selected Part 4 Recovery Plan proposal */
+  selectedRecoveryPlan?: Part4RecoveryPlan | null;
 }
 
 // Icon map
@@ -133,14 +136,35 @@ const DetailCard: React.FC<{
   node: JourneyNode;
   onEdit?: (n: JourneyNode) => void;
   onDelete?: (id: string) => void;
+  onUpdatePriority?: (nodeId: string, priority: TravelerPriority) => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
-}> = ({ node, onEdit, onDelete, impactNodeMap }) => {
+  selectedRecoveryPlan?: Part4RecoveryPlan | null;
+}> = ({ node, onEdit, onDelete, onUpdatePriority, impactNodeMap, selectedRecoveryPlan }) => {
   const Icon  = TYPE_ICONS[node.type] || MapPin;
   const label = idLabel(node.type, node.transportMode);
   const tb    = timeBadge(node);
   const impactDisp = getNodeImpactDisplay(node.id, node.backendId, impactNodeMap);
 
-  const cardBorderClass = impactDisp.status === 'BROKEN'
+  const recoveryChange = selectedRecoveryPlan?.changes?.find(
+    (c) => c.node_id === String(node.id) || (node.backendId && c.node_id === String(node.backendId))
+  );
+
+  const isReplaced = recoveryChange && (recoveryChange.action === 'REPLACE' || recoveryChange.action === 'MODIFY');
+  const isKept = (recoveryChange && recoveryChange.action === 'KEEP') || (selectedRecoveryPlan && impactDisp.status === 'INTACT');
+
+  let badgeLabel = impactDisp.badgeLabel;
+  let badgeStyle = impactDisp.badgeStyle;
+
+  if (isKept) {
+    badgeLabel = '🟢 KEPT AS BOOKED';
+    badgeStyle = 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700 font-extrabold';
+  } else if (isReplaced) {
+    badgeLabel = '🔴 ORIGINAL • BROKEN';
+  }
+
+  const cardBorderClass = isReplaced
+    ? 'border-amber-400 dark:border-amber-700 shadow-md shadow-amber-100 dark:shadow-none'
+    : impactDisp.status === 'BROKEN'
     ? 'border-rose-300 dark:border-rose-800/80 shadow-sm shadow-rose-100 dark:shadow-none'
     : impactDisp.status === 'NEEDS_CHANGE'
     ? 'border-amber-300 dark:border-amber-800/80 shadow-sm shadow-amber-100 dark:shadow-none'
@@ -157,9 +181,9 @@ const DetailCard: React.FC<{
             <Icon className="h-3 w-3" />
             {typeLabel(node.type, node.transportMode)}
           </span>
-          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${impactDisp.badgeStyle}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${impactDisp.dotColor} inline-block`} />
-            {impactDisp.badgeLabel}
+          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${badgeStyle}`}>
+            {!isKept && <span className={`w-1.5 h-1.5 rounded-full ${impactDisp.dotColor} inline-block`} />}
+            {badgeLabel}
           </span>
         </div>
 
@@ -198,8 +222,27 @@ const DetailCard: React.FC<{
           </div>
         )}
 
-        {/* Row 6: Impact Reason Alert Callout */}
-        {impactDisp.reason && impactDisp.status !== 'INTACT' && (
+        {/* Row 6: Proposed Replacement Overlay */}
+        {isReplaced && recoveryChange && (
+          <div className="mt-2.5 p-3 rounded-2xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 space-y-1.5 shadow-xs">
+            <div className="text-[10px] font-extrabold uppercase text-amber-800 dark:text-amber-200 tracking-wider flex items-center justify-between">
+              <span>↓ Proposed Replacement</span>
+              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-xs">
+                🟠 PROPOSED
+              </span>
+            </div>
+            <div className="font-bold text-xs text-amber-950 dark:text-white">
+              {recoveryChange.new_title || 'Replacement Option'}
+            </div>
+            <div className="text-[11px] font-medium text-amber-800 dark:text-amber-300 flex items-center justify-between">
+              <span>Est. Addl Cost:</span>
+              <span className="font-extrabold">₹{recoveryChange.estimated_cost.toLocaleString()}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Row 7: Impact Reason Alert Callout */}
+        {!isReplaced && impactDisp.reason && impactDisp.status !== 'INTACT' && (
           <div className={`mt-2 p-2.5 rounded-xl border text-xs font-medium flex items-start gap-2 ${
             impactDisp.status === 'BROKEN'
               ? 'bg-rose-50/90 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
@@ -219,7 +262,14 @@ const DetailCard: React.FC<{
           <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider shrink-0">Priority:</span>
           <select
             value={node.priority || 'MUST_PRESERVE'}
-            onChange={e => { if (onEdit) onEdit({ ...node, priority: e.target.value as TravelerPriority }); }}
+            onChange={e => {
+              const p = e.target.value as TravelerPriority;
+              if (onUpdatePriority) {
+                onUpdatePriority(node.id, p);
+              } else if (onEdit) {
+                onEdit({ ...node, priority: p });
+              }
+            }}
             className="text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer min-w-0"
           >
             <option value="MUST_PRESERVE">Must preserve</option>
@@ -417,11 +467,13 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   journey,
   onEditNode,
   onDeleteNode,
+  onUpdatePriority,
   onAddNextStop,
   onResetJourney,
   onEditDraft,
   impactNodeMap,
   impactResult,
+  selectedRecoveryPlan,
 }) => {
   const isLocal = journey.syncStatus === 'local';
 
@@ -490,6 +542,11 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
                     : 'bg-emerald-100 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
                 }`}>
                   {isDisrupted ? '🔴 DISRUPTED' : buckets.at_risk > 0 ? '🟡 AT RISK' : '🟢 ON TRACK'}
+                </span>
+              )}
+              {selectedRecoveryPlan && isDisrupted && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border bg-emerald-100 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200">
+                  🟢 RECOVERY READY
                 </span>
               )}
             </div>
@@ -575,6 +632,7 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
             onItemClick={setSelected}
             onAddStop={onAddNextStop}
             impactNodeMap={impactNodeMap}
+            selectedRecoveryPlan={selectedRecoveryPlan}
           />
         )}
       </div>
@@ -618,7 +676,9 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
                 node={node}
                 onEdit={onEditNode}
                 onDelete={onDeleteNode}
+                onUpdatePriority={onUpdatePriority}
                 impactNodeMap={impactNodeMap}
+                selectedRecoveryPlan={selectedRecoveryPlan}
               />
             ))}
           </div>

@@ -100,8 +100,9 @@ export interface NodeImpactItem {
   title: string;
   priority: string;
   flexibility: string;
-  original_status: string;
+  original_status?: string;
   status: ImpactNodeStatus;
+  impact_status?: ImpactNodeStatus | string;
   reason: string;
   impact_sources?: ImpactSource[];
   details?: Record<string, any>;
@@ -114,15 +115,17 @@ export interface ImpactSummaryCounts {
   broken: number;
 }
 
+export type NodeImpact = NodeImpactItem;
+
 export interface ImpactResult {
   trip_id: number;
   disruption_ids?: any[];
   root_node_ids?: string[];
   disruption_id?: any;
   root_node_id?: string;
-  summary: ImpactSummaryCounts;
-  nodes: NodeImpactItem[];
-  node_impacts: Record<string, NodeImpactItem>;
+  summary?: ImpactSummaryCounts | string | any;
+  nodes?: NodeImpactItem[];
+  node_impacts?: Record<string, NodeImpactItem>;
   /**
    * Journey-level feasibility — authoritative value from the backend engine.
    * DISRUPTED when any active disruption produces a BROKEN or NEEDS_CHANGE node.
@@ -292,8 +295,56 @@ export interface VersionComparisonData {
 }
 
 // ============================================================================
+// PART 4: RECOVERY ENGINE TYPES
+// ============================================================================
+
+export type Part4ActionType = 'KEEP' | 'REPLACE' | 'MODIFY' | 'CANCEL';
+export type Part4RecoveryFeasibility = 'FEASIBLE' | 'INFEASIBLE' | 'UNKNOWN';
+export type Part4RecoveryCategory = 'PRIORITY_PRESERVING' | 'ALTERNATIVE';
+
+export interface Part4RecoveryChange {
+  node_id: string;
+  action: Part4ActionType;
+  original_title: string;
+  original_details?: Record<string, any>;
+  new_title?: string;
+  new_details?: Record<string, any>;
+  estimated_cost: number;
+  estimated_refund: number;
+  explanation: string;
+}
+
+export interface Part4RecoveryPlan {
+  id: string;
+  trip_id: number;
+  category: Part4RecoveryCategory;
+  title: string;
+  feasibility: Part4RecoveryFeasibility;
+  changes: Part4RecoveryChange[];
+  preserved_node_ids: string[];
+  changed_node_ids: string[];
+  dropped_node_ids: string[];
+  preserved_priorities: string[];
+  sacrificed_priorities: string[];
+  estimated_additional_cost: number;
+  estimated_refund: number;
+  explanation: string;
+  is_recommended?: boolean;
+}
+
+export interface Part4RecoveryResult {
+  trip_id: number;
+  impact_status: string;
+  plans: Part4RecoveryPlan[];
+  priority_preserving_count: number;
+  alternative_count: number;
+  message: string;
+}
+
+// ============================================================================
 // JOURNEY BUILDER — Part 1 Types
 // ============================================================================
+
 
 export type JourneyNodeType =
   | 'FLIGHT' | 'TRAIN' | 'HOTEL' | 'CAB' | 'ACTIVITY'

@@ -87,6 +87,44 @@ export function clearLocalJourney(): void {
   localStorage.removeItem(LOCAL_JOURNEY_KEY);
 }
 
+// ── Selected Recovery Plan helpers (localStorage) ─────────────────────────────
+
+const RECOVERY_PLAN_KEY_PREFIX = 'travora_selected_recovery_';
+
+export function getSelectedRecoveryPlan(tripId: number): import('../types').Part4RecoveryPlan | null {
+  try {
+    const raw = localStorage.getItem(`${RECOVERY_PLAN_KEY_PREFIX}${tripId}`);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data?.plan || data || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSelectedRecoveryPlan(tripId: number, plan: import('../types').Part4RecoveryPlan): void {
+  try {
+    const payload = {
+      selectedRecoveryPlanId: plan.id,
+      tripId,
+      selectedAt: new Date().toISOString(),
+      plan,
+    };
+    localStorage.setItem(`${RECOVERY_PLAN_KEY_PREFIX}${tripId}`, JSON.stringify(payload));
+  } catch (err) {
+    console.error('Failed to save selected recovery plan:', err);
+  }
+}
+
+export function clearSelectedRecoveryPlan(tripId: number): void {
+  try {
+    localStorage.removeItem(`${RECOVERY_PLAN_KEY_PREFIX}${tripId}`);
+  } catch {
+    // Ignore error
+  }
+}
+
+
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 /** Convert a JourneyNode to the payload expected by POST /api/trips/{id}/items */

@@ -1,6 +1,71 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
+from enum import Enum
 
+
+class ActionType(str, Enum):
+    KEEP = "KEEP"
+    REPLACE = "REPLACE"
+    MODIFY = "MODIFY"
+    CANCEL = "CANCEL"
+
+
+class RecoveryFeasibility(str, Enum):
+    FEASIBLE = "FEASIBLE"
+    INFEASIBLE = "INFEASIBLE"
+    UNKNOWN = "UNKNOWN"
+
+
+class RecoveryPlanCategory(str, Enum):
+    PRIORITY_PRESERVING = "PRIORITY_PRESERVING"
+    ALTERNATIVE = "ALTERNATIVE"
+
+
+class RecoveryChange(BaseModel):
+    node_id: str
+    action: ActionType = ActionType.KEEP
+    original_title: str = ""
+    original_details: Dict[str, Any] = Field(default_factory=dict)
+    new_title: Optional[str] = None
+    new_details: Optional[Dict[str, Any]] = None
+    estimated_cost: float = 0.0
+    estimated_refund: float = 0.0
+    explanation: str = ""
+
+
+class Part4RecoveryPlan(BaseModel):
+    id: str
+    trip_id: int
+    category: RecoveryPlanCategory = RecoveryPlanCategory.PRIORITY_PRESERVING
+    title: str
+    feasibility: RecoveryFeasibility = RecoveryFeasibility.FEASIBLE
+    
+    changes: List[RecoveryChange] = Field(default_factory=list)
+    
+    preserved_node_ids: List[str] = Field(default_factory=list)
+    changed_node_ids: List[str] = Field(default_factory=list)
+    dropped_node_ids: List[str] = Field(default_factory=list)
+    
+    preserved_priorities: List[str] = Field(default_factory=list)
+    sacrificed_priorities: List[str] = Field(default_factory=list)
+    
+    estimated_additional_cost: float = 0.0
+    estimated_refund: float = 0.0
+    
+    explanation: str = ""
+    is_recommended: bool = False
+
+
+class Part4RecoveryResult(BaseModel):
+    trip_id: int
+    impact_status: str = "NORMAL"  # "NORMAL" or "DISRUPTED"
+    plans: List[Part4RecoveryPlan] = Field(default_factory=list)
+    priority_preserving_count: int = 0
+    alternative_count: int = 0
+    message: str = ""
+
+
+# Legacy Phase 2 model kept for backwards compatibility with execution engine
 class RecoveryPlanModel(BaseModel):
     plan_id: str
     title: str

@@ -31,6 +31,7 @@ export interface JourneyRouteMapProps {
   onItemClick: (node: JourneyNode) => void;
   onAddStop?: () => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
+  selectedRecoveryPlan?: import('../types').Part4RecoveryPlan | null;
 }
 
 // ─── Type-to-icon mapping — data-driven, no hardcoding ───────────────────────
@@ -183,16 +184,25 @@ const AttachedItemCard: React.FC<{
   node: JourneyNode;
   onClick: (n: JourneyNode) => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
-}> = ({ node, onClick, impactNodeMap }) => {
+  selectedRecoveryPlan?: import('../types').Part4RecoveryPlan | null;
+}> = ({ node, onClick, impactNodeMap, selectedRecoveryPlan }) => {
   const Icon   = iconFor(node.type, node.transportMode);
   const colour = colourFor(node.type);
   const tb     = timeBadge(node);
   const impact = getImpactInfo(node, impactNodeMap);
 
+  const recoveryChange = selectedRecoveryPlan?.changes?.find(
+    (c) => c.node_id === String(node.id) || (node.backendId && c.node_id === String(node.backendId))
+  );
+
   return (
     <button
       onClick={() => onClick(node)}
-      className={`text-left border rounded-xl px-2.5 py-1.5 transition-all group w-full ${colour.card}`}
+      className={`text-left border rounded-xl px-2.5 py-1.5 transition-all group w-full ${
+        recoveryChange && (recoveryChange.action === 'REPLACE' || recoveryChange.action === 'MODIFY')
+          ? 'bg-amber-50/90 dark:bg-amber-950/50 border-amber-300 dark:border-amber-800'
+          : colour.card
+      }`}
     >
       <div className="flex items-center justify-between gap-1 mb-0.5">
         <div className="flex items-center gap-1.5 truncate">
@@ -206,6 +216,14 @@ const AttachedItemCard: React.FC<{
       <span className={`text-[10px] leading-tight line-clamp-1 ${colour.text}`}>
         {tb.text}
       </span>
+      {recoveryChange && (recoveryChange.action === 'REPLACE' || recoveryChange.action === 'MODIFY') && (
+        <div className="mt-1 pt-1 border-t border-amber-300 dark:border-amber-800 text-[10px] font-bold text-amber-900 dark:text-amber-100 space-y-0.5">
+          <div className="flex items-center justify-between gap-1">
+            <span className="truncate">↓ {recoveryChange.new_title}</span>
+            <span className="text-[8px] font-extrabold px-1 rounded bg-amber-500 text-white shrink-0">🟠 PROPOSED</span>
+          </div>
+        </div>
+      )}
     </button>
   );
 };
@@ -216,11 +234,16 @@ const SegmentPill: React.FC<{
   buffer: BufferResult | null;
   onClick: (n: JourneyNode) => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
-}> = ({ segment, buffer, onClick, impactNodeMap }) => {
+  selectedRecoveryPlan?: import('../types').Part4RecoveryPlan | null;
+}> = ({ segment, buffer, onClick, impactNodeMap, selectedRecoveryPlan }) => {
   const { item } = segment;
   const Icon = iconFor(item.type, item.transportMode);
   const tb   = timeBadge(item);
   const impact = getImpactInfo(item, impactNodeMap);
+
+  const recoveryChange = selectedRecoveryPlan?.changes?.find(
+    (c) => c.node_id === String(item.id) || (item.backendId && c.node_id === String(item.backendId))
+  );
 
   return (
     <div className="relative z-10 mx-auto flex flex-col items-center gap-0.5">
@@ -232,7 +255,11 @@ const SegmentPill: React.FC<{
       )}
       <button
         onClick={() => onClick(item)}
-        className="bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 hover:border-sky-400 dark:hover:border-sky-600 rounded-2xl shadow-sm hover:shadow-md transition-all px-2.5 py-1.5 flex items-center gap-1.5 group cursor-pointer whitespace-nowrap"
+        className={`border hover:border-sky-400 dark:hover:border-sky-600 rounded-2xl shadow-xs hover:shadow-md transition-all px-2.5 py-1.5 flex items-center gap-1.5 group cursor-pointer whitespace-nowrap ${
+          recoveryChange && (recoveryChange.action === 'REPLACE' || recoveryChange.action === 'MODIFY')
+            ? 'bg-amber-50/95 dark:bg-amber-950/95 border-amber-300 dark:border-amber-700'
+            : 'bg-white/95 dark:bg-slate-900/95 border-slate-200 dark:border-slate-700'
+        }`}
       >
         <Icon className="h-3.5 w-3.5 text-sky-500 shrink-0 group-hover:scale-110 transition-transform" />
         <div className="flex flex-col text-left">
@@ -244,6 +271,12 @@ const SegmentPill: React.FC<{
           </span>
         </div>
       </button>
+      {recoveryChange && (recoveryChange.action === 'REPLACE' || recoveryChange.action === 'MODIFY') && (
+        <div className="mt-1 px-2.5 py-1 rounded-xl bg-amber-100 dark:bg-amber-950/90 border border-amber-300 dark:border-amber-800 text-[10px] font-bold text-amber-950 dark:text-amber-100 shadow-xs text-center whitespace-nowrap">
+          <div>↓ {recoveryChange.new_title}</div>
+          <span className="text-[8px] font-extrabold px-1.5 rounded bg-amber-500 text-white inline-block mt-0.5">🟠 PROPOSED</span>
+        </div>
+      )}
     </div>
   );
 };
