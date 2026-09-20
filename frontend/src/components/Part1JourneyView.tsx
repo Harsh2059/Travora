@@ -15,23 +15,31 @@ import {
   TrainFront,
   AlertCircle,
   CheckCircle2,
+  History,
 } from 'lucide-react';
-import type { Journey, JourneyNode, TravelerPriority, ImpactNodeStatus, ImpactResult } from '../types';
-import { buildJourneyRoute, routeStats, type JourneyRoute } from '../utils/routeBuilder';
+import type { Journey, JourneyNode, TravelerPriority, ImpactNodeStatus, ImpactResult, Part4RecoveryPlan } from '../types';
+import { buildJourneyRoute, routeStats, LocationResolver, type JourneyRoute } from '../utils/routeBuilder';
 import { getNodeImpactDisplay, getJourneyStatus, getImpactSummaryBuckets } from '../utils/impactUtils';
 import { JourneyRouteMap } from './JourneyRouteMap';
 
 // Props
 interface Part1JourneyViewProps {
   journey: Journey;
+  viewMode?: 'RECOVERED' | 'ORIGINAL';
   onEditNode?: (node: JourneyNode) => void;
   onDeleteNode?: (nodeId: string) => void;
+  onUpdatePriority?: (nodeId: string, priority: TravelerPriority) => void;
   onAddNextStop?: () => void;
   onResetJourney?: () => void;
   onEditDraft?: () => void;
+  hasRestoreAvailable?: boolean;
+  onRestoreOriginalJourney?: () => void;
+  onToggleBackToRecovered?: () => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
   /** Full ImpactResult — drives journey-level status badge and summary strip */
   impactResult?: ImpactResult | null;
+  /** Selected Part 4 Recovery Plan proposal */
+  selectedRecoveryPlan?: Part4RecoveryPlan | null;
 }
 
 // Icon map
@@ -133,14 +141,35 @@ const DetailCard: React.FC<{
   node: JourneyNode;
   onEdit?: (n: JourneyNode) => void;
   onDelete?: (id: string) => void;
+  onUpdatePriority?: (nodeId: string, priority: TravelerPriority) => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
-}> = ({ node, onEdit, onDelete, impactNodeMap }) => {
+  selectedRecoveryPlan?: Part4RecoveryPlan | null;
+}> = ({ node, onEdit, onDelete, onUpdatePriority, impactNodeMap, selectedRecoveryPlan }) => {
   const Icon  = TYPE_ICONS[node.type] || MapPin;
   const label = idLabel(node.type, node.transportMode);
   const tb    = timeBadge(node);
   const impactDisp = getNodeImpactDisplay(node.id, node.backendId, impactNodeMap);
 
-  const cardBorderClass = impactDisp.status === 'BROKEN'
+  const recoveryChange = selectedRecoveryPlan?.changes?.find(
+    (c) => c.node_id === String(node.id) || (node.backendId && c.node_id === String(node.backendId))
+  );
+
+  const isReplaced = recoveryChange && (recoveryChange.action === 'REPLACE' || recoveryChange.action === 'MODIFY');
+  const isKept = (recoveryChange && recoveryChange.action === 'KEEP') || (selectedRecoveryPlan && impactDisp.status === 'INTACT');
+
+  let badgeLabel = impactDisp.badgeLabel;
+  let badgeStyle = impactDisp.badgeStyle;
+
+  if (isKept) {
+    badgeLabel = '🟢 KEPT AS BOOKED';
+    badgeStyle = 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700 font-extrabold';
+  } else if (isReplaced) {
+    badgeLabel = '🔴 ORIGINAL • BROKEN';
+  }
+
+  const cardBorderClass = isReplaced
+    ? 'border-amber-400 dark:border-amber-700 shadow-md shadow-amber-100 dark:shadow-none'
+    : impactDisp.status === 'BROKEN'
     ? 'border-rose-300 dark:border-rose-800/80 shadow-sm shadow-rose-100 dark:shadow-none'
     : impactDisp.status === 'NEEDS_CHANGE'
     ? 'border-amber-300 dark:border-amber-800/80 shadow-sm shadow-amber-100 dark:shadow-none'
@@ -157,9 +186,9 @@ const DetailCard: React.FC<{
             <Icon className="h-3 w-3" />
             {typeLabel(node.type, node.transportMode)}
           </span>
-          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${impactDisp.badgeStyle}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${impactDisp.dotColor} inline-block`} />
-            {impactDisp.badgeLabel}
+          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${badgeStyle}`}>
+            {!isKept && <span className={`w-1.5 h-1.5 rounded-full ${impactDisp.dotColor} inline-block`} />}
+            {badgeLabel}
           </span>
         </div>
 
@@ -198,8 +227,31 @@ const DetailCard: React.FC<{
           </div>
         )}
 
-        {/* Row 6: Impact Reason Alert Callout */}
-        {impactDisp.reason && impactDisp.status !== 'INTACT' && (
+        {/* Row 6: Proposed Replacement Overlay */}
+        {isReplaced && recoveryChange && (
+          <div className="mt-2.5 p-3 rounded-2xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 space-y-1.5 shadow-xs">
+            <div className="text-[10px] font-extrabold uppercase text-amber-800 dark:text-amber-200 tracking-wider flex items-center justify-between">
+              <span>↓ Proposed Replacement</span>
+              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-xs">
+                🟠 PROPOSED
+              </span>
+            </div>
+            <div className="font-bold text-xs text-amber-950 dark:text-white">
+              {recoveryChange.new_title || 'Replacement Option'}
+            </div>
+            <div className="text-[11px] font-medium text-amber-800 dark:text-amber-300 flex items-center justify-between">
+              <span>Est. Addl Cost:</span>
+              <span className="font-extrabold">
+                {recoveryChange.estimated_cost !== null && recoveryChange.estimated_cost !== undefined
+                  ? `₹${recoveryChange.estimated_cost.toLocaleString()}`
+                  : 'PARTIAL'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Row 7: Impact Reason Alert Callout */}
+        {!isReplaced && impactDisp.reason && impactDisp.status !== 'INTACT' && (
           <div className={`mt-2 p-2.5 rounded-xl border text-xs font-medium flex items-start gap-2 ${
             impactDisp.status === 'BROKEN'
               ? 'bg-rose-50/90 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
@@ -219,7 +271,14 @@ const DetailCard: React.FC<{
           <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider shrink-0">Priority:</span>
           <select
             value={node.priority || 'MUST_PRESERVE'}
-            onChange={e => { if (onEdit) onEdit({ ...node, priority: e.target.value as TravelerPriority }); }}
+            onChange={e => {
+              const p = e.target.value as TravelerPriority;
+              if (onUpdatePriority) {
+                onUpdatePriority(node.id, p);
+              } else if (onEdit) {
+                onEdit({ ...node, priority: p });
+              }
+            }}
             className="text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer min-w-0"
           >
             <option value="MUST_PRESERVE">Must preserve</option>
@@ -340,6 +399,7 @@ const Inspector: React.FC<{
 };
 
 function sortNodesByRouteFlow(nodes: JourneyNode[], route: JourneyRoute): JourneyNode[] {
+  const resolver = new LocationResolver(nodes);
   const locOrder = new Map<string, number>();
   route.locations.forEach((loc, idx) => {
     locOrder.set(loc.id, idx);
@@ -347,15 +407,15 @@ function sortNodesByRouteFlow(nodes: JourneyNode[], route: JourneyRoute): Journe
 
   const getOrder = (node: JourneyNode): number => {
     if (node.origin) {
-      const k = node.origin.trim().toLowerCase();
+      const k = resolver.getKey(node.origin);
       if (locOrder.has(k)) return locOrder.get(k)!;
     }
     if (node.location) {
-      const k = node.location.trim().toLowerCase();
+      const k = resolver.getKey(node.location);
       if (locOrder.has(k)) return locOrder.get(k)!;
     }
     if (node.destination) {
-      const k = node.destination.trim().toLowerCase();
+      const k = resolver.getKey(node.destination);
       if (locOrder.has(k)) return locOrder.get(k)!;
     }
     return 999;
@@ -415,27 +475,74 @@ function sortNodesByRouteFlow(nodes: JourneyNode[], route: JourneyRoute): Journe
 // Main view
 export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   journey,
+  viewMode = 'RECOVERED',
   onEditNode,
   onDeleteNode,
+  onUpdatePriority,
   onAddNextStop,
   onResetJourney,
   onEditDraft,
+  hasRestoreAvailable,
+  onRestoreOriginalJourney,
+  onToggleBackToRecovered,
   impactNodeMap,
   impactResult,
+  selectedRecoveryPlan,
 }) => {
   const isLocal = journey.syncStatus === 'local';
 
-  // Build data-driven route
-  const route = buildJourneyRoute(journey.nodes);
-  const stats = routeStats(journey.nodes);
-  const displayNodes = sortNodesByRouteFlow(journey.nodes, route);
+  // Filter active nodes according to viewMode ('RECOVERED' vs 'ORIGINAL')
+  const activeNodes = journey.nodes.filter((n) => {
+    if (n.status === 'CANCELLED') return false;
+
+    if (viewMode === 'ORIGINAL') {
+      if (n.status === 'RESTORED_DEMO') return false;
+      const isReplacementNode = Boolean(n.metadata?.recovery_execution_id || n.metadata?.replaced_item_id);
+      if (isReplacementNode) return false;
+      return true;
+    } else {
+      if (n.status === 'REPLACED') return false;
+      if (n.status === 'RESTORED_DEMO') return false;
+      return true;
+    }
+  });
+
+  // Build data-driven route from active nodes
+  const route = buildJourneyRoute(activeNodes);
+  const stats = routeStats(activeNodes);
+  const displayNodes = sortNodesByRouteFlow(activeNodes, route);
 
   const [selected, setSelected] = useState<JourneyNode | null>(null);
 
-  // Journey-level impact state — derived from ImpactResult, not from individual bookings
-  const journeyStatus = getJourneyStatus(impactResult ?? null);
-  const buckets = getImpactSummaryBuckets(impactResult ?? null);
-  const hasImpact = !!impactResult && buckets.total > 0;
+  // Journey-level impact — only count nodes visible in the current view
+  const visibleIds = new Set(
+    activeNodes.flatMap((n) => [String(n.id), String(n.backendId ?? '')].filter(Boolean))
+  );
+  const visibleImpactNodes = (impactResult?.nodes || []).filter((n) => {
+    const nid = String(n.node_id || '');
+    const iid = n.item_id != null ? String(n.item_id) : '';
+    return visibleIds.has(nid) || (iid && visibleIds.has(iid));
+  });
+
+  // Prefer node-scoped status for the current view so REPLACED originals don't
+  // mark a healthy recovered plan as DISRUPTED / inflate "unchanged" counts.
+  const scopedImpactResult: ImpactResult | null = impactResult
+    ? {
+        ...impactResult,
+        nodes: visibleImpactNodes,
+        journey_status: visibleImpactNodes.some(
+          (n) => n.status === 'BROKEN' || n.status === 'NEEDS_CHANGE'
+        )
+          ? 'DISRUPTED'
+          : visibleImpactNodes.some((n) => n.status === 'AT_RISK')
+            ? (impactResult.journey_status === 'RECOVERED' ? 'RECOVERED' : 'NORMAL')
+            : (impactResult.journey_status === 'RECOVERED' ? 'RECOVERED' : 'NORMAL'),
+      }
+    : null;
+
+  const journeyStatus = getJourneyStatus(scopedImpactResult);
+  const buckets = getImpactSummaryBuckets(scopedImpactResult);
+  const hasImpact = !!scopedImpactResult && buckets.total > 0;
   const isDisrupted = journeyStatus === 'DISRUPTED';
 
   // Route summary text
@@ -471,9 +578,15 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 text-xs font-semibold">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                viewMode === 'ORIGINAL'
+                  ? 'bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                  : 'bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300'
+              }`}>
                 <Sparkles className="h-3.5 w-3.5 text-sky-500" />
-                JOURNEY ROUTE
+                {hasRestoreAvailable
+                  ? (viewMode === 'ORIGINAL' ? 'ORIGINAL PLAN' : 'RECOVERED PLAN')
+                  : 'YOUR JOURNEY'}
               </span>
               {journey.id && (
                 <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2.5 py-0.5 rounded-full font-mono text-[10px]">
@@ -490,6 +603,11 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
                     : 'bg-emerald-100 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
                 }`}>
                   {isDisrupted ? '🔴 DISRUPTED' : buckets.at_risk > 0 ? '🟡 AT RISK' : '🟢 ON TRACK'}
+                </span>
+              )}
+              {selectedRecoveryPlan && isDisrupted && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border bg-emerald-100 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200">
+                  🟢 RECOVERY READY
                 </span>
               )}
             </div>
@@ -536,7 +654,35 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {viewMode === 'ORIGINAL' ? (
+              <button
+                onClick={onToggleBackToRecovered}
+                className="text-xs font-bold text-sky-800 dark:text-sky-200 bg-sky-50 dark:bg-sky-950/70 hover:bg-sky-100 dark:hover:bg-sky-900/70 border border-sky-300 dark:border-sky-700 px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <History className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                <span>Back to Recovered Journey</span>
+              </button>
+            ) : onRestoreOriginalJourney && (
+              hasRestoreAvailable ? (
+                <button
+                  onClick={onRestoreOriginalJourney}
+                  className="text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/70 border border-amber-300 dark:border-amber-700 px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <History className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>Recover Original Plan</span>
+                </button>
+              ) : (
+                <button
+                  disabled
+                  title="Original plan is currently active"
+                  className="text-xs font-semibold text-slate-400 dark:text-slate-500 bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-75"
+                >
+                  <History className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Recover Original Plan</span>
+                </button>
+              )
+            )}
             {onEditDraft && (
               <button onClick={onEditDraft}
                 className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-3.5 py-2 rounded-xl transition-colors">
@@ -553,7 +699,7 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
         </div>
 
         {/* Route map body */}
-        {journey.nodes.length === 0 ? (
+        {activeNodes.length === 0 ? (
           <div className="py-12 text-center">
             <div className="h-12 w-12 rounded-2xl bg-sky-50 dark:bg-sky-950/50 text-sky-500 flex items-center justify-center mx-auto mb-3">
               <MapPin className="h-6 w-6" />
@@ -575,12 +721,13 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
             onItemClick={setSelected}
             onAddStop={onAddNextStop}
             impactNodeMap={impactNodeMap}
+            selectedRecoveryPlan={selectedRecoveryPlan}
           />
         )}
       </div>
 
       {/* TRIP DETAILS GRID */}
-      {journey.nodes.length > 0 && (
+      {activeNodes.length > 0 && (
         <div className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-3xl p-6 sm:p-8 border shadow-xl shadow-slate-200/40 dark:shadow-none space-y-6 transition-colors ${
           isDisrupted
             ? 'border-rose-200/60 dark:border-rose-900/50'
@@ -606,7 +753,7 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
               </p>
             </div>
             <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-3 py-1 rounded-full text-xs font-bold shrink-0">
-              {journey.nodes.length} item{journey.nodes.length !== 1 ? 's' : ''}
+              {activeNodes.length} item{activeNodes.length !== 1 ? 's' : ''}
             </span>
           </div>
 
@@ -618,7 +765,9 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
                 node={node}
                 onEdit={onEditNode}
                 onDelete={onDeleteNode}
+                onUpdatePriority={onUpdatePriority}
                 impactNodeMap={impactNodeMap}
+                selectedRecoveryPlan={selectedRecoveryPlan}
               />
             ))}
           </div>

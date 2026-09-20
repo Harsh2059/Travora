@@ -57,6 +57,7 @@ class DisruptionEventBase(BaseModel):
     event_type: str
     entity_id: Optional[int] = None
     severity: str = "HIGH"
+    status: str = "ACTIVE"
     old_state: Dict[str, Any] = Field(default_factory=dict)
     new_state: Dict[str, Any] = Field(default_factory=dict)
     event_metadata: Dict[str, Any] = Field(default_factory=dict)

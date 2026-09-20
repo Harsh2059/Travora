@@ -106,16 +106,21 @@ const LOCATION_BASED_TYPES = new Set([
   'hotel', 'activity', 'ticket', 'event', 'stay', 'accommodation',
 ]);
 
+export function isInactiveNode(node: JourneyNode): boolean {
+  return node.status === 'REPLACED' || node.status === 'CANCELLED' || node.status === 'RESTORED_DEMO';
+}
+
 function isTransport(node: JourneyNode): boolean {
+  if (isInactiveNode(node)) return false;
   const t = node.type.toLowerCase();
   // If the type is explicitly in the location-based set, it is NOT transport.
   if (LOCATION_BASED_TYPES.has(t)) return false;
   // Otherwise it is treated as transport IF it has at least an origin.
-  // (destination may be missing for an incomplete entry.)
   return Boolean(node.origin);
 }
 
 function isLocationBased(node: JourneyNode): boolean {
+  if (isInactiveNode(node)) return false;
   const t = node.type.toLowerCase();
   // Explicitly categorised types.
   if (LOCATION_BASED_TYPES.has(t)) return true;
@@ -123,19 +128,229 @@ function isLocationBased(node: JourneyNode): boolean {
   return Boolean(node.location) && !node.origin;
 }
 
-// ─── Location normalisation ───────────────────────────────────────────────────
+// ─── Location normalisation & resolution ──────────────────────────────────────
 
 /**
- * Produces a stable, case-insensitive lookup key for a raw location string.
- *
- * Handles: capitalisation differences, leading/trailing spaces.
- *
- * Does NOT: attempt to resolve aliases, abbreviations, or geocode anything.
- * Part 1 uses raw string matching as the fallback.  Structured location IDs
- * can replace this in a future part.
+ * Extract 2-4 letter uppercase IATA / Station code (e.g. BOM, DEL, NDLS).
+ */
+export function extractLocationCode(raw: string): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const parenMatch = trimmed.match(/\(([A-Z0-9]{2,4})\)/i);
+  if (parenMatch) {
+    return parenMatch[1].toUpperCase();
+  }
+  if (/^[A-Z0-9]{3,4}$/.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  return null;
+}
+
+/**
+ * Extract base location text by stripping parenthesized codes.
+ */
+export function extractBaseText(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/\([A-Z0-9]{2,4}\)/gi, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Strip common geographic qualifiers (airport, station, city, etc.) to get root city/location name.
+ */
+/**
+ * Known airport and station code to city root mappings.
+ */
+const KNOWN_CODE_CITIES: Record<string, string> = {
+  BOM: 'mumbai',
+  DEL: 'delhi',
+  NDLS: 'delhi',
+  BLR: 'bangalore',
+  MAA: 'chennai',
+  CCU: 'kolkata',
+  HYD: 'hyderabad',
+  GOI: 'goa',
+  SXR: 'srinagar',
+  JAI: 'jaipur',
+  ATQ: 'amritsar',
+  IXC: 'chandigarh',
+  PNQ: 'pune',
+  AMD: 'ahmedabad',
+  COK: 'kochi',
+  TRV: 'trivandrum',
+  LHR: 'london',
+  LGW: 'london',
+  STN: 'london',
+  LCY: 'london city',
+  JFK: 'new york',
+  EWR: 'new york',
+  LGA: 'new york',
+  CDG: 'paris',
+  DXB: 'dubai',
+  SIN: 'singapore',
+};
+
+function extractRootLocation(raw: string): string {
+  const code = extractLocationCode(raw);
+  if (code && KNOWN_CODE_CITIES[code]) {
+    return KNOWN_CODE_CITIES[code];
+  }
+  const base = extractBaseText(raw);
+  if (!base) return '';
+  return base
+    .replace(/\b(international|domestic)\b/g, '')
+    .replace(/\b(airport|railway station|station|terminal|city|central)\b/g, '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeRaw(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Single source of truth location resolver.
+ * Maps location strings (with variations in formatting, codes, aliases)
+ * to stable canonical location keys and human-readable display labels.
+ */
+export class LocationResolver {
+  private rawToKey = new Map<string, string>();
+  private keyToLabel = new Map<string, string>();
+
+  constructor(nodes: JourneyNode[]) {
+    // Only analyze active nodes to determine connectivity and location equivalence
+    const activeNodes = nodes.filter((n) => !isInactiveNode(n));
+
+    // Track direct transport legs to ensure genuinely connected different locations are never merged
+    const directLegs = new Set<string>();
+    for (const n of activeNodes) {
+      if (isTransport(n) && n.origin && n.destination) {
+        const oNorm = normalizeRaw(n.origin);
+        const dNorm = normalizeRaw(n.destination);
+        if (oNorm !== dNorm) {
+          directLegs.add(`${oNorm}::${dNorm}`);
+          directLegs.add(`${dNorm}::${oNorm}`);
+        }
+      }
+    }
+
+    // Collect all raw locations present across active nodes
+    const rawLocations = new Set<string>();
+    for (const n of activeNodes) {
+      if (n.origin) rawLocations.add(n.origin);
+      if (n.destination) rawLocations.add(n.destination);
+      if (n.location) rawLocations.add(n.location);
+    }
+
+    const codeToKey = new Map<string, string>();
+    const rootToKey = new Map<string, string>();
+
+    // Step 1: Assign keys based on explicit IATA / station codes first
+    for (const raw of rawLocations) {
+      const code = extractLocationCode(raw);
+      const norm = normalizeRaw(raw);
+      if (code) {
+        const key = `code_${code}`;
+        codeToKey.set(code, key);
+        this.rawToKey.set(norm, key);
+        const root = extractRootLocation(raw);
+        if (root) rootToKey.set(root, key);
+      }
+    }
+
+    // Step 2: Assign remaining raw locations matching existing codes or roots
+    for (const raw of rawLocations) {
+      const norm = normalizeRaw(raw);
+      if (this.rawToKey.has(norm)) continue;
+
+      const code = extractLocationCode(raw);
+      const root = extractRootLocation(raw);
+
+      let key: string | null = null;
+      if (code && codeToKey.has(code)) {
+        key = codeToKey.get(code)!;
+      } else if (root && rootToKey.has(root)) {
+        const candidateKey = rootToKey.get(root)!;
+        // Safety check: ensure no direct transport leg exists between this raw location and any location in candidateKey
+        let canMerge = true;
+        for (const [existingNorm, existingKey] of this.rawToKey.entries()) {
+          if (existingKey === candidateKey && directLegs.has(`${norm}::${existingNorm}`)) {
+            canMerge = false;
+            break;
+          }
+        }
+        if (canMerge) key = candidateKey;
+      }
+
+      if (!key) {
+        key = code ? `code_${code}` : `loc_${root || norm}`;
+        if (root) rootToKey.set(root, key);
+      }
+
+      this.rawToKey.set(norm, key);
+    }
+
+    // Step 3: Determine optimal display label for each location key
+    const keyToRaws = new Map<string, string[]>();
+    for (const raw of rawLocations) {
+      const norm = normalizeRaw(raw);
+      const key = this.rawToKey.get(norm) || norm;
+      if (!keyToRaws.has(key)) keyToRaws.set(key, []);
+      keyToRaws.get(key)!.push(raw);
+    }
+
+    for (const [key, raws] of keyToRaws.entries()) {
+      let bestLabel = raws[0];
+      let bestScore = -1000;
+
+      for (const r of raws) {
+        const trimmed = r.trim();
+        const hasParen = /\([A-Z0-9]{2,4}\)/i.test(trimmed);
+        const isBareCode = /^[A-Z0-9]{3,4}$/.test(trimmed);
+        let score = trimmed.length;
+
+        if (isBareCode) score -= 100;
+        else if (hasParen) score -= 15;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestLabel = trimmed.replace(/\([A-Z0-9]{2,4}\)/gi, '').trim() || trimmed;
+        }
+      }
+
+      this.keyToLabel.set(key, toDisplayLabel(bestLabel));
+    }
+  }
+
+  public getKey(raw: string | undefined | null): string {
+    if (!raw || !raw.trim()) return 'unspecified';
+    const norm = normalizeRaw(raw);
+    if (this.rawToKey.has(norm)) return this.rawToKey.get(norm)!;
+
+    // Fallback resolution for raw strings not in initial constructor list
+    const code = extractLocationCode(raw);
+    if (code) return `code_${code}`;
+    const root = extractRootLocation(raw);
+    return `loc_${root || norm}`;
+  }
+
+  public getLabel(key: string): string {
+    return this.keyToLabel.get(key) || toDisplayLabel(key.replace(/^(code_|loc_|raw_)/, ''));
+  }
+}
+
+/**
+ * Produces a stable, normalized lookup key for a raw location string.
  */
 export function normalizeLocation(raw: string): string {
-  return raw.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!raw) return '';
+  const code = extractLocationCode(raw);
+  if (code) return `code_${code}`;
+  const root = extractRootLocation(raw);
+  return `loc_${root || normalizeRaw(raw)}`;
 }
 
 /**
@@ -176,25 +391,24 @@ function nextSegId(): string {
  *
  * Algorithm
  * ---------
- * 1. Classify items into transport / location-based / unknown.
- * 2. Sort transport items chronologically (when times are available).
- * 3. Build a directed graph of locations connected by transport segments.
- *    - Each transport item contributes one directed edge: origin → destination.
- *    - Location nodes are created on first encounter and reused on repetition.
- * 4. Topologically order the location graph to produce the horizontal chain.
- *    - Handles both simple chains and disconnected sub-graphs.
- * 5. Match location-based items to their location nodes.
- *    - If the location matches a known node → attach to that node.
- *    - If not → record as an UnconnectedLocation.
- * 6. Items with no usable geographic info → UnplacedItem.
+ * 1. Filter active nodes (ignoring REPLACED and CANCELLED items).
+ * 2. Classify items into transport / location-based / unknown.
+ * 3. Sort transport items chronologically (when times are available).
+ * 4. Build a directed graph of locations connected by transport segments using LocationResolver.
+ * 5. Topologically order the location graph to produce the horizontal chain.
+ * 6. Match location-based items to their location nodes.
  * 7. Sort attached items chronologically within each location.
  */
 export function buildJourneyRoute(nodes: JourneyNode[]): JourneyRoute {
-  // ── 1. Classify ───────────────────────────────────────────────────────────
+  // ── 1. Filter active nodes & initialize single-source LocationResolver ────
 
-  const transportItems   = nodes.filter(isTransport);
-  const locationItems    = nodes.filter(isLocationBased);
-  const unclassified     = nodes.filter(
+  const activeNodes = nodes.filter((n) => !isInactiveNode(n));
+
+  const resolver = new LocationResolver(nodes);
+
+  const transportItems   = activeNodes.filter(isTransport);
+  const locationItems    = activeNodes.filter(isLocationBased);
+  const unclassified     = activeNodes.filter(
     (n) => !isTransport(n) && !isLocationBased(n),
   );
 
@@ -216,11 +430,11 @@ export function buildJourneyRoute(nodes: JourneyNode[]): JourneyRoute {
   const segments: RouteSegment[] = [];
 
   function ensureLocation(raw: string): RouteLocation {
-    const key = normalizeLocation(raw);
+    const key = resolver.getKey(raw);
     if (!locationMap.has(key)) {
       locationMap.set(key, {
         id: key,
-        label: toDisplayLabel(raw),
+        label: resolver.getLabel(key),
         order: -1,
         attachedItems: [],
       });
@@ -318,17 +532,17 @@ export function buildJourneyRoute(nodes: JourneyNode[]): JourneyRoute {
       continue;
     }
 
-    const key = normalizeLocation(rawLoc);
+    const key = resolver.getKey(rawLoc);
 
     if (locationMap.has(key)) {
-      // Exact normalized match → attach to known location
+      // Exact key match → attach to known location
       locationMap.get(key)!.attachedItems.push(item);
     } else {
       // No match → create / reuse an unconnected location node
       if (!unconnectedMap.has(key)) {
         unconnectedMap.set(key, {
           id: key,
-          label: toDisplayLabel(rawLoc),
+          label: resolver.getLabel(key),
           attachedItems: [],
         });
       }

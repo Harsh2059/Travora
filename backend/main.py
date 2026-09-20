@@ -12,6 +12,8 @@ from services.events.manager import EventManager
 from services.impact.engine import ImpactEngine
 from services.recovery.generator import RecoveryEngine
 from services.recovery.models import RecoveryPlanModel
+from services.recovery.engine import analyze_part4_recovery
+from services.recovery.execution_engine import revalidate_plan, execute_plan, get_execution_by_id, restore_original_journey, activate_recovered_journey
 from services.execution.engine import ExecutionEngine, ExecutionError
 from services.ml.disruption_model import DisruptionRiskModel
 from services.ml.downstream_risk import DownstreamRiskModel
@@ -21,6 +23,22 @@ from services.demo.reset_service import DemoResetService
 from services.events.user_requests import UserRequestParser
 
 models.Base.metadata.create_all(bind=engine)
+
+# Migration helper for SQLite DB: ensure columns exist
+with engine.connect() as conn:
+    try:
+        from sqlalchemy import text
+        conn.execute(text("ALTER TABLE disruption_events ADD COLUMN status VARCHAR DEFAULT 'ACTIVE'"))
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import text
+        conn.execute(text("ALTER TABLE recovery_executions ADD COLUMN demo_restored BOOLEAN DEFAULT 0"))
+        conn.execute(text("ALTER TABLE recovery_executions ADD COLUMN restored_at DATETIME"))
+        conn.commit()
+    except Exception:
+        pass
 
 app = FastAPI(title="Travel Recovery Engine API")
 
@@ -65,13 +83,39 @@ def seed_database(db: Session = Depends(get_db)):
 
 @app.post("/api/demo/reset")
 def reset_demo(db: Session = Depends(get_db)):
+    """
+    Recreate the optional SAMPLE trip only. Does not delete other user journeys.
+    Use Trip Builder + Admin Console to choose which journey to work on.
+    """
     trip = DemoResetService.reset_demo_trip(db)
     return {
         "status": "success",
-        "message": "Demo state safely reset to Trip v1 baseline.",
+        "message": "Optional sample trip reset. Your other journeys were left unchanged.",
         "trip_id": trip.id,
         "version": trip.version,
-        "items_count": len(trip.items)
+        "items_count": len(trip.items),
+        "title": trip.title,
+    }
+
+
+@app.post("/api/trips/{trip_id}/simulations/clear")
+def clear_trip_simulations(trip_id: int, db: Session = Depends(get_db)):
+    """
+    Clear disruptions and recovery execution state for a specific trip
+    without replacing the itinerary — keeps the user's chosen journey intact.
+    """
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    try:
+        trip = DemoResetService.clear_trip_simulations(db, trip_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {
+        "status": "success",
+        "message": "Simulations cleared for this trip. Itinerary bookings preserved.",
+        "trip_id": trip.id,
+        "title": trip.title,
     }
 
 @app.get("/api/users", response_model=List[schemas.User])
@@ -222,46 +266,50 @@ def get_trip_details(trip_id: int, db: Session = Depends(get_db)):
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # Only return ACTIVE (non-cancelled) items so the timeline stays clean after recovery execution
     active_items = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.trip_id == trip_id,
-        models.ItineraryItem.status != "CANCELLED"
+        models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"])
     ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    all_trip_items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id
+    ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    def serialize_item(it):
+        return {
+            "id": it.id,
+            "trip_id": it.trip_id,
+            "type": it.type,
+            "provider": it.provider,
+            "origin": it.origin,
+            "destination": it.destination,
+            "location": it.location,
+            "start_time": it.start_time.isoformat() if it.start_time else None,
+            "end_time": it.end_time.isoformat() if it.end_time else None,
+            "cost": it.cost,
+            "currency": it.currency,
+            "priority": it.priority,
+            "flexibility": it.flexibility,
+            "status": it.status,
+            "booking_id": it.booking_id,
+            "refundable": it.refundable,
+            "refund_percentage": it.refund_percentage,
+            "cancellation_fee": it.cancellation_fee,
+            "changeable": it.changeable,
+            "change_fee": it.change_fee,
+            "cancellation_deadline": it.cancellation_deadline.isoformat() if it.cancellation_deadline else None,
+            "change_deadline": it.change_deadline.isoformat() if it.change_deadline else None,
+            "non_refundable_amount": it.non_refundable_amount,
+            "item_metadata": it.item_metadata or {}
+        }
 
     return {
         "id": trip.id,
         "title": trip.title,
         "version": trip.version or 1,
         "user_id": trip.user_id,
-        "items": [
-            {
-                "id": it.id,
-                "trip_id": it.trip_id,
-                "type": it.type,
-                "provider": it.provider,
-                "origin": it.origin,
-                "destination": it.destination,
-                "location": it.location,
-                "start_time": it.start_time.isoformat() if it.start_time else None,
-                "end_time": it.end_time.isoformat() if it.end_time else None,
-                "cost": it.cost,
-                "currency": it.currency,
-                "priority": it.priority,
-                "flexibility": it.flexibility,
-                "status": it.status,
-                "booking_id": it.booking_id,
-                "refundable": it.refundable,
-                "refund_percentage": it.refund_percentage,
-                "cancellation_fee": it.cancellation_fee,
-                "changeable": it.changeable,
-                "change_fee": it.change_fee,
-                "cancellation_deadline": it.cancellation_deadline.isoformat() if it.cancellation_deadline else None,
-                "change_deadline": it.change_deadline.isoformat() if it.change_deadline else None,
-                "non_refundable_amount": it.non_refundable_amount,
-                "item_metadata": it.item_metadata or {}
-            }
-            for it in active_items
-        ]
+        "items": [serialize_item(it) for it in active_items],
+        "all_items": [serialize_item(it) for it in all_trip_items]
     }
 
 # ============================================================================
@@ -275,7 +323,7 @@ def get_trip_graph(trip_id: int, db: Session = Depends(get_db)):
 
     items = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.trip_id == trip_id,
-        models.ItineraryItem.status != "CANCELLED"
+        models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"])
     ).order_by(models.ItineraryItem.start_time.asc()).all()
 
     G = build_dependency_graph(items)
@@ -315,6 +363,25 @@ def trigger_disruption(
     if "delay_minutes" in event_payload:
         event_metadata["delay_minutes"] = event_payload["delay_minutes"]
 
+    # ── E: Block duplicate ACTIVE disruptions (trip_id + entity_id + event_type) ──
+    # DisruptionEvent rows are deleted on reset, so any existing row is active.
+    # Two different disruption types on the same booking are allowed.
+    # Two same-type disruptions on different bookings are allowed.
+    existing_active = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.trip_id == trip_id,
+        models.DisruptionEvent.entity_id == entity_id,
+        models.DisruptionEvent.event_type == event_type,
+        models.DisruptionEvent.status == "ACTIVE",
+    ).first()
+    if existing_active:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This disruption is already active for this booking. "
+                f"Reset it first before re-triggering."
+            )
+        )
+
     dt_now = datetime.utcnow()
     if event_payload.get("detected_at"):
         try:
@@ -337,11 +404,15 @@ def trigger_disruption(
     db.commit()
     db.refresh(disruption_record)
 
+    # ── D: Invalidate any cached Part 4 recovery for this trip ──
+    # Home polling will detect the new disruption_fingerprint and clear the selected plan.
+    LATEST_PART4_RECOVERY.pop(trip_id, None)
+
     assessment_dict = {}
     try:
         active_items = db.query(models.ItineraryItem).filter(
             models.ItineraryItem.trip_id == trip_id,
-            models.ItineraryItem.status != "CANCELLED"
+            models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"])
         ).order_by(models.ItineraryItem.start_time.asc()).all()
 
         G = build_dependency_graph(active_items)
@@ -364,6 +435,7 @@ def trigger_disruption(
         "event_type": event_type,
         "type": event_type,
         "severity": disruption_record.severity,
+        "status": disruption_record.status,
         "timestamp": disruption_record.timestamp.isoformat() if disruption_record.timestamp else None,
         "event_metadata": event_metadata,
         "assessment": assessment_dict
@@ -390,6 +462,7 @@ def get_trip_disruptions(trip_id: int, db: Session = Depends(get_db)):
             "event_type": ev.event_type,
             "type": ev.event_type,
             "severity": ev.severity,
+            "status": ev.status or "ACTIVE",
             "timestamp": ev.timestamp.isoformat() if ev.timestamp else None,
             "event_metadata": ev.event_metadata or {},
         }
@@ -406,6 +479,8 @@ def reset_trip_disruptions(trip_id: int, db: Session = Depends(get_db)):
     db.query(models.DisruptionEvent).filter(models.DisruptionEvent.trip_id == trip_id).delete()
     db.commit()
 
+    LATEST_PART4_RECOVERY.pop(trip_id, None)
+
     return {"status": "success", "message": "Simulation disruption state reset successfully", "trip_id": trip_id}
 
 @app.delete("/api/trips/{trip_id}/disruptions/{disruption_id}")
@@ -421,6 +496,9 @@ def reset_individual_disruption(trip_id: int, disruption_id: int, db: Session = 
 
     db.delete(event)
     db.commit()
+
+    LATEST_PART4_RECOVERY.pop(trip_id, None)
+
     return {"status": "success", "message": f"Disruption #{disruption_id} reset successfully", "trip_id": trip_id, "disruption_id": disruption_id}
 
 @app.post("/api/disruptions/reset-all")
@@ -428,7 +506,11 @@ def reset_all_simulations(db: Session = Depends(get_db)):
     """Reset all simulation disruption events across all trips."""
     deleted_count = db.query(models.DisruptionEvent).delete()
     db.commit()
+
+    LATEST_PART4_RECOVERY.clear()
+
     return {"status": "success", "message": f"Reset {deleted_count} simulation disruptions across all trips", "deleted_count": deleted_count}
+
 
 # ============================================================================
 # PART 3: IMPACT & RIPPLE ENGINE ENDPOINTS
@@ -453,29 +535,62 @@ def analyze_trip_impact(
     if disruption_ids_param and isinstance(disruption_ids_param, list):
         disruption_events = db.query(models.DisruptionEvent).filter(
             models.DisruptionEvent.id.in_(disruption_ids_param),
-            models.DisruptionEvent.trip_id == trip_id
+            models.DisruptionEvent.trip_id == trip_id,
+            models.DisruptionEvent.status == "ACTIVE"
         ).all()
     elif single_disruption_id:
         ev = db.query(models.DisruptionEvent).filter(
             models.DisruptionEvent.id == single_disruption_id,
-            models.DisruptionEvent.trip_id == trip_id
+            models.DisruptionEvent.trip_id == trip_id,
+            models.DisruptionEvent.status == "ACTIVE"
         ).first()
         disruption_events = [ev] if ev else []
     else:
         disruption_events = db.query(models.DisruptionEvent).filter(
-            models.DisruptionEvent.trip_id == trip_id
+            models.DisruptionEvent.trip_id == trip_id,
+            models.DisruptionEvent.status == "ACTIVE"
         ).order_by(models.DisruptionEvent.timestamp.asc()).all()
 
     items = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.trip_id == trip_id,
-        models.ItineraryItem.status != "CANCELLED"
+        models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"])
     ).all()
+
+    # Include disrupted entities even if currently REPLACED/RESTORED so impact
+    # can attach (avoids "ON TRACK" while an active cancellation exists).
+    disrupted_entity_ids = {
+        int(de.entity_id)
+        for de in disruption_events
+        if de.entity_id is not None and str(de.entity_id).isdigit()
+    }
+    if disrupted_entity_ids:
+        active_ids = {it.id for it in items}
+        missing_ids = disrupted_entity_ids - active_ids
+        if missing_ids:
+            extra = db.query(models.ItineraryItem).filter(
+                models.ItineraryItem.trip_id == trip_id,
+                models.ItineraryItem.id.in_(list(missing_ids))
+            ).all()
+            items = list(items) + list(extra)
 
     G = build_dependency_graph(items)
 
     if not disruption_events:
         empty_res = ImpactEngine.propagate_impact(G, {"trip_id": trip_id})
-        return empty_res.model_dump()
+        result_dict = empty_res.model_dump()
+        # If trip has historical resolved disruptions, set journey_status to RECOVERED
+        resolved_count = db.query(models.DisruptionEvent).filter(
+            models.DisruptionEvent.trip_id == trip_id,
+            models.DisruptionEvent.status == "RESOLVED"
+        ).count()
+        if resolved_count > 0:
+            result_dict["journey_status"] = "RECOVERED"
+        else:
+            result_dict["journey_status"] = "NORMAL"
+        # No active disruptions → fingerprint is empty string
+        result_dict["disruption_fingerprint"] = ""
+        result_dict["disruption_ids"] = []
+        return result_dict
 
     event_dicts = [
         {
@@ -491,12 +606,274 @@ def analyze_trip_impact(
     ]
 
     result = ImpactEngine.propagate_impact(G, event_dicts)
-    return result.model_dump()
+    result_dict = result.model_dump()
+    # ── Authoritative fingerprint: sorted active disruption IDs joined by "_" ──
+    # Frontend uses this directly — no independent fingerprint computation needed.
+    active_ids = sorted([de.id for de in disruption_events])
+    result_dict["disruption_fingerprint"] = "_".join(str(i) for i in active_ids)
+    result_dict["disruption_ids"] = active_ids
+    return result_dict
 
 @app.get("/api/trips/{trip_id}/impact")
 def get_trip_impact(trip_id: int, db: Session = Depends(get_db)):
     """Fetch active impact result for a trip."""
     return analyze_trip_impact(trip_id=trip_id, payload={}, db=db)
+
+# ============================================================================
+# PART 4: RECOVERY ENGINE ENDPOINTS
+# ============================================================================
+LATEST_PART4_RECOVERY: Dict[int, Any] = {}
+
+@app.post("/api/trips/{trip_id}/recovery/analyze")
+def analyze_part4_recovery_endpoint(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db)
+):
+    """
+    Generates Part 4 Recovery Plans consuming the latest Part 3 ImpactResult.
+    Does NOT mutate original itinerary or execute bookings.
+    """
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    # Get active items
+    items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id,
+        models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"])
+    ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    # Mirror impact analysis: include disrupted entities even if REPLACED/RESTORED
+    # so recovery can map BROKEN/NEEDS_CHANGE nodes and generate options.
+    active_disruptions_preview = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.trip_id == trip_id,
+        models.DisruptionEvent.status == "ACTIVE"
+    ).all()
+    disrupted_entity_ids = {
+        int(de.entity_id)
+        for de in active_disruptions_preview
+        if de.entity_id is not None and str(de.entity_id).isdigit()
+    }
+    if disrupted_entity_ids:
+        active_ids = {it.id for it in items}
+        missing_ids = disrupted_entity_ids - active_ids
+        if missing_ids:
+            extra = db.query(models.ItineraryItem).filter(
+                models.ItineraryItem.trip_id == trip_id,
+                models.ItineraryItem.id.in_(list(missing_ids))
+            ).all()
+            items = list(items) + list(extra)
+            items.sort(key=lambda x: x.start_time or datetime.min)
+
+    journey = {
+        "id": trip.id,
+        "title": trip.title,
+        "nodes": [
+            {
+                "id": it.id,
+                "backendId": it.id,
+                "type": it.type,
+                "title": f"{it.provider or it.type} ({it.origin or ''} → {it.destination or it.location or ''})".strip(),
+                "provider": it.provider,
+                "origin": it.origin,
+                "destination": it.destination,
+                "location": it.location,
+                "start_time": it.start_time.isoformat() if it.start_time else None,
+                "end_time": it.end_time.isoformat() if it.end_time else None,
+                "cost": it.cost,
+                "currency": it.currency,
+                "priority": it.priority or "MUST_PRESERVE",
+                "status": it.status
+            }
+            for it in items
+        ]
+    }
+
+    # Fetch Part 3 ImpactResult
+    impact_res_dict = analyze_trip_impact(trip_id=trip_id, payload=payload, db=db)
+
+    # Fetch active disruptions
+    disruptions = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.trip_id == trip_id,
+        models.DisruptionEvent.status == "ACTIVE"
+    ).all()
+    disruption_dicts = [
+        {
+            "id": d.id,
+            "disruption_id": d.id,
+            "event_type": d.event_type,
+            "entity_id": d.entity_id,
+            "event_metadata": d.event_metadata or {}
+        }
+        for d in disruptions
+    ]
+
+    preference = payload.get("preference", "PRESERVE_PRIORITIES")
+    max_budget = payload.get("max_budget")
+
+    recovery_res = analyze_part4_recovery(
+        journey=journey,
+        impact_result=impact_res_dict,
+        disruptions=disruption_dicts,
+        preference=preference,
+        max_budget=max_budget
+    )
+
+    # ── B: Attach disruption versioning so frontend can detect stale selected plans ──
+    # disruption_ids are the IDs of the active DisruptionEvent rows used as input.
+    # disruption_fingerprint is the authoritative sorted key — frontend uses this,
+    # not its own computed value from history.
+    active_disruption_ids = sorted([d["id"] for d in disruption_dicts])
+    fp = "_".join(str(i) for i in active_disruption_ids)
+    recovery_res.disruption_ids = active_disruption_ids
+    recovery_res.disruption_fingerprint = fp
+
+    res_dump = recovery_res.model_dump()
+    LATEST_PART4_RECOVERY[trip_id] = res_dump
+    return res_dump
+
+@app.get("/api/trips/{trip_id}/recovery")
+def get_part4_recovery(trip_id: int, db: Session = Depends(get_db)):
+    """Fetch latest Part 4 Recovery Result for a trip."""
+    if trip_id in LATEST_PART4_RECOVERY:
+        return LATEST_PART4_RECOVERY[trip_id]
+    return analyze_part4_recovery_endpoint(trip_id=trip_id, payload={}, db=db)
+
+
+# ============================================================================
+# PART 5: BOOKING & EXECUTION ENGINE ENDPOINTS
+# ============================================================================
+@app.post("/api/trips/{trip_id}/recovery/revalidate")
+def revalidate_recovery_endpoint(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Revalidates real-time candidate availability and pricing for a selected Part 4 plan.
+    Does NOT execute bookings. Checks disruption fingerprint for staleness.
+    """
+    selected_plan = payload.get("selectedPlan") or payload.get("plan") or {}
+    disruption_fp = payload.get("disruption_fingerprint") or payload.get("fingerprint") or ""
+
+    if not selected_plan:
+        raise HTTPException(status_code=400, detail="selectedPlan is required for revalidation")
+
+    try:
+        return revalidate_plan(
+            db=db,
+            trip_id=trip_id,
+            plan=selected_plan,
+            disruption_fingerprint=disruption_fp
+        )
+    except Exception as e:
+        print(f"ERROR in revalidate_recovery_endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Revalidation error: {str(e)}")
+
+
+@app.post("/api/trips/{trip_id}/recovery/execute")
+def execute_recovery_endpoint(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Executes booking replacements through provider abstraction after explicit user confirmation.
+    Enforces idempotency and stale plan protection. Updates itinerary DB upon success.
+    """
+    selected_plan = payload.get("selectedPlan") or payload.get("plan") or {}
+    disruption_fp = payload.get("disruption_fingerprint") or payload.get("fingerprint") or ""
+    execution_id = payload.get("execution_id")
+
+    if not selected_plan:
+        raise HTTPException(status_code=400, detail="selectedPlan is required for execution")
+
+    try:
+        return execute_plan(
+            db=db,
+            trip_id=trip_id,
+            plan=selected_plan,
+            disruption_fingerprint=disruption_fp,
+            execution_id=execution_id
+        )
+    except Exception as e:
+        print(f"ERROR in execute_recovery_endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Booking execution error: {str(e)}")
+
+
+@app.get("/api/trips/{trip_id}/recovery/execution")
+def get_latest_execution_endpoint(
+    trip_id: int,
+    db: Session = Depends(get_db)
+):
+    """Fetches status and details of the latest Part 5 recovery execution for a trip."""
+    res = get_execution_by_id(db=db, trip_id=trip_id)
+    if not res or res.get("status") == "NOT_FOUND":
+        return {"status": "NOT_FOUND", "message": "No execution record found"}
+    return res
+
+
+@app.get("/api/trips/{trip_id}/recovery/execution/{execution_id}")
+def get_execution_status_endpoint(
+    trip_id: int,
+    execution_id: str,
+    db: Session = Depends(get_db)
+):
+    """Fetches status and details of a Part 5 recovery execution by execution_id."""
+    res = get_execution_by_id(db=db, execution_id=execution_id, trip_id=trip_id)
+    if not res or res.get("status") == "NOT_FOUND":
+        raise HTTPException(status_code=404, detail="Execution record not found")
+    return res
+
+
+@app.post("/api/trips/{trip_id}/recovery/restore")
+def restore_original_journey_endpoint(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db)
+):
+    """
+    Demo/testing endpoint to restore simulated active journey state to pre-Part-5 snapshot.
+    Preserves historical execution logs, PNRs, and ticket records.
+    """
+    execution_id = payload.get("execution_id")
+    try:
+        res = restore_original_journey(db=db, trip_id=trip_id, execution_id=execution_id)
+        if res.get("status") in ["RESTORED", "ALREADY_RESTORED"]:
+            # Evict cached Part 4 recovery option so stale recovery plans are invalidated
+            LATEST_PART4_RECOVERY.pop(trip_id, None)
+        return res
+    except Exception as e:
+        print(f"ERROR in restore_original_journey_endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Restore journey error: {str(e)}")
+
+
+@app.post("/api/trips/{trip_id}/recovery/activate-recovered")
+def activate_recovered_journey_endpoint(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint to activate the recovered journey state for a trip (flipping back from Original to Recovered view).
+    """
+    execution_id = payload.get("execution_id")
+    try:
+        res = activate_recovered_journey(db=db, trip_id=trip_id, execution_id=execution_id)
+        return res
+    except Exception as e:
+        print(f"ERROR in activate_recovered_journey_endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Activate recovered journey error: {str(e)}")
+
 
 # ============================================================================
 # PHASE 2: DISRUPTION SIMULATOR PRESETS
@@ -735,9 +1112,10 @@ def plan_recovery(
     # Event context
     event_info = payload.get("event", {})
     if not event_info:
-        # Check if recent disruption exists in DB
+        # Check if recent active disruption exists in DB
         last_ev = db.query(models.DisruptionEvent).filter(
-            models.DisruptionEvent.trip_id == trip_id
+            models.DisruptionEvent.trip_id == trip_id,
+            models.DisruptionEvent.status == "ACTIVE"
         ).order_by(models.DisruptionEvent.timestamp.desc()).first()
         if last_ev:
             event_info = {
@@ -776,7 +1154,7 @@ def plan_recovery(
 # PHASE 2: EXECUTION ENGINE (VERSIONING & CASCADING RECOVERY)
 # ============================================================================
 @app.post("/api/trips/{trip_id}/recover/execute")
-def execute_plan(
+def execute_legacy_phase2_plan(
     trip_id: int,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db)

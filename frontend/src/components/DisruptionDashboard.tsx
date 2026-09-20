@@ -11,22 +11,29 @@ export const DisruptionDashboard: React.FC<DisruptionDashboardProps> = ({
   assessment,
   feasiblePlansCount,
 }) => {
-  const isCriticalHit = assessment.critical_components_affected > 0;
+  const isCriticalHit = (assessment.critical_components_affected ?? 0) > 0;
+  const score = assessment.impact_score ?? 0;
+  const affectedPct = assessment.affected_percentage ?? 0;
+
+  const summaryDisplay =
+    typeof assessment.summary === 'string'
+      ? assessment.summary
+      : assessment.summary_text || 'Disruption active';
 
   const METRICS = [
     {
       label: 'Affected Nodes',
-      value: `${assessment.components_affected}`,
-      sub: `of ${assessment.total_components} total`,
+      value: `${assessment.components_affected ?? 0}`,
+      sub: `of ${assessment.total_components ?? 0} total`,
       icon: <Zap className="h-4 w-4 text-amber-600" />,
       accentBg: 'bg-amber-50 border-amber-200',
-      progress: Math.min(100, assessment.affected_percentage),
-      progressLabel: `${assessment.affected_percentage}% impacted`,
+      progress: Math.min(100, affectedPct),
+      progressLabel: `${affectedPct}% impacted`,
     },
     {
       label: 'Critical Impact',
-      value: `${assessment.critical_components_affected}`,
-      sub: `of ${assessment.critical_components} critical`,
+      value: `${assessment.critical_components_affected ?? 0}`,
+      sub: `of ${assessment.critical_components ?? 0} critical`,
       icon: <ShieldAlert className="h-4 w-4 text-rose-600" />,
       accentBg: isCriticalHit ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200',
       badge: isCriticalHit ? '⚠ Threatened' : '✓ Protected',
@@ -34,10 +41,10 @@ export const DisruptionDashboard: React.FC<DisruptionDashboardProps> = ({
     },
     {
       label: 'Cascade Risk',
-      value: assessment.impact_score > 5 ? 'CRITICAL' : 'HIGH',
-      sub: `Impact score ${assessment.impact_score}/10`,
+      value: score > 5 ? 'CRITICAL' : 'HIGH',
+      sub: `Impact score ${score}/10`,
       icon: <Clock className="h-4 w-4 text-blue-600" />,
-      accentBg: assessment.impact_score > 5 ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200',
+      accentBg: score > 5 ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200',
     },
     {
       label: 'Solutions Ready',
@@ -68,13 +75,13 @@ export const DisruptionDashboard: React.FC<DisruptionDashboardProps> = ({
               </span>
             </div>
             <h2 className="text-xl font-black text-slate-900">
-              {assessment.event_type.replace(/_/g, ' ')}
+              {(assessment.event_type || 'DISRUPTED').replace(/_/g, ' ')}
             </h2>
           </div>
         </div>
 
         <div className="text-xs text-slate-600 max-w-sm text-left sm:text-right">
-          {assessment.summary}
+          {summaryDisplay}
         </div>
       </div>
 

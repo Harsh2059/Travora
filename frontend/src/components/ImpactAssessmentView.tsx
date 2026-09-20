@@ -81,7 +81,7 @@ export const ImpactAssessmentView = ({ assessment }: ImpactAssessmentViewProps) 
             <span className="text-xs font-normal text-slate-500">/ 10</span>
           </div>
           <div className="text-xs text-orange-600 font-medium mt-0.5">
-            {assessment.impact_score > 5 ? 'High severity' : 'Moderate cascade'}
+            {(assessment.impact_score ?? 0) > 5 ? 'High severity' : 'Moderate cascade'}
           </div>
         </div>
 
