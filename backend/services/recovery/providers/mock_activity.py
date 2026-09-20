@@ -35,7 +35,7 @@ class MockActivityProvider(BaseAvailabilityProvider):
                 "isTimeFlexible": True,
                 "cost": 2800,
                 "currency": "INR",
-                "booking_id": f"TKT-RPL-{node.get('id')[:4]}",
+                "booking_id": f"TKT-RPL-{str(node.get('id'))[:4]}",
                 "modification_fee": 0,
                 "cancellation_penalty": 0,
                 "estimated_refund": 2000,

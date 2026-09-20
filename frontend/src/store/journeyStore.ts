@@ -102,12 +102,47 @@ export function getSelectedRecoveryPlan(tripId: number): import('../types').Part
   }
 }
 
-export function saveSelectedRecoveryPlan(tripId: number, plan: import('../types').Part4RecoveryPlan): void {
+/**
+ * Returns the stored selected recovery plan together with the disruption fingerprint
+ * that was active when the user selected it. HomeScreen uses the fingerprint to detect
+ * whether the disruption set has changed since the plan was chosen.
+ */
+export function getSelectedRecoveryPlanWithMeta(
+  tripId: number
+): { plan: import('../types').Part4RecoveryPlan; disruptionFingerprint: string; isUpdated: boolean } | null {
+  try {
+    const raw = localStorage.getItem(`${RECOVERY_PLAN_KEY_PREFIX}${tripId}`);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const plan = data?.plan || data || null;
+    if (!plan) return null;
+    return {
+      plan,
+      disruptionFingerprint: data?.disruptionFingerprint ?? '',
+      isUpdated: Boolean(data?.isUpdated),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persists a selected recovery plan together with the disruption fingerprint it was
+ * generated from and whether it was automatically updated as a successor plan.
+ */
+export function saveSelectedRecoveryPlan(
+  tripId: number,
+  plan: import('../types').Part4RecoveryPlan,
+  disruptionFingerprint: string = '',
+  isUpdated: boolean = false
+): void {
   try {
     const payload = {
       selectedRecoveryPlanId: plan.id,
       tripId,
       selectedAt: new Date().toISOString(),
+      disruptionFingerprint,
+      isUpdated,
       plan,
     };
     localStorage.setItem(`${RECOVERY_PLAN_KEY_PREFIX}${tripId}`, JSON.stringify(payload));
@@ -268,7 +303,9 @@ export async function fetchTripById(tripId: number): Promise<Journey | null> {
   const res = await axios.get(`${API_BASE_URL}/trips/${tripId}`);
   const data = res.data;
 
-  const nodes: JourneyNode[] = (data.items ?? []).map((it: any) => {
+  const rawItems = (data.all_items && data.all_items.length > 0) ? data.all_items : (data.items ?? []);
+
+  const nodes: JourneyNode[] = rawItems.map((it: any) => {
     const meta = it.item_metadata ?? {};
     const hasExactStart = meta.hasExactStartTime ?? (Boolean(it.start_time) && !it.start_time.endsWith('T00:00:00'));
     const hasExactEnd = meta.hasExactEndTime ?? (Boolean(it.end_time) && !it.end_time.endsWith('T23:59:59'));
@@ -278,7 +315,9 @@ export async function fetchTripById(tripId: number): Promise<Journey | null> {
       id: String(it.id),
       backendId: it.id,
       type: isMetro ? 'METRO' : (it.type as JourneyNode['type']),
-      title: it.provider,
+      title: it.provider || it.type,
+      provider: it.provider || it.type,
+      status: it.status || 'CONFIRMED',
       startTime: hasExactStart ? it.start_time : undefined,
       endTime: hasExactEnd ? it.end_time : undefined,
       startDate: meta.startDate ?? (it.start_time ? it.start_time.split('T')[0] : undefined),

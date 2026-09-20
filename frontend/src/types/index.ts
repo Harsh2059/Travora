@@ -82,7 +82,7 @@ export type ImpactNodeStatus = 'INTACT' | 'AT_RISK' | 'NEEDS_CHANGE' | 'BROKEN';
  * AT_RISK alone does NOT make the journey DISRUPTED — it means the journey
  * may be at risk but is not yet confirmed infeasible.
  */
-export type JourneyStatus = 'NORMAL' | 'DISRUPTED';
+export type JourneyStatus = 'NORMAL' | 'DISRUPTED' | 'RECOVERED';
 
 export interface ImpactSource {
   disruption_id?: any;
@@ -119,7 +119,6 @@ export type NodeImpact = NodeImpactItem;
 
 export interface ImpactResult {
   trip_id: number;
-  disruption_ids?: any[];
   root_node_ids?: string[];
   disruption_id?: any;
   root_node_id?: string;
@@ -159,6 +158,12 @@ export interface ImpactResult {
    * When both are present prefer the ImpactSummaryCounts form.
    */
   summary_text?: string;
+  /** Authoritative fingerprint of active disruption IDs, e.g. "3_7_12" (sorted, joined by "_").
+   * Computed by the backend. Use this — NOT a client-side derivation from history — to detect
+   * when the disruption set has changed between polls. */
+  disruption_fingerprint?: string;
+  /** Sorted list of active DisruptionEvent.id values used to produce this impact result. */
+  disruption_ids?: number[];
 }
 
 export interface ImpactAssessment extends ImpactResult {}
@@ -301,6 +306,21 @@ export interface VersionComparisonData {
 export type Part4ActionType = 'KEEP' | 'REPLACE' | 'MODIFY' | 'CANCEL';
 export type Part4RecoveryFeasibility = 'FEASIBLE' | 'INFEASIBLE' | 'UNKNOWN';
 export type Part4RecoveryCategory = 'PRIORITY_PRESERVING' | 'ALTERNATIVE';
+export type RecoveryAnalysisStatus =
+  | 'OPTIONS_AVAILABLE'
+  | 'NO_FEASIBLE_RECOVERY'
+  | 'BUDGET_EXCEEDED'
+  | 'ANALYSIS_FAILED';
+
+export interface CostEstimate {
+  replacement_cost: number | null;
+  modification_fees: number | null;
+  cancellation_penalties: number | null;
+  estimated_refunds: number | null;
+  estimated_additional_cost: number | null;
+  currency: string;
+  is_partial: boolean;
+}
 
 export interface Part4RecoveryChange {
   node_id: string;
@@ -309,8 +329,15 @@ export interface Part4RecoveryChange {
   original_details?: Record<string, any>;
   new_title?: string;
   new_details?: Record<string, any>;
-  estimated_cost: number;
-  estimated_refund: number;
+  /** Explicit replacement airline/provider from recovery candidate */
+  provider?: string | null;
+  type?: string | null;
+  origin?: string | null;
+  destination?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  estimated_cost: number | null;
+  estimated_refund: number | null;
   explanation: string;
 }
 
@@ -326,19 +353,31 @@ export interface Part4RecoveryPlan {
   dropped_node_ids: string[];
   preserved_priorities: string[];
   sacrificed_priorities: string[];
-  estimated_additional_cost: number;
-  estimated_refund: number;
+  cost_estimate?: CostEstimate;
+  estimated_additional_cost: number | null;
+  estimated_refund: number | null;
   explanation: string;
   is_recommended?: boolean;
+  total_transfers?: number;
+  total_duration_minutes?: number;
+  total_changes_count?: number;
+  is_direct?: boolean;
 }
 
 export interface Part4RecoveryResult {
   trip_id: number;
   impact_status: string;
+  status: RecoveryAnalysisStatus;
+  total_feasible_plans: number;
   plans: Part4RecoveryPlan[];
   priority_preserving_count: number;
   alternative_count: number;
   message: string;
+  /** Authoritative fingerprint matching the disruption snapshot used to generate these plans.
+   * Frontend must check this before applying or saving a result to guard against stale responses. */
+  disruption_fingerprint?: string;
+  /** Sorted list of active DisruptionEvent.id values used to build this recovery analysis. */
+  disruption_ids?: number[];
 }
 
 // ============================================================================
@@ -378,6 +417,9 @@ export interface JourneyNode {
   /** Human-readable label (airline, hotel name, cab provider, etc.) */
   title: string;
 
+  /** Service / booking provider name (airline, hotel brand, operator, etc.) */
+  provider?: string;
+
   /** Exact ISO datetime strings (optional when exact time is unknown/flexible) */
   startTime?: string;
   endTime?: string;
@@ -406,6 +448,9 @@ export interface JourneyNode {
   /** Optional booking reference / PNR */
   bookingRef?: string;
 
+  /** Operational/Booking status: CONFIRMED, REPLACED, RESTORED_DEMO, CANCELLED, etc. */
+  status?: string;
+
   /**
    * Extensible metadata bag.
    * Part 3 will introduce JourneyEdge for dependency relationships —
@@ -428,4 +473,106 @@ export interface Journey {
    *             Will retry sync on next load.
    */
   syncStatus: 'draft' | 'saved' | 'local';
+}
+
+// ============================================================================
+// PART 5: BOOKING & EXECUTION ENGINE TYPES
+// ============================================================================
+export type Part5ExecutionStatus =
+  | 'PENDING_REVALIDATION'
+  | 'REVALIDATION_FAILED'
+  | 'READY_FOR_CONFIRMATION'
+  | 'BOOKING_IN_PROGRESS'
+  | 'PARTIALLY_COMPLETED'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'UNAVAILABLE'
+  | 'STALE_PLAN';
+
+export interface Part5RevalidatedItem {
+  node_id: string;
+  original_title: string;
+  replacement_title: string;
+  provider: string;
+  type: string;
+  available: boolean;
+  replacement_price?: number;
+  current_price: number;
+  modification_fee?: number;
+  cancellation_penalty?: number;
+  estimated_refund?: number;
+  item_additional_cost?: number;
+  currency: string;
+  checked_at: string;
+  booking_conditions?: string;
+}
+
+export interface Part5UnchangedItem {
+  node_id: string;
+  title: string;
+}
+
+export interface Part5CostBreakdown {
+  replacement_cost: number;
+  modification_fees: number;
+  cancellation_penalties: number;
+  estimated_refunds: number;
+  current_estimated_additional_cost: number;
+  part4_estimated_additional_cost: number;
+  price_difference: number;
+  currency: string;
+}
+
+export interface Part5RevalidationResult {
+  execution_id?: string;
+  status: Part5ExecutionStatus;
+  message?: string;
+  part4_estimated_additional_cost?: number;
+  current_estimated_additional_cost?: number;
+  earlier_estimated_additional_cost: number;
+  current_total_price: number;
+  price_difference: number;
+  currency: string;
+  cost?: Part5CostBreakdown;
+  revalidated_items: Part5RevalidatedItem[];
+  unchanged_items: Part5UnchangedItem[];
+  checked_at: string;
+  disruption_fingerprint?: string;
+}
+
+export interface Part5ConfirmedBooking {
+  status: string;
+  node_id: string;
+  original_title: string;
+  replacement_title: string;
+  provider: string;
+  type: string;
+  booking_reference: string;
+  pnr?: string;
+  ticket_number?: string;
+  confirmation_number?: string;
+  flight_number?: string;
+  seat?: string;
+  cabin_class?: string;
+  room_type?: string;
+  vehicle_category?: string;
+  final_price: number;
+  currency: string;
+  booked_at: string;
+  error_message?: string;
+}
+
+export interface Part5ExecutionResult {
+  execution_id: string;
+  trip_id: number;
+  disruption_fingerprint: string;
+  status: Part5ExecutionStatus;
+  message?: string;
+  journey_status?: 'RECOVERED' | 'PARTIALLY_RECOVERED' | 'DISRUPTED';
+  confirmed_bookings: Part5ConfirmedBooking[];
+  failed_bookings: Part5ConfirmedBooking[];
+  unchanged_items: Part5UnchangedItem[];
+  total_final_price: number;
+  currency: string;
+  executed_at: string;
 }

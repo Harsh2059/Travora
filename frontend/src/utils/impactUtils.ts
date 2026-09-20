@@ -129,6 +129,15 @@ export function getJourneyStatusDisplay(status: JourneyStatus): JourneyStatusDis
       headlineStyle: 'text-rose-700 dark:text-rose-300',
     };
   }
+  if (status === 'RECOVERED') {
+    return {
+      status,
+      headline: '🟢 JOURNEY RECOVERED',
+      description: 'Your replacement bookings are confirmed. No active disruptions remain.',
+      bannerStyle: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50',
+      headlineStyle: 'text-emerald-700 dark:text-emerald-300',
+    };
+  }
   return {
     status,
     headline: '🟢 Journey On Track',
@@ -170,4 +179,34 @@ export function getImpactSummaryBuckets(result: ImpactResult | null): ImpactSumm
     else unchanged++;
   }
   return { needs_recovery, at_risk, unchanged, total: result.nodes.length };
+}
+
+/**
+ * Scope an ImpactResult to a set of visible journey node/backend IDs.
+ * Recalculates journey_status from the scoped nodes so REPLACED originals
+ * do not mark a healthy recovered view as DISRUPTED.
+ */
+export function scopeImpactToNodeIds(
+  result: ImpactResult | null,
+  visibleIds: Set<string>
+): ImpactResult | null {
+  if (!result) return null;
+  if (!visibleIds.size) return result;
+
+  const nodes = (result.nodes || []).filter((n) => {
+    const nid = String(n.node_id || '');
+    const iid = n.item_id != null ? String(n.item_id) : '';
+    return visibleIds.has(nid) || (iid !== '' && visibleIds.has(iid));
+  });
+
+  if (nodes.length === 0) return result;
+
+  const hasBreakage = nodes.some((n) => n.status === 'BROKEN' || n.status === 'NEEDS_CHANGE');
+  const journey_status: JourneyStatus = hasBreakage
+    ? 'DISRUPTED'
+    : result.journey_status === 'RECOVERED'
+      ? 'RECOVERED'
+      : 'NORMAL';
+
+  return { ...result, nodes, journey_status };
 }

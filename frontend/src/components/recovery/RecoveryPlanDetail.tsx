@@ -93,7 +93,10 @@ export const RecoveryPlanDetail: React.FC<RecoveryPlanDetailProps> = ({
                       {change.new_title || change.explanation}
                     </div>
                     <div className="text-[11px] text-sky-600 dark:text-sky-400 mt-0.5 font-medium">
-                      Est. Addl Cost: ₹{change.estimated_cost.toLocaleString()}
+                      Est. Addl Cost:{' '}
+                      {change.estimated_cost !== null && change.estimated_cost !== undefined
+                        ? `₹${change.estimated_cost.toLocaleString()}`
+                        : 'Unknown'}
                     </div>
                   </div>
                 ))
@@ -132,13 +135,17 @@ export const RecoveryPlanDetail: React.FC<RecoveryPlanDetailProps> = ({
             <div className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
               Estimated Additional Cost:{' '}
               <strong className="text-slate-900 dark:text-white font-bold text-sm">
-                ₹{plan.estimated_additional_cost.toLocaleString()}
+                {plan.estimated_additional_cost !== null && plan.estimated_additional_cost !== undefined
+                  ? `₹${plan.estimated_additional_cost.toLocaleString()}`
+                  : 'PARTIAL / NOT FULLY KNOWN'}
               </strong>
             </div>
             <div className="text-xs text-slate-600 dark:text-slate-300">
               Estimated Refund:{' '}
               <strong className="text-emerald-600 dark:text-emerald-400 font-bold">
-                ₹{plan.estimated_refund.toLocaleString()}
+                {plan.estimated_refund !== null && plan.estimated_refund !== undefined
+                  ? `₹${plan.estimated_refund.toLocaleString()}`
+                  : 'Unknown'}
               </strong>
             </div>
           </div>
@@ -180,7 +187,7 @@ export const RecoveryPlanDetail: React.FC<RecoveryPlanDetailProps> = ({
             className="px-6 py-2.5 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs transition-all shadow-md shadow-sky-500/20 flex items-center gap-2"
           >
             <CheckCircle2 className="h-4 w-4" />
-            <span>Choose This Plan</span>
+            <span>Select Plan for Booking</span>
           </button>
         </div>
       </div>

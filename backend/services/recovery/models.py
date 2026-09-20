@@ -16,6 +16,23 @@ class RecoveryFeasibility(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class RecoveryAnalysisStatus(str, Enum):
+    OPTIONS_AVAILABLE = "OPTIONS_AVAILABLE"
+    NO_FEASIBLE_RECOVERY = "NO_FEASIBLE_RECOVERY"
+    BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
+    ANALYSIS_FAILED = "ANALYSIS_FAILED"
+
+
+class CostEstimate(BaseModel):
+    replacement_cost: Optional[float] = None
+    modification_fees: Optional[float] = None
+    cancellation_penalties: Optional[float] = None
+    estimated_refunds: Optional[float] = None
+    estimated_additional_cost: Optional[float] = None
+    currency: str = "INR"
+    is_partial: bool = False
+
+
 class RecoveryPlanCategory(str, Enum):
     PRIORITY_PRESERVING = "PRIORITY_PRESERVING"
     ALTERNATIVE = "ALTERNATIVE"
@@ -28,8 +45,15 @@ class RecoveryChange(BaseModel):
     original_details: Dict[str, Any] = Field(default_factory=dict)
     new_title: Optional[str] = None
     new_details: Optional[Dict[str, Any]] = None
-    estimated_cost: float = 0.0
-    estimated_refund: float = 0.0
+    # Explicit replacement airline/provider — must not be inferred from titles
+    provider: Optional[str] = None
+    type: Optional[str] = None
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    estimated_cost: Optional[float] = 0.0
+    estimated_refund: Optional[float] = 0.0
     explanation: str = ""
 
 
@@ -49,20 +73,33 @@ class Part4RecoveryPlan(BaseModel):
     preserved_priorities: List[str] = Field(default_factory=list)
     sacrificed_priorities: List[str] = Field(default_factory=list)
     
-    estimated_additional_cost: float = 0.0
-    estimated_refund: float = 0.0
+    cost_estimate: Optional[CostEstimate] = None
+    estimated_additional_cost: Optional[float] = 0.0
+    estimated_refund: Optional[float] = 0.0
     
     explanation: str = ""
     is_recommended: bool = False
+
+    # Factual measurable metrics for ranking
+    total_transfers: int = 0
+    total_duration_minutes: int = 0
+    total_changes_count: int = 0
+    is_direct: bool = True
 
 
 class Part4RecoveryResult(BaseModel):
     trip_id: int
     impact_status: str = "NORMAL"  # "NORMAL" or "DISRUPTED"
+    status: RecoveryAnalysisStatus = RecoveryAnalysisStatus.OPTIONS_AVAILABLE
+    total_feasible_plans: int = 0
     plans: List[Part4RecoveryPlan] = Field(default_factory=list)
     priority_preserving_count: int = 0
     alternative_count: int = 0
     message: str = ""
+    # Versioning: IDs of active disruptions used to generate this result.
+    # The frontend uses these to detect stale selected plans.
+    disruption_ids: List[int] = Field(default_factory=list)
+    disruption_fingerprint: str = ""  # sorted "_"-joined disruption IDs
 
 
 # Legacy Phase 2 model kept for backwards compatibility with execution engine

@@ -277,9 +277,10 @@ export default function AdminConsoleScreen() {
       // Refresh disruption history
       const updatedHistory = await fetchTripDisruptions(selectedTripId);
       setDisruptionHistory(updatedHistory || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to trigger disruption:', err);
-      setFormError('Unable to trigger disruption. Please try again.');
+      const msg = err?.response?.data?.detail || 'Unable to trigger disruption. Please try again.';
+      setFormError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -345,7 +346,7 @@ export default function AdminConsoleScreen() {
     }
   };
 
-  const activeDisruption = disruptionHistory[0] ?? null;
+  const activeDisruption = (disruptionHistory || []).find((d: any) => (d.status || 'ACTIVE') === 'ACTIVE') ?? null;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20">
@@ -442,12 +443,28 @@ export default function AdminConsoleScreen() {
                     }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                   >
+                    {tripsList.length === 0 && (
+                      <option value="">No trips found for demo user</option>
+                    )}
                     {tripsList.map((t) => (
                       <option key={t.id} value={t.id}>
                         #{t.id} · {t.title}
                       </option>
                     ))}
                   </select>
+                  {tripsList.length === 0 && (
+                    <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
+                      No trips yet. Create a journey in{' '}
+                      <button
+                        type="button"
+                        onClick={() => navigate('/build')}
+                        className="underline font-bold"
+                      >
+                        Trip Builder
+                      </button>
+                      , then select it here.
+                    </p>
+                  )}
                 </div>
 
                 {/* 2. Select Affected Booking */}
@@ -763,6 +780,15 @@ export default function AdminConsoleScreen() {
                           {h.id && (
                             <span className="font-mono text-[9px] text-slate-400 bg-slate-200/60 dark:bg-slate-800 px-1.5 py-0.2 rounded">
                               #{h.id}
+                            </span>
+                          )}
+                          {h.status === 'RESOLVED' ? (
+                            <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                              ✓ RESOLVED
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                              ACTIVE
                             </span>
                           )}
                         </div>

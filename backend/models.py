@@ -75,6 +75,7 @@ class DisruptionEvent(Base):
     entity_id = Column(Integer, nullable=True) # affected itinerary item id
     timestamp = Column(DateTime, default=datetime.utcnow)
     severity = Column(String, default="HIGH") # LOW, MEDIUM, HIGH, CRITICAL
+    status = Column(String, default="ACTIVE", index=True) # ACTIVE | RESOLVED
     old_state = Column(JSON, default=dict)
     new_state = Column(JSON, default=dict)
     event_metadata = Column(JSON, default=dict)
@@ -100,5 +101,46 @@ class RecoveryHistory(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     trip = relationship("Trip")
+
+
+class RecoveryExecution(Base):
+    __tablename__ = "recovery_executions"
+    id = Column(Integer, primary_key=True, index=True)
+    execution_id = Column(String, unique=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id"))
+    recovery_plan_id = Column(String, index=True)
+    disruption_fingerprint = Column(String)
+    status = Column(String, default="PENDING_REVALIDATION")
+    total_price = Column(Float, default=0.0)
+    currency = Column(String, default="INR")
+    execution_metadata = Column(JSON, default=dict)
+    demo_restored = Column(Boolean, default=False)
+    restored_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    trip = relationship("Trip")
+    items = relationship("RecoveryExecutionItem", back_populates="execution", cascade="all, delete-orphan")
+
+
+class RecoveryExecutionItem(Base):
+    __tablename__ = "recovery_execution_items"
+    id = Column(Integer, primary_key=True, index=True)
+    execution_id = Column(String, ForeignKey("recovery_executions.execution_id"))
+    journey_item_id = Column(Integer, nullable=True)
+    replacement_node_id = Column(String, nullable=True)
+    replacement_type = Column(String)
+    provider = Column(String)
+    status = Column(String, default="PENDING")
+    booking_reference = Column(String, nullable=True)
+    ticket_number = Column(String, nullable=True)
+    final_price = Column(Float, nullable=True)
+    currency = Column(String, default="INR")
+    booking_metadata = Column(JSON, default=dict)
+    error_message = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    execution = relationship("RecoveryExecution", back_populates="items")
+
 
 

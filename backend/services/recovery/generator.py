@@ -294,13 +294,19 @@ class RecoveryEngine:
             flight_b = next((it for it in items if it.get("id") == 2 or "delhi" in str(it.get("origin", "")).lower() or "london" in str(it.get("destination", "")).lower()), None)
 
             if flight_a and flight_b:
+                fa_prov = str(flight_a.get("provider") or flight_a.get("title") or "Flight A")
+                fb_prov = str(flight_b.get("provider") or flight_b.get("title") or "Flight B")
+                
+                direct_prov = "Air India Express" if "indigo" in fa_prov.lower() else "Vistara Prime" if "air india" in fa_prov.lower() else f"{fa_prov} Direct"
+                rebooked_prov = "Virgin Atlantic (Rebooked)" if "british" in fb_prov.lower() else "Air India Express (Rebooked)" if "indigo" in fb_prov.lower() else f"{fb_prov} (Rebooked)"
+
                 # Strategy A: Direct Express Reroute
                 direct_dep = flight_a["start_time"] + timedelta(hours=1)
                 direct_arr = direct_dep + timedelta(hours=9, minutes=30)
                 direct_flight = {
                     "id": 101,
                     "type": "FLIGHT",
-                    "provider": "Air India Direct Express",
+                    "provider": direct_prov,
                     "origin": flight_a.get("origin", "Mumbai (BOM)"),
                     "destination": flight_b.get("destination", "London (LHR)"),
                     "start_time": direct_dep,
@@ -310,7 +316,7 @@ class RecoveryEngine:
                     "priority": "HIGH",
                     "flexibility": "FLEXIBLE",
                     "status": "CONFIRMED",
-                    "booking_id": "AI-DIR-99",
+                    "booking_id": "FL-DIR-99",
                     "available": True
                 }
                 additional_delay_a = max(0, int((direct_arr - flight_b["end_time"]).total_seconds() / 60.0))
@@ -338,7 +344,7 @@ class RecoveryEngine:
                 rebooked_flight_b = {
                     "id": 102,
                     "type": "FLIGHT",
-                    "provider": "British Airways (Rebooked)",
+                    "provider": rebooked_prov,
                     "origin": flight_b.get("origin", "Delhi (DEL)"),
                     "destination": flight_b.get("destination", "London (LHR)"),
                     "start_time": new_flight_b_dep,
@@ -348,7 +354,7 @@ class RecoveryEngine:
                     "priority": "HIGH",
                     "flexibility": "FLEXIBLE",
                     "status": "CONFIRMED",
-                    "booking_id": "BA-REBOOK-404",
+                    "booking_id": "FL-REBOOK-404",
                     "available": True
                 }
 

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Star, CheckCircle2, RefreshCw, ArrowRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { Star, CheckCircle2, RefreshCw, ArrowRight, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
 import type { Part4RecoveryPlan } from '../../types';
 
 interface RecoveryPlanCardProps {
@@ -8,10 +8,14 @@ interface RecoveryPlanCardProps {
 }
 
 export const RecoveryPlanCard: React.FC<RecoveryPlanCardProps> = ({ plan, onReview }) => {
+  const [showBreakdown, setShowBreakdown] = useState<boolean>(false);
   const isPriorityPreserving = plan.category === 'PRIORITY_PRESERVING';
 
   const replacedChanges = plan.changes.filter((c) => c.action === 'REPLACE' || c.action === 'MODIFY');
   const keptChanges = plan.changes.filter((c) => c.action === 'KEEP');
+
+  const costEst = plan.cost_estimate;
+  const isPartial = costEst?.is_partial || plan.estimated_additional_cost === null;
 
   return (
     <div
@@ -21,22 +25,24 @@ export const RecoveryPlanCard: React.FC<RecoveryPlanCardProps> = ({ plan, onRevi
           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-slate-200/20'
       }`}
     >
-      {/* Category Badge & Recommendation */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
+      {/* Category Badge & Badges */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2">
           {isPriorityPreserving ? (
             <span className="text-[11px] font-extrabold uppercase px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-sm flex items-center gap-1.5">
               <Star className="h-3.5 w-3.5 fill-current" />
-              <span>Preserves Your Priorities</span>
+              <span>⭐ PRESERVE PRIORITIES</span>
             </span>
           ) : (
             <span className="text-[11px] font-extrabold uppercase px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               Alternative Option
             </span>
           )}
-          <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
-            {plan.feasibility}
-          </span>
+          {plan.is_recommended && (
+            <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
+              Recommended
+            </span>
+          )}
         </div>
       </div>
 
@@ -57,7 +63,7 @@ export const RecoveryPlanCard: React.FC<RecoveryPlanCardProps> = ({ plan, onRevi
           <div className="space-y-1">
             {replacedChanges.map((c) => (
               <div key={c.node_id} className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                🔄 {c.new_title || c.original_title}
+                🔄 {c.new_details?.provider || c.provider || c.new_title || c.original_title}
               </div>
             ))}
           </div>
@@ -79,31 +85,103 @@ export const RecoveryPlanCard: React.FC<RecoveryPlanCardProps> = ({ plan, onRevi
         </div>
       </div>
 
-      {/* Financials & Action Footer */}
-      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="text-xs font-bold text-slate-900 dark:text-white">
-            Estimated additional cost:{' '}
-            <span className="text-sky-600 dark:text-sky-400 font-extrabold">
-              ₹{plan.estimated_additional_cost.toLocaleString()}
-            </span>
+      {/* Financial Summary */}
+      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-bold text-slate-900 dark:text-white">
+              Estimated additional cost:{' '}
+              <span className="text-sky-600 dark:text-sky-400 font-extrabold">
+                {plan.estimated_additional_cost !== null && plan.estimated_additional_cost !== undefined
+                  ? `₹${plan.estimated_additional_cost.toLocaleString()}`
+                  : 'PARTIAL / NOT FULLY KNOWN'}
+              </span>
+              {isPartial && (
+                <span className="ml-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md">
+                  Incomplete Data
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
+              Estimated refund:{' '}
+              {plan.estimated_refund !== null && plan.estimated_refund !== undefined
+                ? `₹${plan.estimated_refund.toLocaleString()}`
+                : 'Unknown'}
+            </div>
           </div>
-          <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
-            Estimated refund: ₹{plan.estimated_refund.toLocaleString()}
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowBreakdown(!showBreakdown)}
+              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5"
+            >
+              <DollarSign className="h-3.5 w-3.5 text-slate-400" />
+              <span>VIEW COST BREAKDOWN</span>
+              {showBreakdown ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+
+            <button
+              onClick={() => onReview(plan)}
+              className={`px-5 py-2.5 rounded-2xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-2 ${
+                isPriorityPreserving
+                  ? 'bg-sky-500 hover:bg-sky-600 text-white shadow-sky-500/20'
+                  : 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white'
+              }`}
+            >
+              <span>{isPriorityPreserving ? 'Review Plan' : 'Review Option'}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
 
-        <button
-          onClick={() => onReview(plan)}
-          className={`px-5 py-2.5 rounded-2xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-2 ${
-            isPriorityPreserving
-              ? 'bg-sky-500 hover:bg-sky-600 text-white shadow-sky-500/20'
-              : 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white'
-          }`}
-        >
-          <span>{isPriorityPreserving ? 'Review Plan' : 'Review Option'}</span>
-          <ArrowRight className="h-3.5 w-3.5" />
-        </button>
+        {/* Collapsible Cost Breakdown Accordion */}
+        {showBreakdown && (
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="font-bold text-slate-900 dark:text-white pb-2 border-b border-slate-200 dark:border-slate-700">
+              Detailed Cost Breakdown (Estimates Only)
+            </div>
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Replacement costs:</span>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {costEst?.replacement_cost !== null && costEst?.replacement_cost !== undefined
+                  ? `₹${costEst.replacement_cost.toLocaleString()}`
+                  : 'Unknown'}
+              </span>
+            </div>
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Modification fees:</span>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {costEst?.modification_fees !== null && costEst?.modification_fees !== undefined
+                  ? `₹${costEst.modification_fees.toLocaleString()}`
+                  : 'Unknown'}
+              </span>
+            </div>
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Cancellation penalties:</span>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {costEst?.cancellation_penalties !== null && costEst?.cancellation_penalties !== undefined
+                  ? `₹${costEst.cancellation_penalties.toLocaleString()}`
+                  : 'Unknown'}
+              </span>
+            </div>
+            <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+              <span>Estimated refunds:</span>
+              <span>
+                {costEst?.estimated_refunds !== null && costEst?.estimated_refunds !== undefined
+                  ? `-₹${costEst.estimated_refunds.toLocaleString()}`
+                  : 'Unknown'}
+              </span>
+            </div>
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between font-bold text-slate-900 dark:text-white">
+              <span>Estimated additional cost:</span>
+              <span className="text-sky-600 dark:text-sky-400">
+                {plan.estimated_additional_cost !== null && plan.estimated_additional_cost !== undefined
+                  ? `₹${plan.estimated_additional_cost.toLocaleString()}`
+                  : 'PARTIAL / NOT FULLY KNOWN'}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

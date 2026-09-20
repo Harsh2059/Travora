@@ -295,13 +295,22 @@ venv\Scripts\activate        # Windows
 # Install dependencies
 pip install -r requirements.txt
 
-# Seed the database and start the server
+# Create local SQLite DB + demo user (does not overwrite existing journeys)
+# (travel_engine.db is gitignored — each developer generates their own)
 python seed.py
+
+# Start the server (run from the backend/ folder so SQLite path resolves correctly)
 uvicorn main:app --reload --port 8000
 ```
 
-Backend will be live at: `http://localhost:8000`
+Backend will be live at: `http://localhost:8000`  
 API docs at: `http://localhost:8000/docs`
+
+> **Database note:** Do not commit `*.db` files. On first run, `python seed.py` creates the
+> demo user and (only if you have no trips yet) one optional sample journey.
+> Build any journey in **Trip Builder**, then pick it in **Admin Console** / **Home**.
+> To clear disruptions on the trip you're working on without replacing bookings:
+> `POST /api/trips/{trip_id}/simulations/clear`
 
 ### 3. Start the Frontend
 
@@ -315,13 +324,19 @@ Frontend will be live at: `http://localhost:5173`
 
 ### 4. Run the Demo
 
-1. Open `http://localhost:5173`
-2. See the **Mumbai to London Business Trip** itinerary
-3. Click **"Launch Flight Delay →"** in the yellow banner
-4. Watch Travora detect the disruption and cascade impact across 4 of 5 segments
-5. Select a recovery plan and confirm
+1. Open `http://localhost:5173` → create a journey in **Trip Builder**, or use any existing trip
+2. On **Home** / **Admin Console**, select the journey you want to work on
+3. In **Admin Console**, trigger a disruption on a booking
+4. On Home: **View Impact** → **Find Recovery Options** → select a plan → Part 5 booking
+5. Toggle **Recover Original Plan** ↔ **Back to Recovered Journey** as needed
 
-> **Note**: If the backend is not running, the app automatically falls back to mock data — the full demo flow still works.
+Optional: recreate the sample London trip only (other trips are kept):
+
+```bash
+curl -X POST http://localhost:8000/api/demo/reset
+```
+
+> **Note**: If the backend is not running, the app may fall back to local draft data — start the backend for the full recovery flow.
 
 ---
 

@@ -48,8 +48,19 @@ frontend/.env
 frontend/.env.*
 
 # --- Local Databases & Test Artifacts ---
+*.db
 *.db-journal
+*.sqlite
+*.sqlite3
 backend/test_*.db
+travel_engine.db
+backend/travel_engine.db
+
+# --- Scratch one-off debug scripts (keep real tests) ---
+scratch/debug_*.py
+scratch/trace_*.py
+scratch/verify_*.py
+scratch/inspect_*.py
 
 # --- OS & IDE Metadata ---
 .DS_Store
@@ -60,3 +71,5 @@ desktop.ini
 *.swp
 *.swo
 *~
+.cursor/
+agent-transcripts/

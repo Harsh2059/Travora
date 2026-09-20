@@ -293,6 +293,7 @@ export const JourneyRouteMap: React.FC<JourneyRouteMapProps> = ({
   onItemClick,
   onAddStop,
   impactNodeMap,
+  selectedRecoveryPlan,
 }) => {
   const railRef = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
@@ -407,6 +408,7 @@ export const JourneyRouteMap: React.FC<JourneyRouteMapProps> = ({
                               node={item}
                               onClick={onItemClick}
                               impactNodeMap={impactNodeMap}
+                              selectedRecoveryPlan={selectedRecoveryPlan}
                             />
                           ))}
                         </div>
@@ -436,6 +438,7 @@ export const JourneyRouteMap: React.FC<JourneyRouteMapProps> = ({
                           buffer={bufResult}
                           onClick={onItemClick}
                           impactNodeMap={impactNodeMap}
+                          selectedRecoveryPlan={selectedRecoveryPlan}
                         />
                       </div>
                     </div>
@@ -485,6 +488,7 @@ export const JourneyRouteMap: React.FC<JourneyRouteMapProps> = ({
                     node={item}
                     onClick={onItemClick}
                     impactNodeMap={impactNodeMap}
+                    selectedRecoveryPlan={selectedRecoveryPlan}
                   />
                 ))}
               </div>
