@@ -99,6 +99,39 @@ function fmtDisplayTime(s?: string): string {
   } catch { return s; }
 }
 
+/** Active bookings only — hide REPLACED / RESTORED_DEMO / CANCELLED.
+ *  Also hides recovery replacements when their original is still active
+ *  (guards against duplicate CONFIRMED original + replacement rows). */
+function getActiveBookingNodes(nodes: Journey['nodes'] | undefined): Journey['nodes'] {
+  if (!nodes?.length) return [];
+
+  const byId = new Map(
+    nodes.map((n) => [String(n.backendId ?? n.id), n] as const)
+  );
+
+  return nodes.filter((n) => {
+    const status = (n.status || 'CONFIRMED').toUpperCase();
+    if (status === 'CANCELLED' || status === 'REPLACED' || status === 'RESTORED_DEMO') {
+      return false;
+    }
+
+    const meta = n.metadata || {};
+    const isReplacement = Boolean(meta.is_replacement || meta.recovery_execution_id);
+    if (isReplacement && meta.replaced_item_id != null) {
+      const original = byId.get(String(meta.replaced_item_id));
+      if (original) {
+        const origStatus = (original.status || 'CONFIRMED').toUpperCase();
+        // Original still active → this replacement is a duplicate; hide it
+        if (origStatus !== 'REPLACED' && origStatus !== 'RESTORED_DEMO' && origStatus !== 'CANCELLED') {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  });
+}
+
 export default function AdminConsoleScreen() {
   const navigate = useNavigate();
 
@@ -153,20 +186,21 @@ export default function AdminConsoleScreen() {
         setJourney(j);
         const historyList = history || [];
         setDisruptionHistory(historyList);
+        const activeNodes = getActiveBookingNodes(j?.nodes);
 
-        const activeDisp = historyList[0] ?? null;
+        const activeDisp = historyList.find((d: any) => (d.status || 'ACTIVE') === 'ACTIVE') ?? null;
 
         if (activeDisp) {
           // RESTORE active simulation from backend source of truth
           const entityIdStr = String(activeDisp.entity_id || activeDisp.affected_node_id || '');
-          const matchedNode = j?.nodes?.find(
+          const matchedNode = activeNodes.find(
             (n) => n.id === entityIdStr || String(n.backendId) === entityIdStr
           );
 
           if (matchedNode) {
             setSelectedNodeId(matchedNode.id);
-          } else if (j?.nodes?.length) {
-            setSelectedNodeId(j.nodes[0].id);
+          } else if (activeNodes.length) {
+            setSelectedNodeId(activeNodes[0].id);
           }
 
           const evType = activeDisp.event_type || activeDisp.type;
@@ -189,8 +223,8 @@ export default function AdminConsoleScreen() {
           }
         } else {
           // Clean initial state if NO active disruption exists
-          if (j && j.nodes && j.nodes.length > 0) {
-            const firstNode = j.nodes[0];
+          if (activeNodes.length > 0) {
+            const firstNode = activeNodes[0];
             setSelectedNodeId(firstNode.id);
 
             const opts = getDisruptionOptions(firstNode.type);
@@ -211,7 +245,10 @@ export default function AdminConsoleScreen() {
   }, [selectedTripId]);
 
   // 3. Update disruption type options when selected node changes
-  const selectedNode = journey?.nodes.find((n) => n.id === selectedNodeId);
+  const activeBookingNodes = getActiveBookingNodes(journey?.nodes);
+  const selectedNode =
+    activeBookingNodes.find((n) => n.id === selectedNodeId) ||
+    journey?.nodes.find((n) => n.id === selectedNodeId && !['REPLACED', 'RESTORED_DEMO', 'CANCELLED'].includes((n.status || '').toUpperCase()));
 
   useEffect(() => {
     if (selectedNode) {
@@ -297,8 +334,8 @@ export default function AdminConsoleScreen() {
       setDisruptionHistory([]);
 
       // Reset form state to clean initial defaults
-      if (journey && journey.nodes && journey.nodes.length > 0) {
-        const firstNode = journey.nodes[0];
+      if (journey && activeBookingNodes.length > 0) {
+        const firstNode = activeBookingNodes[0];
         setSelectedNodeId(firstNode.id);
         const opts = getDisruptionOptions(firstNode.type);
         if (opts.length > 0) setDisruptionType(opts[0].value);
@@ -472,14 +509,17 @@ export default function AdminConsoleScreen() {
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                     2. Select Affected Booking *
                   </label>
+                  <p className="text-[10px] text-slate-400 mb-1.5">
+                    Active bookings only (replaced originals hidden after recovery)
+                  </p>
                   {loadingTrip ? (
                     <div className="py-3 text-xs text-slate-500 flex items-center gap-2">
                       <div className="h-4 w-4 rounded-full animate-spin border-2 border-slate-300 border-t-amber-500" />
                       Loading trip bookings...
                     </div>
-                  ) : !journey || journey.nodes.length === 0 ? (
+                  ) : activeBookingNodes.length === 0 ? (
                     <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs text-center">
-                      No booking items found in this trip. Add items in Trip Builder first.
+                      No active booking items found in this trip. Add items in Trip Builder first.
                     </div>
                   ) : (
                     <select
@@ -487,7 +527,7 @@ export default function AdminConsoleScreen() {
                       onChange={(e) => setSelectedNodeId(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
-                      {journey.nodes.map((n) => {
+                      {activeBookingNodes.map((n) => {
                         const routeLabel = n.origin && n.destination ? `${n.origin} → ${n.destination}` : n.location || '';
                         const dateLabel = n.startDate || (n.startTime ? n.startTime.split('T')[0] : '');
                         return (
