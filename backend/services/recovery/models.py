@@ -85,6 +85,8 @@ class Part4RecoveryPlan(BaseModel):
     total_duration_minutes: int = 0
     total_changes_count: int = 0
     is_direct: bool = True
+    would_change: List[str] = Field(default_factory=list)
+    would_keep: List[str] = Field(default_factory=list)
 
 
 class Part4RecoveryResult(BaseModel):
@@ -93,6 +95,8 @@ class Part4RecoveryResult(BaseModel):
     status: RecoveryAnalysisStatus = RecoveryAnalysisStatus.OPTIONS_AVAILABLE
     total_feasible_plans: int = 0
     plans: List[Part4RecoveryPlan] = Field(default_factory=list)
+    additional_plans: List[Part4RecoveryPlan] = Field(default_factory=list)
+    default_visible_count: int = 3
     priority_preserving_count: int = 0
     alternative_count: int = 0
     message: str = ""

@@ -50,7 +50,7 @@ def test_seed_database():
     assert trips_response.status_code == 200
     trips = trips_response.json()
     assert len(trips) == 1
-    assert trips[0]["title"] == "Mumbai to London Business Trip"
+    assert trips[0]["title"] == "Sample: Mumbai to London"
     
     # Check itinerary items
     assert len(trips[0]["items"]) == 6

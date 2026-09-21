@@ -5,7 +5,7 @@ Provides deterministic replacement candidates for train/metro nodes.
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from .base import BaseAvailabilityProvider, BaseBookingProvider
+from .base import BaseAvailabilityProvider, BaseBookingProvider, is_candidate_unavailable
 
 
 class MockTrainProvider(BaseAvailabilityProvider, BaseBookingProvider):
@@ -21,8 +21,11 @@ class MockTrainProvider(BaseAvailabilityProvider, BaseBookingProvider):
         origin = node.get("origin") or "Noida"
         destination = node.get("destination") or "Gurugram"
         title = node.get("title") or "Train"
-        is_metro = node.get("type", "").upper() == "METRO" or node.get("transportMode") == "METRO"
+        is_metro = node.get("type", "").upper() == "METRO" or node.get("transportMode") == "METRO" or "METRO" in str(node.get("title", "")).upper()
         
+        ctx = context or {}
+        known_unavail = ctx.get("known_unavailable") or node.get("known_unavailable") or []
+
         start_time_str = node.get("startTime") or node.get("start_time")
         base_dt = datetime.now() + timedelta(days=1)
         if start_time_str:
@@ -30,53 +33,139 @@ class MockTrainProvider(BaseAvailabilityProvider, BaseBookingProvider):
                 base_dt = datetime.fromisoformat(str(start_time_str).replace("Z", "+00:00"))
             except Exception:
                 pass
-                
-        c1_start = base_dt + timedelta(minutes=45)
-        c1_end = c1_start + timedelta(hours=1, minutes=30)
-        
-        orig_provider = str(node.get("provider") or node.get("title") or "").strip()
-        p_low = orig_provider.lower()
 
         if is_metro:
-            if "rapid" in p_low:
-                provider_name = "DMRC Airport Express Line"
-            else:
-                provider_name = "Rapid Metro Express"
+            cands_raw = [
+                {
+                    "candidate_id": f"cand_tr_{node.get('id')}_dmrc",
+                    "type": "METRO",
+                    "provider": "DMRC Airport Express Line",
+                    "title": f"DMRC Airport Express (Repl. for {title})",
+                    "origin": origin,
+                    "destination": destination,
+                    "start_time": (base_dt + timedelta(minutes=30)).isoformat(),
+                    "end_time": (base_dt + timedelta(hours=1, minutes=15)).isoformat(),
+                    "startDate": base_dt.strftime("%Y-%m-%d"),
+                    "endDate": base_dt.strftime("%Y-%m-%d"),
+                    "timeStatus": "FIXED",
+                    "isTimeFlexible": False,
+                    "transportMode": "METRO",
+                    "cost": 80,
+                    "currency": "INR",
+                    "booking_id": "MTR-DMRC-80",
+                    "resource_id": "DMRC-80",
+                    "modification_fee": 0,
+                    "cancellation_penalty": 0,
+                    "estimated_refund": 50,
+                    "quality_tier": "RECOMMENDED",
+                    "explanation": f"High-frequency DMRC Airport Express service connecting {origin} → {destination}."
+                },
+                {
+                    "candidate_id": f"cand_tr_{node.get('id')}_rapid",
+                    "type": "METRO",
+                    "provider": "Rapid Metro Line",
+                    "title": f"Rapid Metro Line (Repl. for {title})",
+                    "origin": origin,
+                    "destination": destination,
+                    "start_time": (base_dt + timedelta(minutes=45)).isoformat(),
+                    "end_time": (base_dt + timedelta(hours=1, minutes=30)).isoformat(),
+                    "startDate": base_dt.strftime("%Y-%m-%d"),
+                    "endDate": base_dt.strftime("%Y-%m-%d"),
+                    "timeStatus": "FIXED",
+                    "isTimeFlexible": False,
+                    "transportMode": "METRO",
+                    "cost": 60,
+                    "currency": "INR",
+                    "booking_id": "MTR-RAPID-60",
+                    "resource_id": "RAPID-60",
+                    "modification_fee": 0,
+                    "cancellation_penalty": 0,
+                    "estimated_refund": 40,
+                    "quality_tier": "BUDGET",
+                    "explanation": f"Rapid Metro Line service connecting {origin} → {destination}."
+                }
+            ]
         else:
-            if "vande" in p_low:
-                provider_name = "Rajdhani Express"
-            elif "rajdhani" in p_low:
-                provider_name = "Vande Bharat Express"
-            elif "shatabdi" in p_low:
-                provider_name = "Tejas Express"
-            else:
-                provider_name = "Vande Bharat Express" if "Rajdhani" not in orig_provider else "Rajdhani Express"
+            cands_raw = [
+                {
+                    "candidate_id": f"cand_tr_{node.get('id')}_vb",
+                    "type": "TRAIN",
+                    "provider": "Vande Bharat Express",
+                    "title": f"Vande Bharat Express (Repl. for {title})",
+                    "origin": origin,
+                    "destination": destination,
+                    "start_time": (base_dt + timedelta(hours=1, minutes=15)).isoformat(),
+                    "end_time": (base_dt + timedelta(hours=4, minutes=45)).isoformat(),
+                    "startDate": base_dt.strftime("%Y-%m-%d"),
+                    "endDate": base_dt.strftime("%Y-%m-%d"),
+                    "timeStatus": "FIXED",
+                    "isTimeFlexible": False,
+                    "cost": 1650,
+                    "currency": "INR",
+                    "booking_id": "VB-20977",
+                    "resource_id": "VB-20977",
+                    "modification_fee": 150,
+                    "cancellation_penalty": 0,
+                    "estimated_refund": 1200,
+                    "quality_tier": "RECOMMENDED",
+                    "explanation": f"Premium Vande Bharat Express connecting {origin} → {destination}."
+                },
+                {
+                    "candidate_id": f"cand_tr_{node.get('id')}_tejas",
+                    "type": "TRAIN",
+                    "provider": "Tejas Express",
+                    "title": f"Tejas Express (Repl. for {title})",
+                    "origin": origin,
+                    "destination": destination,
+                    "start_time": (base_dt + timedelta(hours=2, minutes=30)).isoformat(),
+                    "end_time": (base_dt + timedelta(hours=6)).isoformat(),
+                    "startDate": base_dt.strftime("%Y-%m-%d"),
+                    "endDate": base_dt.strftime("%Y-%m-%d"),
+                    "timeStatus": "FIXED",
+                    "isTimeFlexible": False,
+                    "cost": 1400,
+                    "currency": "INR",
+                    "booking_id": "TEJ-82901",
+                    "resource_id": "TEJ-82901",
+                    "modification_fee": 100,
+                    "cancellation_penalty": 0,
+                    "estimated_refund": 1000,
+                    "quality_tier": "PREMIUM",
+                    "explanation": f"High-speed Tejas Express connecting {origin} → {destination} with onboard catering."
+                },
+                {
+                    "candidate_id": f"cand_tr_{node.get('id')}_sht",
+                    "type": "TRAIN",
+                    "provider": "Shatabdi Express",
+                    "title": f"Shatabdi Express (Repl. for {title})",
+                    "origin": origin,
+                    "destination": destination,
+                    "start_time": (base_dt + timedelta(hours=3, minutes=45)).isoformat(),
+                    "end_time": (base_dt + timedelta(hours=7, minutes=30)).isoformat(),
+                    "startDate": base_dt.strftime("%Y-%m-%d"),
+                    "endDate": base_dt.strftime("%Y-%m-%d"),
+                    "timeStatus": "FIXED",
+                    "isTimeFlexible": False,
+                    "cost": 1100,
+                    "currency": "INR",
+                    "booking_id": "SHT-12015",
+                    "resource_id": "SHT-12015",
+                    "modification_fee": 100,
+                    "cancellation_penalty": 0,
+                    "estimated_refund": 800,
+                    "quality_tier": "BUDGET",
+                    "explanation": f"Shatabdi Express service connecting {origin} → {destination}."
+                }
+            ]
 
-        return [
-            {
-                "candidate_id": f"cand_tr_{node.get('id')}_1",
-                "type": "TRAIN",
-                "provider": provider_name,
-                "title": f"{provider_name} (Repl. for {title})",
-                "origin": origin,
-                "destination": destination,
-                "start_time": c1_start.isoformat(),
-                "end_time": c1_end.isoformat(),
-                "startDate": c1_start.strftime("%Y-%m-%d"),
-                "endDate": c1_end.strftime("%Y-%m-%d"),
-                "timeStatus": "FIXED",
-                "isTimeFlexible": False,
-                "transportMode": "METRO" if is_metro else None,
-                "cost": 80 if is_metro else 1200,
-                "currency": "INR",
-                "booking_id": f"RL-RPL-{c1_start.strftime('%H%M')}",
-                "modification_fee": 0,
-                "cancellation_penalty": 0,
-                "estimated_refund": 50 if is_metro else 800,
-                "quality_tier": "RECOMMENDED",
-                "explanation": f"Adjusted {provider_name} service connecting {origin} → {destination} aligned with updated schedule."
-            }
-        ]
+        valid_cands = [c for c in cands_raw if not is_candidate_unavailable(c, known_unavail)]
+        
+        node_booking_id = str(node.get("booking_id") or "").strip().lower()
+        if node_booking_id:
+            valid_cands = [c for c in valid_cands if str(c.get("booking_id") or "").strip().lower() != node_booking_id]
+
+        return valid_cands
+
 
     def revalidate(
         self,

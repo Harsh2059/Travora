@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import type { Journey, JourneyNode } from '../types';
+import { notifyTripUpdated, subscribeToTripUpdates } from './tripSync';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -241,6 +242,8 @@ export async function persistJourneyToBackend(
   // 3. Record the active trip ID in localStorage
   setActiveTripId(tripId);
   clearDraft();
+  
+  notifyTripUpdated(tripId, 'persistJourneyToBackend');
 
   return {
     id: tripId,
@@ -263,6 +266,7 @@ export async function updateItemOnBackend(
     `${API_BASE_URL}/trips/${tripId}/items/${backendItemId}`,
     payload
   );
+  notifyTripUpdated(tripId, 'updateItemOnBackend');
   return {
     ...node,
     backendId: res.data.id,
@@ -278,6 +282,7 @@ export async function deleteItemFromBackend(
   backendItemId: number
 ): Promise<void> {
   await axios.delete(`${API_BASE_URL}/trips/${tripId}/items/${backendItemId}`);
+  notifyTripUpdated(tripId, 'deleteItemFromBackend');
 }
 
 /**
@@ -292,6 +297,7 @@ export async function addItemToExistingTrip(
     `${API_BASE_URL}/trips/${tripId}/items`,
     payload
   );
+  notifyTripUpdated(tripId, 'addItemToExistingTrip');
   return {
     ...node,
     backendId: res.data.id,
@@ -303,9 +309,11 @@ export async function fetchTripById(tripId: number): Promise<Journey | null> {
   const res = await axios.get(`${API_BASE_URL}/trips/${tripId}`);
   const data = res.data;
 
-  const rawItems = (data.all_items && data.all_items.length > 0) ? data.all_items : (data.items ?? []);
+  // Active items = active non-replaced, non-cancelled items returned from backend API
+  const rawItems = (data.items && data.items.length > 0) ? data.items : (data.all_items ?? []);
+  const rawOrigItems = (data.original_items && data.original_items.length > 0) ? data.original_items : rawItems;
 
-  const nodes: JourneyNode[] = rawItems.map((it: any) => {
+  const mapItemToNode = (it: any): JourneyNode => {
     const meta = it.item_metadata ?? {};
     const hasExactStart = meta.hasExactStartTime ?? (Boolean(it.start_time) && !it.start_time.endsWith('T00:00:00'));
     const hasExactEnd = meta.hasExactEndTime ?? (Boolean(it.end_time) && !it.end_time.endsWith('T23:59:59'));
@@ -332,14 +340,18 @@ export async function fetchTripById(tripId: number): Promise<Journey | null> {
       bookingRef: it.booking_id ?? undefined,
       metadata: meta,
     };
-  });
+  };
+
+  const nodes: JourneyNode[] = rawItems.map(mapItemToNode);
+  const originalNodes: JourneyNode[] = rawOrigItems.map(mapItemToNode);
 
   return {
     id: tripId,
     title: data.title,
     nodes,
+    originalNodes,
     syncStatus: 'saved',
-  };
+  } as Journey & { originalNodes?: JourneyNode[] };
 }
 
 export async function fetchUserTrips(userId = DEMO_USER_ID): Promise<Array<{ id: number; title: string; version: number }>> {
@@ -349,10 +361,7 @@ export async function fetchUserTrips(userId = DEMO_USER_ID): Promise<Array<{ id:
 
 export async function triggerTripDisruption(tripId: number, payload: Record<string, any>) {
   const res = await axios.post(`${API_BASE_URL}/trips/${tripId}/disruptions`, payload);
-  try {
-    localStorage.setItem('travora_disruption_event_updated', String(Date.now()));
-    window.dispatchEvent(new Event('storage'));
-  } catch {}
+  notifyTripUpdated(tripId, 'triggerTripDisruption');
   return res.data;
 }
 
@@ -363,28 +372,21 @@ export async function fetchTripDisruptions(tripId: number) {
 
 export async function resetTripDisruptions(tripId: number) {
   const res = await axios.post(`${API_BASE_URL}/trips/${tripId}/disruptions/reset`);
-  try {
-    localStorage.setItem('travora_disruption_event_updated', String(Date.now()));
-    window.dispatchEvent(new Event('storage'));
-  } catch {}
+  notifyTripUpdated(tripId, 'resetTripDisruptions');
   return res.data;
 }
 
 export async function resetIndividualDisruption(tripId: number, disruptionId: number) {
   const res = await axios.delete(`${API_BASE_URL}/trips/${tripId}/disruptions/${disruptionId}`);
-  try {
-    localStorage.setItem('travora_disruption_event_updated', String(Date.now()));
-    window.dispatchEvent(new Event('storage'));
-  } catch {}
+  notifyTripUpdated(tripId, 'resetIndividualDisruption');
   return res.data;
 }
 
 export async function resetAllSimulations() {
   const res = await axios.post(`${API_BASE_URL}/disruptions/reset-all`);
-  try {
-    localStorage.setItem('travora_disruption_event_updated', String(Date.now()));
-    window.dispatchEvent(new Event('storage'));
-  } catch {}
+  // Dispatch for the currently active trip if there is one
+  const activeId = getActiveTripId();
+  if (activeId) notifyTripUpdated(activeId, 'resetAllSimulations');
   return res.data;
 }
 
@@ -570,6 +572,16 @@ export function useJourney(): JourneyState {
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // Subscribe to external trip updates to trigger a refresh automatically
+  useEffect(() => {
+    if (journey?.id) {
+      const unsubscribe = subscribeToTripUpdates(journey.id, () => {
+        refresh();
+      });
+      return unsubscribe;
+    }
+  }, [journey?.id]);
 
   const refresh = useCallback(async () => {
     setLoading(true);

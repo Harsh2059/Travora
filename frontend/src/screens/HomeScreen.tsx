@@ -17,7 +17,12 @@ import {
   History,
 } from 'lucide-react';
 import { useJourney, fetchTripDisruptions, fetchTripImpact, updateItemOnBackend, saveLocalJourney, getSelectedRecoveryPlanWithMeta, clearSelectedRecoveryPlan, saveSelectedRecoveryPlan } from '../store/journeyStore';
-import { analyzePart4Recovery, getLatestExecution, restoreOriginalJourney, activateRecoveredJourney } from '../services/recoveryApi';
+import { analyzePart4Recovery, getLatestExecution } from '../services/recoveryApi';
+import {
+  notifyViewModeChanged,
+  getPersistedViewMode,
+  subscribeToViewMode
+} from '../store/tripSync';
 import { findSuccessorPlan } from '../utils/successorMatcher';
 import { Part1JourneyView } from '../components/Part1JourneyView';
 import { RecoveryPlanView } from '../components/recovery/RecoveryPlanView';
@@ -180,8 +185,8 @@ function resolveRestoreComparison(
           type: booking?.type || 'FLIGHT',
           title: origProviderLabel,
           provider: origProviderLabel,
-          origin: originalNode?.origin,
-          destination: originalNode?.destination,
+          origin: originalNode ? (originalNode as any).origin : undefined,
+          destination: originalNode ? (originalNode as any).destination : undefined,
           bookingRef: undefined,
         } as any)
       : null;
@@ -225,7 +230,22 @@ export default function HomeScreen() {
   const [latestExecution, setLatestExecution] = useState<any | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState<boolean>(false);
   const [toastNotification, setToastNotification] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'RECOVERED' | 'ORIGINAL'>('RECOVERED');
+  const [viewMode, setViewMode] = useState<'ORIGINAL' | 'RECOVERED'>(
+    journey?.id ? getPersistedViewMode(journey.id) : 'RECOVERED'
+  );
+
+  // Subscribe to global view mode changes
+  useEffect(() => {
+    if (journey?.id) {
+      // Sync initial state on trip change
+      setViewMode(getPersistedViewMode(journey.id));
+      
+      const unsubscribe = subscribeToViewMode(journey.id, (mode) => {
+        setViewMode(mode);
+      });
+      return unsubscribe;
+    }
+  }, [journey?.id]);
 
   // Real-time polling & focus/storage listeners for disruption events & impact engine
   useEffect(() => {
@@ -376,12 +396,16 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!latestExecution || latestExecution.status === 'NOT_FOUND') return;
     if (latestExecution.demo_restored) {
-      setViewMode('ORIGINAL');
+      if (viewMode !== 'ORIGINAL' && journey?.id) {
+        notifyViewModeChanged(journey.id, 'ORIGINAL');
+      }
     } else if (
       latestExecution.status === 'COMPLETED' ||
       latestExecution.status === 'PARTIALLY_COMPLETED'
     ) {
-      setViewMode('RECOVERED');
+      if (viewMode !== 'RECOVERED' && journey?.id) {
+        notifyViewModeChanged(journey.id, 'RECOVERED');
+      }
     }
   }, [latestExecution?.execution_id, latestExecution?.demo_restored, latestExecution?.status]);
 
@@ -422,55 +446,27 @@ export default function HomeScreen() {
 
   const handleConfirmRestoreOriginal = async () => {
     if (!journey?.id) return;
-    const res = await restoreOriginalJourney(journey.id);
-    if (res && res.status !== 'FAILED' && res.status !== 'ERROR' && res.status !== 'SNAPSHOT_UNAVAILABLE') {
-      // Keep selected recovery plan / options available for toggle back
-      setShowSelectedPlanReviewModal(false);
-      setShowPart5HandoffModal(false);
-      setShowRecoveryModal(false);
-      setShowRestoreModal(false);
-      setViewMode('ORIGINAL');
+    
+    // Switch the global view mode
+    notifyViewModeChanged(journey.id, 'ORIGINAL');
+    
+    setShowSelectedPlanReviewModal(false);
+    setShowPart5HandoffModal(false);
+    setShowRecoveryModal(false);
+    setShowRestoreModal(false);
 
-      await refresh();
-      const disruptions = await fetchTripDisruptions(journey.id);
-      const activeD = (disruptions || []).filter((d: any) => (d.status || 'ACTIVE') === 'ACTIVE');
-      if (activeD.length > 0) {
-        setActiveDisruption(activeD[0]);
-      } else {
-        setActiveDisruption(null);
-      }
-      const impact = await fetchTripImpact(journey.id);
-      setImpactResult(impact);
-      const exec = await getLatestExecution(journey.id);
-      setLatestExecution(exec);
-
-      setToastNotification('Original journey plan restored for demo.');
-      setTimeout(() => setToastNotification(null), 4000);
-    }
+    setToastNotification('Showing Original journey plan.');
+    setTimeout(() => setToastNotification(null), 4000);
   };
 
   const handleToggleBackToRecovered = async () => {
     if (!journey?.id) return;
-    const res = await activateRecoveredJourney(journey.id);
-    if (res && res.status !== 'FAILED' && res.status !== 'ERROR') {
-      setViewMode('RECOVERED');
+    
+    // Switch the global view mode back
+    notifyViewModeChanged(journey.id, 'RECOVERED');
 
-      await refresh();
-      const disruptions = await fetchTripDisruptions(journey.id);
-      const activeD = (disruptions || []).filter((d: any) => (d.status || 'ACTIVE') === 'ACTIVE');
-      if (activeD.length > 0) {
-        setActiveDisruption(activeD[0]);
-      } else {
-        setActiveDisruption(null);
-      }
-      const impact = await fetchTripImpact(journey.id);
-      setImpactResult(impact);
-      const exec = await getLatestExecution(journey.id);
-      setLatestExecution(exec);
-
-      setToastNotification('Switched back to Recovered Journey plan.');
-      setTimeout(() => setToastNotification(null), 4000);
-    }
+    setToastNotification('Switched back to Recovered Journey plan.');
+    setTimeout(() => setToastNotification(null), 4000);
   };
 
   if (loading) {
@@ -898,7 +894,7 @@ export default function HomeScreen() {
             )}
 
             {/* STATE D: NO FEASIBLE RECOVERY CARD (Requirement 8 & 9D) */}
-            {activeDisruption && !selectedRecoveryPlan && (recoveryAnalysisResult?.status === 'NO_FEASIBLE_RECOVERY' || (impactResult && impactResult.nodes.some(n => n.status === 'BROKEN' && n.priority === 'MUST_PRESERVE') && recoveryAnalysisResult?.plans?.length === 0)) && (
+            {activeDisruption && !selectedRecoveryPlan && (recoveryAnalysisResult?.status === 'NO_FEASIBLE_RECOVERY' || (impactResult && impactResult.nodes && impactResult.nodes.some(n => n.status === 'BROKEN' && n.priority === 'MUST_PRESERVE') && recoveryAnalysisResult?.plans?.length === 0)) && (
               <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-3xl p-5 shadow-lg space-y-3 animate-in fade-in duration-200">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div className="flex items-start gap-3.5 flex-1 min-w-0">
@@ -1165,7 +1161,7 @@ export default function HomeScreen() {
           currentDisruptionFingerprint={currentDisruptionFingerprint}
           onClose={() => setShowRecoveryModal(false)}
           onPlanSelected={(plan) => {
-            saveSelectedRecoveryPlan(journey.id, plan, currentDisruptionFingerprint, false);
+            saveSelectedRecoveryPlan(journey.id as number, plan, currentDisruptionFingerprint || "", false);
             setSelectedRecoveryPlanState(plan);
             setIsSelectedPlanUpdated(false);
             setShowRecoveryModal(false);

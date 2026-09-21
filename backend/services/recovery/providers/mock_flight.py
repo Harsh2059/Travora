@@ -1,135 +1,66 @@
 """
 Mock Flight Availability Provider
-Provides deterministic replacement candidates for broken or delayed flight nodes.
+
+Candidates come from route-specific simulated 2026 inventory.
+A provider name is never sufficient — origin, destination, date, and
+schedule must match the disrupted flight.
 """
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+
 from .base import BaseAvailabilityProvider, BaseBookingProvider
+from ..airports import airport_label, resolve_disrupted_route
+from ..flight_inventory import search_route_inventory, _travel_date_from_node
 
 
 class MockFlightProvider(BaseAvailabilityProvider, BaseBookingProvider):
-    """
-    Mock flight candidate search and booking execution provider.
-    Returns deterministic replacement flights and booking confirmations.
-    """
+    """Search simulated route inventory and book deterministic demo tickets."""
 
     def search_candidates(
         self,
         node: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
-        origin = node.get("origin") or "Mumbai Airport"
-        destination = node.get("destination") or "Punjab"
-        title = node.get("title") or "Flight"
-        
-        # Calculate baseline start time
-        start_time_str = node.get("startTime") or node.get("start_time")
-        base_dt = datetime.now() + timedelta(days=1)
-        if start_time_str:
-            try:
-                base_dt = datetime.fromisoformat(str(start_time_str).replace("Z", "+00:00"))
-            except Exception:
-                pass
-        
-        # Candidate 1: Next available flight (same day, +3.5h departure)
-        c1_start = base_dt + timedelta(hours=3, minutes=30)
-        c1_end = c1_start + timedelta(hours=2, minutes=30)
-        
-        # Candidate 2: Evening express flight (+6h departure)
-        c2_start = base_dt + timedelta(hours=6)
-        c2_end = c2_start + timedelta(hours=2, minutes=20)
+        ctx = context or {}
+        journey_nodes = ctx.get("journey_nodes") or []
+        known_unavail = ctx.get("known_unavailable") or node.get("known_unavailable") or []
+        inventory = ctx.get("inventory")
 
-        orig_provider = str(node.get("provider") or node.get("title") or "").strip()
+        origin_code, dest_code = resolve_disrupted_route(node, journey_nodes)
+        origin = origin_code or node.get("origin_airport") or node.get("origin")
+        destination = dest_code or node.get("destination_airport") or node.get("destination")
+        travel_date = _travel_date_from_node(node)
 
-        # Dynamic selection matrix based on original provider
-        if "indigo" in orig_provider.lower():
-            p1_name = "Air India Express"
-            p2_name = "Akasa Air"
-        elif "air india" in orig_provider.lower():
-            p1_name = "Indigo"
-            p2_name = "Vistara Prime"
-        elif "british" in orig_provider.lower() or "ba" in orig_provider.lower():
-            p1_name = "Virgin Atlantic"
-            p2_name = "Air India International"
-        elif "emirates" in orig_provider.lower() or "qatar" in orig_provider.lower():
-            p1_name = "Etihad Airways"
-            p2_name = "Gulf Air"
-        elif "vistara" in orig_provider.lower():
-            p1_name = "Air India Express"
-            p2_name = "Indigo"
-        elif "spicejet" in orig_provider.lower() or "akasa" in orig_provider.lower():
-            p1_name = "Indigo"
-            p2_name = "Air India Express"
-        else:
-            base_p = orig_provider if orig_provider and orig_provider.lower() not in ["flight", "booking", "leg"] else "Express Airline"
-            p1_name = f"{base_p} Express"
-            p2_name = f"{base_p} Prime"
-
-        return [
-            {
-                "candidate_id": f"cand_fl_{node.get('id')}_1",
-                "type": "FLIGHT",
-                "provider": p1_name,
-                "title": f"{p1_name} (Repl. for {title})",
-                "origin": origin,
-                "destination": destination,
-                "start_time": c1_start.isoformat(),
-                "end_time": c1_end.isoformat(),
-                "startDate": c1_start.strftime("%Y-%m-%d"),
-                "endDate": c1_end.strftime("%Y-%m-%d"),
-                "timeStatus": "FIXED",
-                "isTimeFlexible": False,
-                "cost": 4800,
-                "currency": "INR",
-                "booking_id": f"FL-RPL-{c1_start.strftime('%H%M')}",
-                "modification_fee": 500,
-                "cancellation_penalty": 0,
-                "estimated_refund": 3500,
-                "quality_tier": "RECOMMENDED",
-                "explanation": f"Next available non-stop flight connecting {origin} to {destination} without breaking downstream transfers."
-            },
-            {
-                "candidate_id": f"cand_fl_{node.get('id')}_2",
-                "type": "FLIGHT",
-                "provider": p2_name,
-                "title": f"{p2_name} (Repl. for {title})",
-                "origin": origin,
-                "destination": destination,
-                "start_time": c2_start.isoformat(),
-                "end_time": c2_end.isoformat(),
-                "startDate": c2_start.strftime("%Y-%m-%d"),
-                "endDate": c2_end.strftime("%Y-%m-%d"),
-                "timeStatus": "FIXED",
-                "isTimeFlexible": False,
-                "cost": 5900,
-                "currency": "INR",
-                "booking_id": f"FL-RPL-{c2_start.strftime('%H%M')}",
-                "modification_fee": 0,
-                "cancellation_penalty": 0,
-                "estimated_refund": 3500,
-                "quality_tier": "PREMIUM",
-                "explanation": f"Evening express flight connecting {origin} to {destination} with guaranteed seat allocation."
-            }
-        ]
+        return search_route_inventory(
+            origin,
+            destination,
+            travel_date,
+            inventory=inventory,
+            journey_nodes=journey_nodes,
+            disrupted_node=node,
+            known_unavailable=known_unavail,
+            require_direct=True,
+        )
 
     def revalidate(
         self,
         change: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Revalidate flight replacement availability and current price."""
-        cost = change.get("estimated_cost") or change.get("cost") or 4800.0
-        # Allow simulated unavailable check via context or item_metadata if requested
-        is_available = not bool(change.get("simulated_unavailable", False))
-        
+        details = change.get("new_details") or {}
+        cost = change.get("estimated_cost") or details.get("cost") or details.get("price") or 4800.0
+        is_available = not bool(change.get("simulated_unavailable", False) or details.get("available") is False)
+
         return {
             "available": is_available,
             "current_price": float(cost),
             "currency": "INR",
-            "provider": change.get("provider") or "MockFlightProvider",
+            "provider": change.get("provider") or details.get("provider") or "SimulatedFlightInventory",
             "checked_at": datetime.utcnow().isoformat() + "Z",
-            "booking_conditions": "Instant confirmation. Includes 15kg check-in baggage."
+            "booking_conditions": "Simulated availability. Demo inventory only — not live airline inventory.",
+            "simulated": True,
+            "availability_source": "simulated",
         }
 
     def book(
@@ -137,7 +68,6 @@ class MockFlightProvider(BaseAvailabilityProvider, BaseBookingProvider):
         change: Dict[str, Any],
         traveler_details: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Execute deterministic mock flight booking."""
         node_id_str = str(change.get("node_id") or "1")
         new_details = change.get("new_details") or {}
         title_str = str(
@@ -147,56 +77,76 @@ class MockFlightProvider(BaseAvailabilityProvider, BaseBookingProvider):
             or "Flight"
         )
 
-        # Prefer explicit candidate provider — never infer from title text
-        # (titles embed "Repl. for <original>" and substring matching corrupts airline).
         provider_name = (
             change.get("provider")
             or new_details.get("provider")
             or new_details.get("airline")
         )
         if not provider_name:
-            # Last-resort: leading token of new_title before " (Repl." / " ("
             base = title_str.split(" (Repl.")[0].split(" (")[0].strip()
-            provider_name = base if base and base.lower() != "flight" else "Express Airline"
+            provider_name = base if base and base.lower() != "flight" else "Simulated Airline"
 
         cost = float(
             change.get("estimated_cost")
             or new_details.get("cost")
+            or new_details.get("price")
             or change.get("cost")
             or 4800.0
         )
-        
-        # Deterministic PNR generation matching provider
-        h_val = abs(hash(f"{node_id_str}_{title_str}"))
+
+        origin = (
+            new_details.get("origin")
+            or change.get("origin")
+            or airport_label(new_details.get("origin_airport"), "Mumbai (BOM)")
+        )
+        destination = (
+            new_details.get("destination")
+            or change.get("destination")
+            or airport_label(new_details.get("destination_airport"))
+        )
+        origin_airport = new_details.get("origin_airport")
+        destination_airport = new_details.get("destination_airport")
+        fl_number = (
+            new_details.get("flight_number")
+            or change.get("flight_number")
+            or "SIM-UNSET"
+        )
+        dep = (
+            new_details.get("departure_time")
+            or new_details.get("start_time")
+            or change.get("start_time")
+            or (datetime.utcnow() + timedelta(hours=4)).isoformat() + "Z"
+        )
+        arr = (
+            new_details.get("arrival_time")
+            or new_details.get("end_time")
+            or change.get("end_time")
+            or (datetime.utcnow() + timedelta(hours=6, minutes=30)).isoformat() + "Z"
+        )
+
+        h_val = abs(hash(f"{node_id_str}_{fl_number}"))
         pnr_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         pnr_suffix = "".join(pnr_chars[(h_val // (36**i)) % 36] for i in range(4))
-        
         p_low = provider_name.lower()
         if "indigo" in p_low:
             pnr_prefix = "6E"
-            fl_number = f"6E {200 + (h_val % 700)}"
-        elif "vistara" in p_low:
-            pnr_prefix = "UK"
-            fl_number = f"UK {900 + (h_val % 90)}"
         elif "akasa" in p_low:
             pnr_prefix = "QP"
-            fl_number = f"QP {1100 + (h_val % 90)}"
+        elif "express" in p_low:
+            pnr_prefix = "IX"
         elif "air india" in p_low:
-            pnr_prefix = "AIX"
-            fl_number = f"IX {140 + (h_val % 50)}"
-        elif "british" in p_low or "ba" in p_low:
+            pnr_prefix = "AI"
+        elif "spice" in p_low:
+            pnr_prefix = "SG"
+        elif "british" in p_low:
             pnr_prefix = "BA"
-            fl_number = f"BA {100 + (h_val % 80)}"
         elif "virgin" in p_low:
             pnr_prefix = "VS"
-            fl_number = f"VS {300 + (h_val % 50)}"
         else:
             pnr_prefix = "FL"
-            fl_number = f"FL {500 + (h_val % 400)}"
-
         pnr = f"{pnr_prefix}{pnr_suffix}"[:7]
         ticket_num = f"098-{1000000000 + (h_val % 8999999999)}"
-        
+
         return {
             "success": True,
             "status": "BOOKED",
@@ -209,15 +159,21 @@ class MockFlightProvider(BaseAvailabilityProvider, BaseBookingProvider):
                 "flight_number": fl_number,
                 "seat": "14A",
                 "cabin_class": "Economy",
-                "origin": change.get("origin") or "Mumbai Airport (BOM)",
-                "destination": change.get("destination") or "Punjab",
-                "departure_time": change.get("start_time") or (datetime.utcnow() + timedelta(hours=4)).isoformat() + "Z",
-                "arrival_time": change.get("end_time") or (datetime.utcnow() + timedelta(hours=6, minutes=30)).isoformat() + "Z",
+                "origin": origin,
+                "destination": destination,
+                "origin_airport": origin_airport,
+                "destination_airport": destination_airport,
+                "departure_time": dep,
+                "arrival_time": arr,
+                "travel_date": new_details.get("travel_date"),
+                "duration": new_details.get("duration"),
                 "passenger_name": "Traveler (Demo User)",
                 "final_price": cost,
                 "currency": "INR",
                 "booking_status": "CONFIRMED",
-                "booked_at": datetime.utcnow().isoformat() + "Z"
+                "booked_at": datetime.utcnow().isoformat() + "Z",
+                "simulated": True,
+                "availability_source": "simulated",
+                "resource_id": new_details.get("resource_id") or fl_number,
             }
         }
-

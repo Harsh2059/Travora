@@ -39,6 +39,12 @@ with engine.connect() as conn:
         conn.commit()
     except Exception:
         pass
+    try:
+        from sqlalchemy import text
+        conn.execute(text("ALTER TABLE trips ADD COLUMN view_mode VARCHAR DEFAULT 'ORIGINAL'"))
+        conn.commit()
+    except Exception:
+        pass
 
 app = FastAPI(title="Travel Recovery Engine API")
 
@@ -303,14 +309,169 @@ def get_trip_details(trip_id: int, db: Session = Depends(get_db)):
             "item_metadata": it.item_metadata or {}
         }
 
+    # Original items: non-replacement items (or items prior to replacement)
+    original_items = [
+        it for it in all_trip_items
+        if not ((it.item_metadata or {}).get("is_replacement") or (it.item_metadata or {}).get("recovery_execution_id"))
+    ]
+
+    # Active disruptions
+    active_disruptions = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.trip_id == trip_id,
+        models.DisruptionEvent.status == "ACTIVE"
+    ).all()
+
+    # Recovery history
+    exec_history = db.query(models.RecoveryExecution).filter(
+        models.RecoveryExecution.trip_id == trip_id,
+        models.RecoveryExecution.status.in_(["COMPLETED", "PARTIALLY_COMPLETED"])
+    ).order_by(models.RecoveryExecution.created_at.asc()).all()
+
+    has_recovered = len(exec_history) > 0
+    demo_restored = any(e.demo_restored for e in exec_history)
+
+    # Use persistent view_mode from Trip record; fall back to computed value if column missing.
+    stored_view_mode = getattr(trip, "view_mode", None)
+    if demo_restored:
+        view_mode = "ORIGINAL"
+    elif stored_view_mode in ("ORIGINAL", "RECOVERED"):
+        # Respect user's explicit toggle, but RECOVERED is only valid when recovery exists
+        view_mode = stored_view_mode if (stored_view_mode == "ORIGINAL" or has_recovered) else "ORIGINAL"
+    else:
+        view_mode = "RECOVERED" if has_recovered else "ORIGINAL"
+
+    original_journey_payload = {"items": [serialize_item(it) for it in original_items]}
+    recovered_journey_payload = {"items": [serialize_item(it) for it in active_items]} if has_recovered else None
+    active_journey_payload = original_journey_payload if view_mode == "ORIGINAL" else (recovered_journey_payload or original_journey_payload)
+
+
+    disruption_list = [
+        {
+            "id": de.id,
+            "event_type": de.event_type,
+            "entity_id": de.entity_id,
+            "item_id": de.entity_id,
+            "status": de.status,
+            "timestamp": de.timestamp.isoformat() if de.timestamp else None,
+            "event_metadata": de.event_metadata or {}
+        }
+        for de in active_disruptions
+    ]
+
+    # Build enriched recovery_history with original_item_id and replacement_item_id
+    # Pre-load all replacement items for this trip (Python-level filtering, avoids SQLite JSON issues)
+    all_replacement_items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id
+    ).all()
+    # Build a map: execution_id → list of replacement ItineraryItem objects
+    exec_id_to_replacement_items: Dict[str, list] = {}
+    for ri in all_replacement_items:
+        meta = ri.item_metadata or {}
+        if isinstance(meta, dict) and meta.get("is_replacement"):
+            eid = meta.get("recovery_execution_id")
+            if eid:
+                exec_id_to_replacement_items.setdefault(eid, []).append(ri)
+    # Also build map: exec_id+journey_item_id → replacement item id
+    # journey_item_id == replaced_item_id in metadata
+    def find_replacement_for_original(exec_id: str, original_item_id: int) -> Optional[int]:
+        repl_list = exec_id_to_replacement_items.get(exec_id, [])
+        for ri in repl_list:
+            meta = ri.item_metadata or {}
+            if meta.get("replaced_item_id") == original_item_id:
+                return ri.id
+        # Fallback: first replacement item for this execution
+        if repl_list:
+            return repl_list[0].id
+        return None
+
+    enriched_history = []
+    for er in exec_history:
+        # Look up RecoveryExecutionItem rows for this execution
+        exec_items = db.query(models.RecoveryExecutionItem).filter(
+            models.RecoveryExecutionItem.execution_id == er.execution_id,
+            models.RecoveryExecutionItem.status == "BOOKED"
+        ).all()
+        for ei in exec_items:
+            original_id = ei.journey_item_id
+            replacement_id = find_replacement_for_original(er.execution_id, original_id) if original_id else None
+            enriched_history.append({
+                "execution_id": er.execution_id,
+                "plan_id": er.recovery_plan_id,
+                "status": er.status,
+                "executed_at": er.created_at.isoformat() if er.created_at else None,
+                "demo_restored": er.demo_restored,
+                "original_item_id": original_id,
+                "replacement_item_id": replacement_id,
+            })
+        # If no execution items found, still include basic history entry
+        if not exec_items:
+            enriched_history.append({
+                "execution_id": er.execution_id,
+                "plan_id": er.recovery_plan_id,
+                "status": er.status,
+                "executed_at": er.created_at.isoformat() if er.created_at else None,
+                "demo_restored": er.demo_restored,
+                "original_item_id": None,
+                "replacement_item_id": None,
+            })
+
+
     return {
         "id": trip.id,
         "title": trip.title,
         "version": trip.version or 1,
         "user_id": trip.user_id,
         "items": [serialize_item(it) for it in active_items],
-        "all_items": [serialize_item(it) for it in all_trip_items]
+        "original_items": [serialize_item(it) for it in original_items],
+        "all_items": [serialize_item(it) for it in all_trip_items],
+        "originalJourney": original_journey_payload,
+        "currentRecoveredJourney": recovered_journey_payload,
+        "activeJourney": active_journey_payload,
+        "view_mode": view_mode,
+        "viewMode": view_mode,
+        "active_disruptions": disruption_list,
+        "activeDisruptions": disruption_list,
+        "recovery_history": enriched_history
     }
+
+@app.patch("/api/trips/{trip_id}/view_mode")
+def toggle_view_mode(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Toggle view_mode between ORIGINAL and RECOVERED.
+    RECOVERED is only allowed when a completed recovery execution exists for the trip.
+    This endpoint does NOT mutate any itinerary items — it is purely a view preference toggle.
+    """
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    requested_mode = str(payload.get("view_mode", "ORIGINAL")).upper()
+    if requested_mode not in ("ORIGINAL", "RECOVERED"):
+        raise HTTPException(status_code=400, detail="view_mode must be 'ORIGINAL' or 'RECOVERED'")
+
+    # Only allow RECOVERED mode when a completed recovery execution exists
+    if requested_mode == "RECOVERED":
+        has_recovery = db.query(models.RecoveryExecution).filter(
+            models.RecoveryExecution.trip_id == trip_id,
+            models.RecoveryExecution.status.in_(["COMPLETED", "PARTIALLY_COMPLETED"])
+        ).count() > 0
+        if not has_recovery:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot switch to RECOVERED view: no completed recovery execution exists for this trip."
+            )
+
+    # Persist the view_mode preference to the Trip record
+    if hasattr(trip, "view_mode"):
+        trip.view_mode = requested_mode
+        db.commit()
+
+    return {"trip_id": trip_id, "view_mode": requested_mode}
+
 
 # ============================================================================
 # PHASE 2: ITINERARY DIGITAL TWIN & DEPENDENCY GRAPH
@@ -352,8 +513,8 @@ def trigger_disruption(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    event_type = event_payload.get("event_type") or event_payload.get("type") or "FLIGHT_CANCELLED"
-    entity_id = event_payload.get("entity_id") or event_payload.get("affected_node_id")
+    event_type = event_payload.get("event_type") or event_payload.get("disruption_type") or event_payload.get("type") or "FLIGHT_CANCELLED"
+    entity_id = event_payload.get("entity_id") or event_payload.get("item_id") or event_payload.get("affected_node_id")
     event_metadata = dict(event_payload.get("event_metadata", {}))
 
     if "detected_at" in event_payload:
@@ -622,6 +783,83 @@ def get_trip_impact(trip_id: int, db: Session = Depends(get_db)):
 # ============================================================================
 # PART 4: RECOVERY ENGINE ENDPOINTS
 # ============================================================================
+def _get_known_unavailable_for_trip(db: Session, trip_id: int) -> List[Dict[str, Any]]:
+    """Helper to assemble precise resource-level known_unavailable entries for a trip."""
+    known = []
+
+    # 1. DisruptionEvents
+    disruptions = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.trip_id == trip_id
+    ).all()
+    for de in disruptions:
+        meta = de.event_metadata or {}
+        booking_id = meta.get("booking_id") or meta.get("pnr")
+        flight_num = meta.get("flight_number") or meta.get("train_number")
+        res_id = meta.get("resource_id")
+        provider_name = meta.get("provider") or meta.get("airline")
+
+        if de.entity_id:
+            item = db.query(models.ItineraryItem).filter(models.ItineraryItem.id == de.entity_id).first()
+            if item:
+                item_meta = item.item_metadata or {}
+                if not booking_id:
+                    booking_id = item.booking_id or item_meta.get("pnr") or item_meta.get("booking_reference")
+                if not flight_num:
+                    flight_num = item_meta.get("flight_number") or item_meta.get("train_number")
+                if not res_id:
+                    res_id = item_meta.get("resource_id")
+                if not provider_name:
+                    provider_name = item.provider
+
+        entry = {
+            "node_id": str(de.entity_id) if de.entity_id else None,
+            "booking_id": booking_id,
+            "flight_number": flight_num,
+            "resource_id": res_id,
+            "provider": provider_name,
+            "reason": f"DISRUPTION_{de.status}"
+        }
+        if any(entry.values()):
+            known.append(entry)
+
+    # 2. Replaced or cancelled items
+    replaced = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id,
+        models.ItineraryItem.status.in_(["REPLACED", "CANCELLED", "RESTORED_DEMO"])
+    ).all()
+    for it in replaced:
+        item_meta = it.item_metadata or {}
+        entry = {
+            "node_id": str(it.id),
+            "booking_id": it.booking_id or item_meta.get("pnr") or item_meta.get("booking_reference"),
+            "flight_number": item_meta.get("flight_number") or item_meta.get("train_number"),
+            "resource_id": item_meta.get("resource_id"),
+            "provider": it.provider,
+            "reason": it.status
+        }
+        if any(entry.values()):
+            known.append(entry)
+
+    # 3. RecoveryExecutions history
+    execs = db.query(models.RecoveryExecution).filter(
+        models.RecoveryExecution.trip_id == trip_id,
+        models.RecoveryExecution.status.in_(["COMPLETED", "PARTIALLY_COMPLETED"])
+    ).all()
+    for er in execs:
+        er_meta = er.execution_metadata or {}
+        hist = er_meta.get("recovery_history") or []
+        for h in hist:
+            if isinstance(h, dict):
+                known.append({
+                    "booking_id": h.get("disrupted_booking_id"),
+                    "node_id": str(h.get("disrupted_node_id")) if h.get("disrupted_node_id") else None,
+                    "provider": h.get("disrupted_provider"),
+                    "reason": "RECOVERY_HISTORY"
+                })
+
+    return known
+
+
 LATEST_PART4_RECOVERY: Dict[int, Any] = {}
 
 @app.post("/api/trips/{trip_id}/recovery/analyze")
@@ -684,7 +922,12 @@ def analyze_part4_recovery_endpoint(
                 "cost": it.cost,
                 "currency": it.currency,
                 "priority": it.priority or "MUST_PRESERVE",
-                "status": it.status
+                "flexibility": it.flexibility,
+                "status": it.status,
+                "booking_id": it.booking_id,
+                "flight_number": (it.item_metadata or {}).get("flight_number") if isinstance(it.item_metadata, dict) else None,
+                "resource_id": (it.item_metadata or {}).get("resource_id") if isinstance(it.item_metadata, dict) else it.booking_id,
+                "item_metadata": it.item_metadata or {},
             }
             for it in items
         ]
@@ -712,12 +955,15 @@ def analyze_part4_recovery_endpoint(
     preference = payload.get("preference", "PRESERVE_PRIORITIES")
     max_budget = payload.get("max_budget")
 
+    known_unavailable = _get_known_unavailable_for_trip(db, trip_id)
+
     recovery_res = analyze_part4_recovery(
         journey=journey,
         impact_result=impact_res_dict,
         disruptions=disruption_dicts,
         preference=preference,
-        max_budget=max_budget
+        max_budget=max_budget,
+        known_unavailable=known_unavailable
     )
 
     # ── B: Attach disruption versioning so frontend can detect stale selected plans ──
@@ -728,6 +974,7 @@ def analyze_part4_recovery_endpoint(
     fp = "_".join(str(i) for i in active_disruption_ids)
     recovery_res.disruption_ids = active_disruption_ids
     recovery_res.disruption_fingerprint = fp
+
 
     res_dump = recovery_res.model_dump()
     LATEST_PART4_RECOVERY[trip_id] = res_dump
@@ -741,6 +988,18 @@ def get_part4_recovery(trip_id: int, db: Session = Depends(get_db)):
     return analyze_part4_recovery_endpoint(trip_id=trip_id, payload={}, db=db)
 
 
+@app.post("/api/trips/{trip_id}/recovery/options")
+def get_recovery_options_endpoint(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db)
+):
+    """Endpoint alias for fetching recovery candidate options for a trip."""
+    res = analyze_part4_recovery_endpoint(trip_id=trip_id, payload=payload, db=db)
+    plans = res.get("plans", [])
+    return {"options": plans, "plans": plans, **res}
+
+
 # ============================================================================
 # PART 5: BOOKING & EXECUTION ENGINE ENDPOINTS
 # ============================================================================
@@ -751,24 +1010,14 @@ def revalidate_recovery_endpoint(
     db: Session = Depends(get_db)
 ):
     """
-    Revalidates real-time candidate availability and pricing for a selected Part 4 plan.
-    Does NOT execute bookings. Checks disruption fingerprint for staleness.
+    Revalidates a proposed Part 4 Recovery Plan before execution.
     """
-    selected_plan = payload.get("selectedPlan") or payload.get("plan") or {}
-    disruption_fp = payload.get("disruption_fingerprint") or payload.get("fingerprint") or ""
-
-    if not selected_plan:
-        raise HTTPException(status_code=400, detail="selectedPlan is required for revalidation")
-
+    plan = payload.get("selectedPlan") or payload.get("plan") or payload.get("option") or {}
+    fp = payload.get("disruption_fingerprint") or payload.get("fingerprint") or ""
     try:
-        return revalidate_plan(
-            db=db,
-            trip_id=trip_id,
-            plan=selected_plan,
-            disruption_fingerprint=disruption_fp
-        )
+        val = revalidate_plan(db, trip_id, plan, fp)
+        return val
     except Exception as e:
-        print(f"ERROR in revalidate_recovery_endpoint: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Revalidation error: {str(e)}")
@@ -784,7 +1033,7 @@ def execute_recovery_endpoint(
     Executes booking replacements through provider abstraction after explicit user confirmation.
     Enforces idempotency and stale plan protection. Updates itinerary DB upon success.
     """
-    selected_plan = payload.get("selectedPlan") or payload.get("plan") or {}
+    selected_plan = payload.get("selectedPlan") or payload.get("plan") or payload.get("option") or {}
     disruption_fp = payload.get("disruption_fingerprint") or payload.get("fingerprint") or ""
     execution_id = payload.get("execution_id")
 
@@ -792,13 +1041,43 @@ def execute_recovery_endpoint(
         raise HTTPException(status_code=400, detail="selectedPlan is required for execution")
 
     try:
-        return execute_plan(
+        exec_res = execute_plan(
             db=db,
             trip_id=trip_id,
             plan=selected_plan,
             disruption_fingerprint=disruption_fp,
             execution_id=execution_id
         )
+        # Persist view_mode=RECOVERED on the trip so subsequent GETs reflect the new state
+        trip_rec = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+        if trip_rec and hasattr(trip_rec, "view_mode"):
+            trip_rec.view_mode = "RECOVERED"
+            db.commit()
+
+        # Fetch complete updated journey details to return complete state payload
+        trip_details = get_trip_details(trip_id, db)
+        exec_res["originalJourney"] = {
+            "id": trip_id,
+            "title": trip_details.get("title"),
+            "items": trip_details.get("original_items"),
+            "nodes": trip_details.get("original_items")
+        }
+        exec_res["currentRecoveredJourney"] = {
+            "id": trip_id,
+            "title": trip_details.get("title"),
+            "items": trip_details.get("items"),
+            "nodes": trip_details.get("items")
+        }
+        exec_res["activeJourney"] = {
+            "id": trip_id,
+            "title": trip_details.get("title"),
+            "items": trip_details.get("items"),
+            "nodes": trip_details.get("items")
+        }
+        exec_res["viewMode"] = "RECOVERED"
+        exec_res["recoveryHistory"] = trip_details.get("recovery_history")
+        exec_res["activeDisruptions"] = trip_details.get("active_disruptions")
+        return exec_res
     except Exception as e:
         print(f"ERROR in execute_recovery_endpoint: {e}")
         import traceback

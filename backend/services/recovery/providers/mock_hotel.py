@@ -5,7 +5,7 @@ Provides deterministic replacement candidates for hotel nodes.
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from .base import BaseAvailabilityProvider, BaseBookingProvider
+from .base import BaseAvailabilityProvider, BaseBookingProvider, is_candidate_unavailable
 
 
 class MockHotelProvider(BaseAvailabilityProvider, BaseBookingProvider):
@@ -20,69 +20,83 @@ class MockHotelProvider(BaseAvailabilityProvider, BaseBookingProvider):
     ) -> List[Dict[str, Any]]:
         location = node.get("location") or node.get("destination") or "Noida"
         title = node.get("title") or "Hotel"
-        
         start_date = node.get("startDate") or "2026-09-20"
         end_date = node.get("endDate") or "2026-09-22"
         
-        orig_provider = str(node.get("provider") or node.get("title") or "").strip()
-        p_low = orig_provider.lower()
-        
-        if "taj" in p_low:
-            h1_name = "Oberoi Grand"
-            h2_name = "ITC Maurya"
-        elif "radisson" in p_low:
-            h1_name = "JW Marriott"
-            h2_name = "Hyatt Regency"
-        elif "hyatt" in p_low:
-            h1_name = "Radisson Blu Resort"
-            h2_name = "Taj Palace"
-        elif "ram" in p_low or "hotel ram" in p_low:
-            h1_name = "Radisson Blu Resort"
-            h2_name = "Hyatt Regency"
-        else:
-            h1_name = f"Radisson Blu ({location})" if "radisson" not in p_low else f"JW Marriott ({location})"
-            h2_name = f"Hyatt Regency ({location})" if "hyatt" not in p_low else f"Taj Palace ({location})"
+        ctx = context or {}
+        known_unavail = ctx.get("known_unavailable") or node.get("known_unavailable") or []
 
-        return [
+        cands_raw = [
             {
-                "candidate_id": f"cand_ht_{node.get('id')}_1",
+                "candidate_id": f"cand_ht_{node.get('id')}_court",
                 "type": "HOTEL",
-                "provider": h1_name,
-                "title": f"{h1_name} (Repl. for {title})",
+                "provider": "Courtyard Convention Hotel",
+                "title": f"Courtyard Convention Hotel (Repl. for {title})",
                 "location": location,
                 "startDate": start_date,
                 "endDate": end_date,
                 "timeStatus": "UNKNOWN",
                 "isTimeFlexible": True,
-                "cost": 7500,
+                "cost": 14200,
                 "currency": "INR",
-                "booking_id": f"HTL-{location[:3].upper()}-990",
-                "modification_fee": 300,
+                "booking_id": "HTL-COURT-402",
+                "resource_id": "HTL-COURT-402",
+                "modification_fee": 200,
                 "cancellation_penalty": 0,
-                "estimated_refund": 6000,
+                "estimated_refund": 10000,
                 "quality_tier": "RECOMMENDED",
-                "explanation": f"Seamless stay replacement at {h1_name} ({location}) matching original dates."
+                "explanation": f"Business convention stay replacement at Courtyard Convention ({location})."
             },
             {
-                "candidate_id": f"cand_ht_{node.get('id')}_2",
+                "candidate_id": f"cand_ht_{node.get('id')}_grand",
                 "type": "HOTEL",
-                "provider": h2_name,
-                "title": f"{h2_name} ({location})",
+                "provider": "Heritage Grand Palace",
+                "title": f"Heritage Grand Palace (Repl. for {title})",
                 "location": location,
                 "startDate": start_date,
                 "endDate": end_date,
                 "timeStatus": "UNKNOWN",
                 "isTimeFlexible": True,
-                "cost": 9200,
+                "cost": 18500,
                 "currency": "INR",
-                "booking_id": f"HTL-{location[:3].upper()}-771",
+                "booking_id": "HTL-GRAND-401",
+                "resource_id": "HTL-GRAND-401",
+                "modification_fee": 300,
+                "cancellation_penalty": 0,
+                "estimated_refund": 10000,
+                "quality_tier": "PREMIUM",
+                "explanation": f"Luxury stay replacement at Heritage Grand Palace ({location})."
+            },
+            {
+                "candidate_id": f"cand_ht_{node.get('id')}_marriott",
+                "type": "HOTEL",
+                "provider": "Marriott Business Hotel",
+                "title": f"Marriott Business Hotel (Repl. for {title})",
+                "location": location,
+                "startDate": start_date,
+                "endDate": end_date,
+                "timeStatus": "UNKNOWN",
+                "isTimeFlexible": True,
+                "cost": 16000,
+                "currency": "INR",
+                "booking_id": "HTL-MARRIOTT-503",
+                "resource_id": "HTL-MARRIOTT-503",
                 "modification_fee": 0,
                 "cancellation_penalty": 0,
-                "estimated_refund": 6000,
+                "estimated_refund": 10000,
                 "quality_tier": "PREMIUM",
-                "explanation": f"Luxury stay replacement at {h2_name} ({location}) with flexible check-in."
+                "explanation": f"Executive stay replacement at Marriott Business Hotel ({location})."
             }
         ]
+
+        valid_cands = [c for c in cands_raw if not is_candidate_unavailable(c, known_unavail)]
+        
+        node_booking_id = str(node.get("booking_id") or "").strip().lower()
+        if node_booking_id:
+            valid_cands = [c for c in valid_cands if str(c.get("booking_id") or "").strip().lower() != node_booking_id]
+
+        return valid_cands
+
 
     def revalidate(
         self,

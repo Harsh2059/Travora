@@ -25,6 +25,12 @@ from .providers import (
     MockCabProvider,
     MockActivityProvider,
 )
+from .feasibility import (
+    MAX_VISIBLE_RECOVERY_OPTIONS,
+    filter_flight_candidates,
+    rank_flight_candidates,
+    type_label,
+)
 
 
 def analyze_part4_recovery(
@@ -33,6 +39,7 @@ def analyze_part4_recovery(
     disruptions: Optional[List[Dict[str, Any]]] = None,
     preference: str = "PRESERVE_PRIORITIES",
     max_budget: Optional[float] = None,
+    known_unavailable: Optional[List[Any]] = None,
 ) -> Part4RecoveryResult:
     """
     Core Part 4 Recovery Analysis Function.
@@ -41,6 +48,9 @@ def analyze_part4_recovery(
       Candidates -> Hard constraints -> MUST_PRESERVE check -> Cost calculation -> Deduplicate -> Budget filter -> Feasible plans -> User preference ordering.
     """
     trip_id = journey.get("id") or 1
+    
+    # Extract known_unavailable list if not passed explicitly
+    known_unavail_list = known_unavailable or journey.get("known_unavailable") or (impact_result.get("known_unavailable") if impact_result else None) or []
     
     # 1. Check if journey is disrupted
     journey_status = impact_result.get("journey_status") if impact_result else "NORMAL"
@@ -111,7 +121,14 @@ def analyze_part4_recovery(
         n_id_str = str(node.get("id"))
         n_type = str(node.get("type", "")).upper()
         provider = providers.get(n_type)
-        cands = provider.search_candidates(node) if provider else []
+        search_ctx = {
+            "known_unavailable": known_unavail_list,
+            "journey_nodes": nodes,
+            "inventory": journey.get("flight_inventory"),
+        }
+        cands = provider.search_candidates(node, context=search_ctx) if provider else []
+        if n_type == "FLIGHT":
+            cands = rank_flight_candidates(filter_flight_candidates(cands, node, nodes))
         
         # If node priority is MUST_PRESERVE and zero candidates exist
         node_priority = str(node.get("priority") or "MUST_PRESERVE").upper()
@@ -119,6 +136,7 @@ def analyze_part4_recovery(
             has_unrecoverable_must_preserve = True
             
         node_candidates[n_id_str] = cands
+
 
     if has_unrecoverable_must_preserve:
         return Part4RecoveryResult(
@@ -129,7 +147,7 @@ def analyze_part4_recovery(
             plans=[],
             priority_preserving_count=0,
             alternative_count=0,
-            message="No feasible recovery plan found. A critical journey requirement can no longer be preserved with the available recovery options."
+            message="NO FEASIBLE RECOVERY. A critical journey requirement can no longer be preserved with the available recovery options."
         )
 
     # 4. Form Candidate Combinations Across Affected Nodes
@@ -146,7 +164,7 @@ def analyze_part4_recovery(
             plans=[],
             priority_preserving_count=0,
             alternative_count=0,
-            message="No feasible recovery plan found. A critical journey requirement can no longer be preserved with the available recovery options."
+            message="NO FEASIBLE RECOVERY. A critical journey requirement can no longer be preserved with the available recovery options."
         )
 
     # Generate Cartesian product combinations (up to 20 max)
@@ -176,7 +194,9 @@ def analyze_part4_recovery(
                 new_details=None,
                 estimated_cost=0.0,
                 estimated_refund=0.0,
-                explanation=f"Existing {n.get('title')} booking remains unchanged."
+                explanation=(
+                    f"Would keep {type_label(n)} — still feasible after the replacement arrival."
+                )
             ))
             
         # Replaced affected nodes according to candidate combo
@@ -235,8 +255,8 @@ def analyze_part4_recovery(
                 type=cand.get("type") or node.get("type") or "FLIGHT",
                 origin=cand.get("origin") or node.get("origin"),
                 destination=cand.get("destination") or node.get("destination"),
-                start_time=cand.get("start_time") or cand.get("startTime"),
-                end_time=cand.get("end_time") or cand.get("endTime"),
+                start_time=cand.get("start_time") or cand.get("startTime") or cand.get("departure_time"),
+                end_time=cand.get("end_time") or cand.get("endTime") or cand.get("arrival_time"),
                 estimated_cost=single_add_cost,
                 estimated_refund=single_refund,
                 explanation=cand.get("explanation", f"Replacement candidate for {node.get('title')}")
@@ -273,6 +293,25 @@ def analyze_part4_recovery(
         primary_cand_title = combo[0].get("provider") or combo[0].get("title", "Option")
         plan_title = f"Priority-Preserving ({primary_cand_title})" if idx == 0 else f"Alternative ({primary_cand_title})"
 
+        combo_would_change = []
+        combo_would_keep = []
+        for cand in combo:
+            for label in cand.get("would_change") or []:
+                if label not in combo_would_change:
+                    combo_would_change.append(label)
+            for label in cand.get("would_keep") or [type_label(n) for n in intact_nodes]:
+                if label not in combo_would_keep and label not in combo_would_change:
+                    combo_would_keep.append(label)
+        if not combo_would_change:
+            combo_would_change = [type_label(n) for n, _, _ in affected_nodes]
+        if not combo_would_keep:
+            combo_would_keep = [type_label(n) for n in intact_nodes]
+
+        keep_change_summary = (
+            f"Would change: {', '.join(combo_would_change) or '—'}. "
+            f"Would keep: {', '.join(combo_would_keep) or '—'}."
+        )
+        cand_expl = combo[0].get("explanation", "Feasible recovery option preserving your journey.")
         plan = Part4RecoveryPlan(
             id=f"plan_p4_{idx+1}_{trip_id}",
             trip_id=trip_id,
@@ -288,12 +327,14 @@ def analyze_part4_recovery(
             cost_estimate=cost_est,
             estimated_additional_cost=net_additional_cost,
             estimated_refund=round(est_refund_sum or 0.0, 2),
-            explanation=combo[0].get("explanation", "Feasible recovery option preserving your journey."),
+            explanation=f"{cand_expl} {keep_change_summary}",
             is_recommended=(idx == 0),
             total_transfers=total_transfers,
             total_duration_minutes=total_duration,
             total_changes_count=len(changed_ids),
-            is_direct=all_direct
+            is_direct=all_direct,
+            would_change=combo_would_change,
+            would_keep=combo_would_keep,
         )
         candidate_plans.append(plan)
 
@@ -306,7 +347,7 @@ def analyze_part4_recovery(
             plans=[],
             priority_preserving_count=0,
             alternative_count=0,
-            message="No feasible recovery plan found. A critical journey requirement can no longer be preserved with the available recovery options."
+            message="NO FEASIBLE RECOVERY. A critical journey requirement can no longer be preserved with the available recovery options."
         )
 
     # 5. Budget Filtering (Applied BEFORE Preference Ordering)
@@ -361,16 +402,25 @@ def analyze_part4_recovery(
             p.is_recommended = False
         plans_within_budget[0].is_recommended = True
 
-    p_preserving_cnt = len([p for p in plans_within_budget if p.category == RecoveryPlanCategory.PRIORITY_PRESERVING])
-    alt_cnt = len(plans_within_budget) - p_preserving_cnt
+    total_feasible = len(plans_within_budget)
+    visible_plans = plans_within_budget[:MAX_VISIBLE_RECOVERY_OPTIONS]
+    additional_plans = plans_within_budget[MAX_VISIBLE_RECOVERY_OPTIONS:]
+    p_preserving_cnt = len([p for p in visible_plans if p.category == RecoveryPlanCategory.PRIORITY_PRESERVING])
+    alt_cnt = len(visible_plans) - p_preserving_cnt
 
     return Part4RecoveryResult(
         trip_id=trip_id,
         impact_status="DISRUPTED",
         status=RecoveryAnalysisStatus.OPTIONS_AVAILABLE,
-        total_feasible_plans=len(plans_within_budget),
-        plans=plans_within_budget,
+        total_feasible_plans=total_feasible,
+        plans=visible_plans,
+        additional_plans=additional_plans,
+        default_visible_count=MAX_VISIBLE_RECOVERY_OPTIONS,
         priority_preserving_count=p_preserving_cnt,
         alternative_count=alt_cnt,
-        message=f"We found {len(plans_within_budget)} feasible recovery option{'s' if len(plans_within_budget) != 1 else ''} to restore your journey."
+        message=(
+            f"We found {total_feasible} feasible recovery option"
+            f"{'s' if total_feasible != 1 else ''} to restore your journey. "
+            "Availability is simulated (not live airline inventory)."
+        )
     )
