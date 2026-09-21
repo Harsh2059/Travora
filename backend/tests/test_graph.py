@@ -108,18 +108,18 @@ def test_graph_builder_dynamic_inference():
     G = build_dependency_graph(items)
     
     assert len(G.nodes) == 6
-    assert G.has_edge(1, 2)
-    assert G.edges[1, 2]["dependency_type"] == DependencyType.CONNECTION
+    assert G.has_edge("1", "2")
+    assert G.edges["1", "2"]["dependency_type"] == DependencyType.CONNECTION
     
-    assert G.has_edge(2, 3)
-    assert G.edges[2, 3]["dependency_type"] == DependencyType.TRANSFER
+    assert G.has_edge("2", "3")
+    assert G.edges["2", "3"]["dependency_type"] == DependencyType.TRANSFER
     
-    assert G.has_edge(3, 4)
-    assert G.edges[3, 4]["dependency_type"] == DependencyType.ACCOMMODATION
+    assert G.has_edge("3", "4")
+    assert G.edges["3", "4"]["dependency_type"] == DependencyType.ACCOMMODATION
     
     # Event during stay or after hotel
-    assert G.has_edge(4, 5)
-    assert G.edges[4, 5]["dependency_type"] == DependencyType.EVENT
+    assert G.has_edge("4", "5")
+    assert G.edges["4", "5"]["dependency_type"] == DependencyType.EVENT
 
 def test_graph_queries():
     items = create_sample_itinerary()
@@ -129,25 +129,25 @@ def test_graph_queries():
     # Critical items
     critical = queries.get_critical_items()
     assert len(critical) == 1
-    assert critical[0]["id"] == 5
+    assert str(critical[0]["id"]) == "5"
     assert critical[0]["priority"] == "CRITICAL"
     
     # Downstream of flight A (id=1)
-    downstream = queries.get_downstream_items(1)
-    assert 2 in downstream
-    assert 5 in downstream # Conference is downstream of flight A
+    downstream = queries.get_downstream_items("1")
+    assert "2" in downstream
+    assert "5" in downstream # Conference is downstream of flight A
     
     # Upstream of conference (id=5)
-    upstream = queries.get_upstream_items(5)
-    assert 1 in upstream
-    assert 2 in upstream
-    assert 4 in upstream
+    upstream = queries.get_upstream_items("5")
+    assert "1" in upstream
+    assert "2" in upstream
+    assert "4" in upstream
     
     # Path
-    path = queries.get_path_between_items(1, 5)
+    path = queries.get_path_between_items("1", "5")
     assert path is not None
-    assert path[0] == 1
-    assert path[-1] == 5
+    assert path[0] == "1"
+    assert path[-1] == "5"
 
 def test_graph_validation_acyclic():
     items = create_sample_itinerary()
@@ -160,7 +160,7 @@ def test_graph_validation_cycle_detection():
     items = create_sample_itinerary()
     G = build_dependency_graph(items)
     # introduce a cycle
-    G.add_edge(5, 1, dependency_type="TEMPORAL")
+    G.add_edge("5", "1", dependency_type="TEMPORAL")
     with pytest.raises(GraphValidationError) as exc_info:
         validate_graph(G)
     assert "cycle" in str(exc_info.value).lower()
@@ -168,7 +168,7 @@ def test_graph_validation_cycle_detection():
 def test_graph_validation_invalid_dependency_type():
     items = create_sample_itinerary()
     G = build_dependency_graph(items)
-    G.add_edge(1, 4, dependency_type="UNKNOWN_TYPE")
+    G.add_edge("1", "4", dependency_type="UNKNOWN_TYPE")
     with pytest.raises(GraphValidationError) as exc_info:
         validate_graph(G)
     assert "invalid dependency type" in str(exc_info.value).lower()

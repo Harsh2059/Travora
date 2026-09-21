@@ -24,6 +24,12 @@ import {
   resetAllSimulations,
 } from '../store/journeyStore';
 import type { Journey } from '../types';
+import {
+  subscribeToTripUpdates,
+  getPersistedViewMode,
+  subscribeToViewMode,
+} from '../store/tripSync';
+import type { ViewMode } from '../store/tripSync';
 
 type DisruptionCategory =
   | 'FLIGHT_CANCELLED'
@@ -137,8 +143,9 @@ export default function AdminConsoleScreen() {
 
   const [tripsList, setTripsList] = useState<Array<{ id: number; title: string; version: number }>>([]);
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
-  const [journey, setJourney] = useState<Journey | null>(null);
+  const [journey, setJourney] = useState<Journey & { originalNodes?: import('../types').JourneyNode[] } | null>(null);
   const [loadingTrip, setLoadingTrip] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('RECOVERED');
 
   // Form selections
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
@@ -171,8 +178,8 @@ export default function AdminConsoleScreen() {
       .catch((err) => console.error('Failed to load trips for admin:', err));
   }, []);
 
-  // 2. Load journey items & disruption history when selectedTripId changes
-  useEffect(() => {
+  // 2. Load journey items & disruption history
+  const fetchSelectedTrip = React.useCallback(() => {
     if (!selectedTripId) return;
 
     setLoadingTrip(true);
@@ -186,56 +193,8 @@ export default function AdminConsoleScreen() {
         setJourney(j);
         const historyList = history || [];
         setDisruptionHistory(historyList);
-        const activeNodes = getActiveBookingNodes(j?.nodes);
-
-        const activeDisp = historyList.find((d: any) => (d.status || 'ACTIVE') === 'ACTIVE') ?? null;
-
-        if (activeDisp) {
-          // RESTORE active simulation from backend source of truth
-          const entityIdStr = String(activeDisp.entity_id || activeDisp.affected_node_id || '');
-          const matchedNode = activeNodes.find(
-            (n) => n.id === entityIdStr || String(n.backendId) === entityIdStr
-          );
-
-          if (matchedNode) {
-            setSelectedNodeId(matchedNode.id);
-          } else if (activeNodes.length) {
-            setSelectedNodeId(activeNodes[0].id);
-          }
-
-          const evType = activeDisp.event_type || activeDisp.type;
-          if (evType) {
-            setDisruptionType(evType as DisruptionCategory);
-          }
-
-          const ts = activeDisp.timestamp || activeDisp.detected_at;
-          if (ts) {
-            setDetectedAt(formatDateForInput(ts));
-          }
-
-          const meta = activeDisp.event_metadata || {};
-          const rsn = meta.reason || activeDisp.reason;
-          if (rsn) setReason(rsn);
-
-          const dm = meta.delay_minutes ?? activeDisp.delay_minutes;
-          if (dm !== undefined && dm !== null) {
-            setDelayMinutes(Number(dm));
-          }
-        } else {
-          // Clean initial state if NO active disruption exists
-          if (activeNodes.length > 0) {
-            const firstNode = activeNodes[0];
-            setSelectedNodeId(firstNode.id);
-
-            const opts = getDisruptionOptions(firstNode.type);
-            if (opts.length > 0) setDisruptionType(opts[0].value);
-          } else {
-            setSelectedNodeId('');
-          }
-          setDetectedAt(formatNowForInput());
-          setReason('Operational disruption');
-          setDelayMinutes(120);
-        }
+        
+        // Let the effect that depends on journey/viewMode handle reconciliation
       })
       .catch((err) => {
         console.error('Failed to load trip details for admin:', err);
@@ -244,11 +203,69 @@ export default function AdminConsoleScreen() {
       .finally(() => setLoadingTrip(false));
   }, [selectedTripId]);
 
-  // 3. Update disruption type options when selected node changes
-  const activeBookingNodes = getActiveBookingNodes(journey?.nodes);
-  const selectedNode =
-    activeBookingNodes.find((n) => n.id === selectedNodeId) ||
-    journey?.nodes.find((n) => n.id === selectedNodeId && !['REPLACED', 'RESTORED_DEMO', 'CANCELLED'].includes((n.status || '').toUpperCase()));
+  // Initial fetch and subscription to updates
+  useEffect(() => {
+    if (!selectedTripId) return;
+    
+    // Sync view mode
+    setViewMode(getPersistedViewMode(selectedTripId));
+
+    fetchSelectedTrip();
+
+    const unsubUpdates = subscribeToTripUpdates(selectedTripId, fetchSelectedTrip);
+    const unsubViewMode = subscribeToViewMode(selectedTripId, (mode) => setViewMode(mode));
+
+    return () => {
+      unsubUpdates();
+      unsubViewMode();
+    };
+  }, [selectedTripId, fetchSelectedTrip]);
+
+  // 3. Reconcile Selected Booking whenever derived active journey changes
+  const activeJourneyNodes = viewMode === 'ORIGINAL' && journey?.originalNodes ? journey.originalNodes : journey?.nodes;
+  const activeBookingNodes = getActiveBookingNodes(activeJourneyNodes);
+  
+  const selectedNode = activeBookingNodes.find((n) => n.id === selectedNodeId) ||
+    activeJourneyNodes?.find((n) => n.id === selectedNodeId && !['REPLACED', 'RESTORED_DEMO', 'CANCELLED'].includes((n.status || '').toUpperCase()));
+
+  useEffect(() => {
+    if (loadingTrip || !journey) return;
+
+    // Check if the current selected node is still valid
+    const stillValid = activeBookingNodes.some(n => n.id === selectedNodeId);
+    const activeDisp = disruptionHistory.find((d: any) => (d.status || 'ACTIVE') === 'ACTIVE') ?? null;
+
+    if (!stillValid && activeBookingNodes.length > 0) {
+      // If we have an active disruption, try to select its node
+      if (activeDisp) {
+        const entityIdStr = String(activeDisp.entity_id || activeDisp.affected_node_id || '');
+        const matchedNode = activeBookingNodes.find(
+          (n) => n.id === entityIdStr || String(n.backendId) === entityIdStr
+        );
+        if (matchedNode) {
+          setSelectedNodeId(matchedNode.id);
+          return;
+        }
+      }
+      // Otherwise fallback to first active node
+      setSelectedNodeId(activeBookingNodes[0].id);
+    } else if (activeBookingNodes.length === 0) {
+      setSelectedNodeId('');
+    }
+
+    if (activeDisp && stillValid) {
+       // Hydrate disruption form from active disruption
+       const evType = activeDisp.event_type || activeDisp.type;
+       if (evType && evType !== disruptionType) setDisruptionType(evType as DisruptionCategory);
+       const ts = activeDisp.timestamp || activeDisp.detected_at;
+       if (ts) setDetectedAt(formatDateForInput(ts));
+       const meta = activeDisp.event_metadata || {};
+       if (meta.reason || activeDisp.reason) setReason(meta.reason || activeDisp.reason);
+       const dm = meta.delay_minutes ?? activeDisp.delay_minutes;
+       if (dm !== undefined && dm !== null) setDelayMinutes(Number(dm));
+    }
+
+  }, [journey, viewMode, disruptionHistory, loadingTrip, activeBookingNodes.length]);
 
   useEffect(() => {
     if (selectedNode) {
@@ -257,7 +274,7 @@ export default function AdminConsoleScreen() {
         setDisruptionType(opts[0].value);
       }
     }
-  }, [selectedNodeId]);
+  }, [selectedNodeId, selectedNode]);
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -416,6 +433,11 @@ export default function AdminConsoleScreen() {
                   <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                     Simulation Console
                   </span>
+                  {viewMode === 'ORIGINAL' && (
+                    <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                      Viewing Original
+                    </span>
+                  )}
                 </h1>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Simulate real-world disruptions against active journeys

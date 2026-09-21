@@ -691,6 +691,38 @@ def execute_plan(
     exec_meta = dict(existing_exec.execution_metadata or {})
     exec_meta["plan"] = plan
     exec_meta["unchanged_items"] = unchanged_items
+
+    # 6. Assemble recovery_history audit chain
+    completed_prev = db.query(models.RecoveryExecution).filter(
+        models.RecoveryExecution.trip_id == trip_id,
+        models.RecoveryExecution.status.in_(["COMPLETED", "PARTIALLY_COMPLETED"]),
+        models.RecoveryExecution.execution_id != exec_id
+    ).order_by(models.RecoveryExecution.created_at.asc()).all()
+
+    history_chain = []
+    round_idx = 1
+    for p_exec in completed_prev:
+        p_meta = p_exec.execution_metadata or {}
+        if "recovery_history" in p_meta:
+            for h_entry in p_meta["recovery_history"]:
+                history_chain.append(h_entry)
+                round_idx += 1
+
+    current_round_entries = []
+    for cb in confirmed_bookings:
+        current_round_entries.append({
+            "round": round_idx,
+            "disrupted_node_id": cb.get("node_id"),
+            "disrupted_provider": cb.get("original_provider") or cb.get("original_title"),
+            "disrupted_title": cb.get("original_title"),
+            "selected_provider": cb.get("provider"),
+            "selected_title": cb.get("replacement_title"),
+            "selected_booking_id": cb.get("pnr"),
+            "executed_at": datetime.utcnow().isoformat() + "Z"
+        })
+    history_chain.extend(current_round_entries)
+    exec_meta["recovery_history"] = history_chain
+
     existing_exec.execution_metadata = exec_meta
     existing_exec.updated_at = datetime.utcnow()
 
@@ -705,11 +737,13 @@ def execute_plan(
         "confirmed_bookings": confirmed_bookings,
         "failed_bookings": failed_bookings,
         "unchanged_items": unchanged_items,
+        "recovery_history": history_chain,
         "total_final_price": total_final_price,
         "currency": "INR",
         "executed_at": existing_exec.updated_at.isoformat() + "Z",
         "message": "Recovery execution completed successfully." if final_status == "COMPLETED" else "Recovery execution partially completed."
     }
+
 
 
 def get_execution_by_id(db: Session, execution_id: Optional[str] = None, trip_id: Optional[int] = None) -> Dict[str, Any]:

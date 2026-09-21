@@ -48,72 +48,53 @@ class MockAvailabilityProvider(AvailabilityProvider):
     def find_alternate_flights(
         self, origin: str, destination: str, after_time: datetime, max_results: int = 5
     ) -> List[Dict[str, Any]]:
-        results = [
-            {
-                "id": 201,
-                "type": "FLIGHT",
-                "provider": "Air India Express Reroute",
-                "origin": origin,
-                "destination": destination,
-                "start_time": after_time + timedelta(hours=1),
-                "end_time": after_time + timedelta(hours=3, minutes=15),
-                "cost": 5200,
-                "currency": "INR",
-                "priority": "HIGH",
-                "flexibility": "FLEXIBLE",
-                "status": "CONFIRMED",
-                "booking_id": "AI-EXP-201",
-                "available": True,
-                "refundable": True,
-                "refund_percentage": 85.0,
-                "changeable": True,
-                "change_fee": 500.0,
-                "cancellation_fee": 750.0,
-            },
-            {
-                "id": 202,
-                "type": "FLIGHT",
-                "provider": "IndiGo Direct Flight",
-                "origin": origin,
-                "destination": destination,
-                "start_time": after_time + timedelta(hours=2, minutes=30),
-                "end_time": after_time + timedelta(hours=4, minutes=45),
-                "cost": 4100,
-                "currency": "INR",
-                "priority": "HIGH",
-                "flexibility": "FLEXIBLE",
-                "status": "CONFIRMED",
-                "booking_id": "6E-DIR-202",
-                "available": True,
-                "refundable": True,
-                "refund_percentage": 75.0,
-                "changeable": True,
-                "change_fee": 700.0,
-                "cancellation_fee": 1000.0,
-            },
-            {
-                "id": 203,
-                "type": "FLIGHT",
-                "provider": "Vistara Premium Express",
-                "origin": origin,
-                "destination": destination,
-                "start_time": after_time + timedelta(minutes=45),
-                "end_time": after_time + timedelta(hours=2, minutes=50),
-                "cost": 7800,
-                "currency": "INR",
-                "priority": "HIGH",
-                "flexibility": "FLEXIBLE",
-                "status": "CONFIRMED",
-                "booking_id": "UK-PREM-203",
-                "available": True,
-                "refundable": True,
-                "refund_percentage": 90.0,
-                "changeable": True,
-                "change_fee": 300.0,
-                "cancellation_fee": 500.0,
-            },
-        ]
-        return results[:max_results]
+        try:
+            from services.recovery.flight_inventory import search_route_inventory
+            from services.recovery.airports import resolve_airport_code, airport_label
+            
+            orig_code = resolve_airport_code(origin, role="origin") or "BOM"
+            dest_code = resolve_airport_code(destination, role="destination") or "ATQ"
+            travel_date = after_time.date() if isinstance(after_time, datetime) else datetime.utcnow().date()
+            
+            cands = search_route_inventory(orig_code, dest_code, travel_date)
+            results = []
+            for idx, c in enumerate(cands[:max_results]):
+                dep_dt = datetime.fromisoformat(c["departure_time"])
+                arr_dt = datetime.fromisoformat(c["arrival_time"])
+                results.append({
+                    "id": 200 + idx + 1,
+                    "type": "FLIGHT",
+                    "provider": c["provider"],
+                    "flight_number": c["flight_number"],
+                    "origin": airport_label(orig_code),
+                    "destination": airport_label(dest_code),
+                    "origin_airport": orig_code,
+                    "destination_airport": dest_code,
+                    "start_time": dep_dt,
+                    "end_time": arr_dt,
+                    "departure_time": c["departure_time"],
+                    "arrival_time": c["arrival_time"],
+                    "cost": c["price"],
+                    "currency": "INR",
+                    "priority": "HIGH",
+                    "flexibility": "FLEXIBLE",
+                    "status": "CONFIRMED",
+                    "booking_id": c.get("booking_id") or c.get("flight_number"),
+                    "available": True,
+                    "refundable": True,
+                    "refund_percentage": 85.0,
+                    "changeable": True,
+                    "change_fee": float(c.get("modification_fee", 200)),
+                    "cancellation_fee": float(c.get("cancellation_penalty", 0)),
+                })
+            if results:
+                return results
+        except Exception:
+            pass
+
+        # Fallback if inventory lookup unavailable
+        return []
+
 
     def find_alternate_trains(
         self, origin: str, destination: str, after_time: datetime, max_results: int = 5

@@ -15,9 +15,11 @@ class Trip(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
     version = Column(Integer, default=1)
+    view_mode = Column(String, default="ORIGINAL")  # ORIGINAL | RECOVERED
     user_id = Column(Integer, ForeignKey("users.id"))
     user = relationship("User", back_populates="trips")
     items = relationship("ItineraryItem", back_populates="trip")
+
 
 
 class ItineraryItem(Base):

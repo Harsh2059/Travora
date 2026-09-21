@@ -42,19 +42,21 @@ def test_mock_availability_provider():
 
 def test_transfer_failure_recovery():
     """Test transfer disruption (Heathrow Express failure) generates cab dispatch and shuttle recovery."""
-    client.post("/api/demo/reset")
-    trip_res = client.get("/api/trips/1")
+    reset_res = client.post("/api/demo/reset")
+    trip_id = reset_res.json()["trip_id"]
+    trip_res = client.get(f"/api/trips/{trip_id}")
     items = trip_res.json()["items"]
     transfer_item = next(it for it in items if it["type"] == "TRANSFER")
 
     # Simulate transfer failure
-    sim_res = client.post("/api/trips/1/simulate", json={"scenario_type": "TRANSFER_FAILURE"})
+    sim_res = client.post(f"/api/trips/{trip_id}/simulate", json={"scenario_type": "TRANSFER_FAILURE"})
     assert sim_res.status_code == 200
     sim_data = sim_res.json()
-    assert sim_data["assessment"]["components_affected"] >= 1
+    affected = [n for n in sim_data["assessment"]["nodes"] if n["status"] != "INTACT"]
+    assert len(affected) >= 1
 
     # Generate recovery
-    rec_res = client.post("/api/trips/1/recover", json={})
+    rec_res = client.post(f"/api/trips/{trip_id}/recover", json={})
     assert rec_res.status_code == 200
     rec_data = rec_res.json()
     plans = rec_data["plans"]
@@ -72,17 +74,18 @@ def test_transfer_failure_recovery():
 
 def test_hotel_unavailable_recovery():
     """Test hotel disruption (Marriott unavailable) generates partner and economy hotel alternatives."""
-    client.post("/api/demo/reset")
-    trip_res = client.get("/api/trips/1")
+    reset_res = client.post("/api/demo/reset")
+    trip_id = reset_res.json()["trip_id"]
+    trip_res = client.get(f"/api/trips/{trip_id}")
     items = trip_res.json()["items"]
     hotel_item = next(it for it in items if it["type"] == "HOTEL")
 
     # Simulate hotel unavailable
-    sim_res = client.post("/api/trips/1/simulate", json={"scenario_type": "HOTEL_UNAVAILABLE"})
+    sim_res = client.post(f"/api/trips/{trip_id}/simulate", json={"scenario_type": "HOTEL_UNAVAILABLE"})
     assert sim_res.status_code == 200
 
     # Generate recovery
-    rec_res = client.post("/api/trips/1/recover", json={})
+    rec_res = client.post(f"/api/trips/{trip_id}/recover", json={})
     assert rec_res.status_code == 200
     rec_data = rec_res.json()
     plans = rec_data["plans"]
@@ -99,17 +102,18 @@ def test_hotel_unavailable_recovery():
 
 def test_activity_cancelled_recovery():
     """Test conference / activity disruption generates reschedule and refund credit candidates."""
-    client.post("/api/demo/reset")
-    trip_res = client.get("/api/trips/1")
+    reset_res = client.post("/api/demo/reset")
+    trip_id = reset_res.json()["trip_id"]
+    trip_res = client.get(f"/api/trips/{trip_id}")
     items = trip_res.json()["items"]
     act_item = next(it for it in items if it["type"] in ["EVENT", "ACTIVITY"])
 
     # Simulate activity cancelled
-    sim_res = client.post("/api/trips/1/simulate", json={"scenario_type": "ACTIVITY_CANCELLED"})
+    sim_res = client.post(f"/api/trips/{trip_id}/simulate", json={"scenario_type": "ACTIVITY_CANCELLED"})
     assert sim_res.status_code == 200
 
     # Generate recovery
-    rec_res = client.post("/api/trips/1/recover", json={})
+    rec_res = client.post(f"/api/trips/{trip_id}/recover", json={})
     assert rec_res.status_code == 200
     rec_data = rec_res.json()
     plans = rec_data["plans"]

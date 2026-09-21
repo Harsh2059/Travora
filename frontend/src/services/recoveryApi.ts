@@ -6,6 +6,7 @@ import type {
   Part5RevalidationResult,
   Part5ExecutionResult
 } from '../types';
+import { notifyTripUpdated } from '../store/tripSync';
 
 export async function analyzePart4Recovery(
   tripId: number,
@@ -48,6 +49,7 @@ export async function executePart5Recovery(
     disruption_fingerprint: disruptionFingerprint,
     execution_id: executionId
   });
+  notifyTripUpdated(tripId, 'executePart5Recovery');
   return res.data;
 }
 
@@ -71,6 +73,7 @@ export async function restoreOriginalJourney(
   const res = await axios.post(`${API_BASE_URL}/trips/${tripId}/recovery/restore`, {
     execution_id: executionId
   });
+  notifyTripUpdated(tripId, 'restoreOriginalJourney');
   return res.data;
 }
 
@@ -81,5 +84,6 @@ export async function activateRecoveredJourney(
   const res = await axios.post(`${API_BASE_URL}/trips/${tripId}/recovery/activate-recovered`, {
     execution_id: executionId
   });
+  notifyTripUpdated(tripId, 'activateRecoveredJourney');
   return res.data;
 }
