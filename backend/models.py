@@ -8,7 +8,23 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
+    whatsapp_phone = Column(String, unique=True, nullable=True, index=True)
     trips = relationship("Trip", back_populates="user")
+
+
+class NotificationRecord(Base):
+    __tablename__ = "notification_records"
+    id = Column(Integer, primary_key=True, index=True)
+    channel = Column(String, index=True)
+    recipient = Column(String)
+    message_type = Column(String)
+    trip_id = Column(Integer, ForeignKey("trips.id"), nullable=True)
+    disruption_id = Column(Integer, ForeignKey("disruption_events.id"), nullable=True)
+    recovery_plan_id = Column(String, nullable=True)
+    status = Column(String, index=True)
+    provider_message_id = Column(String, nullable=True)
+    error_message = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Trip(Base):
     __tablename__ = "trips"
