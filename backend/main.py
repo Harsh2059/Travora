@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Depends, HTTPException, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -28,6 +31,9 @@ from services.notifications.service import NotificationService
 from services.whatsapp.client import MetaWhatsAppClient
 from services.whatsapp.config import WhatsAppSettings
 from services.whatsapp.handler import WhatsAppWebhookHandler
+import logging
+
+logger = logging.getLogger("travel_recovery")
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -600,6 +606,41 @@ def trigger_disruption(
     except Exception:
         assessment_dict = {"affected_items": [], "total_delay": 0}
 
+    alert_item = next(
+        (item for item in active_items if str(item.id) == str(entity_id)),
+        None,
+    )
+    disruption_for_notification = {
+        "id": disruption_record.id,
+        "event_id": disruption_record.id,
+        "trip_id": trip_id,
+        "entity_id": entity_id,
+        "event_type": event_type,
+        "severity": disruption_record.severity,
+        "event_metadata": event_metadata,
+        "item": {
+            "type": alert_item.type,
+            "provider": alert_item.provider,
+            "origin": alert_item.origin,
+            "destination": alert_item.destination,
+            "location": alert_item.location,
+        } if alert_item else {},
+    }
+    try:
+        notification = NotificationService().send_disruption_notification(
+            db=db,
+            channel=NotificationChannel.WHATSAPP,
+            trip_id=trip_id,
+            disruption=disruption_for_notification,
+        )
+        notification_status = notification.status
+    except Exception as exc:
+        logger.warning(
+            "Disruption persisted but WhatsApp alert failed: %s",
+            type(exc).__name__,
+        )
+        notification_status = "FAILED"
+
     return {
         "id": disruption_record.id,
         "event_id": disruption_record.id,
@@ -612,7 +653,11 @@ def trigger_disruption(
         "status": disruption_record.status,
         "timestamp": disruption_record.timestamp.isoformat() if disruption_record.timestamp else None,
         "event_metadata": event_metadata,
-        "assessment": assessment_dict
+        "assessment": assessment_dict,
+        "notification": {
+            "channel": NotificationChannel.WHATSAPP.value,
+            "status": notification_status,
+        },
     }
 
 @app.get("/api/trips/{trip_id}/disruptions")

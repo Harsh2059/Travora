@@ -8,9 +8,10 @@ import models
 from database import Base
 from services.whatsapp.client import MetaWhatsAppClient, WhatsAppClientError
 from services.whatsapp.config import WhatsAppConfigurationError, WhatsAppSettings
-from services.whatsapp.formatter import format_recovery_notification
+from services.whatsapp.formatter import format_disruption_alert, format_recovery_notification
 from services.whatsapp.handler import WhatsAppWebhookHandler
 from services.whatsapp.parser import WhatsAppAction, parse_message
+from services.whatsapp.service import WhatsAppService
 
 
 @pytest.fixture
@@ -69,6 +70,63 @@ def test_recovery_message_is_data_driven(plan):
     assert "ACCEPT" in message
 
 
+def test_disruption_message_uses_available_fields():
+    message = format_disruption_alert({
+        "event_type": "DELAY",
+        "severity": "CRITICAL",
+        "event_metadata": {
+            "affected_location": "Mumbai Airport (BOM)",
+            "reason": "Air traffic control holding delay",
+            "delay_minutes": 240,
+        },
+    })
+    assert "Mumbai Airport (BOM)" in message
+    assert "Air traffic control holding delay" in message
+    assert "240 minutes" in message
+
+
+def test_disruption_notification_uses_demo_number_and_deduplicates(db_session, monkeypatch):
+    user = models.User(name="Demo Traveler", email="alert@example.com")
+    db_session.add(user)
+    db_session.commit()
+    trip = models.Trip(title="Demo trip", user_id=user.id, version=1)
+    db_session.add(trip)
+    db_session.commit()
+
+    client = FakeClient()
+    monkeypatch.setattr("services.whatsapp.service.DEMO_WHATSAPP_NUMBER", "+919999999999")
+    service = WhatsAppService(client)
+    disruption = {
+        "id": 42,
+        "event_type": "DELAY",
+        "severity": "HIGH",
+        "event_metadata": {"delay_minutes": 45},
+    }
+
+    first = service.send_disruption_notification(db_session, trip.id, disruption)
+    second = service.send_disruption_notification(db_session, trip.id, disruption)
+
+    assert first.status == "SENT"
+    assert second.status == "SKIPPED_DUPLICATE"
+    assert len(client.sent) == 1
+    assert client.sent[0][0] == "+919999999999"
+
+
+def test_disruption_notification_failure_is_recorded_without_raising(db_session):
+    user, trip = _traveler(db_session)
+    service = WhatsAppService(FakeClient(error=OSError("network down")))
+
+    result = service.send_disruption_notification(
+        db_session,
+        trip.id,
+        {"id": 43, "event_type": "CANCELLED", "severity": "HIGH"},
+    )
+
+    assert result.status == "FAILED"
+    record = db_session.query(models.NotificationRecord).filter_by(disruption_id=43).one()
+    assert record.status == "FAILED"
+
+
 def test_missing_environment_variables_fail_clearly():
     settings = WhatsAppSettings(mode="real", access_token="", phone_number_id="", api_version="v21.0")
     with pytest.raises(WhatsAppConfigurationError, match="WHATSAPP_ACCESS_TOKEN"):
@@ -85,6 +143,38 @@ def test_meta_api_failure_is_wrapped(monkeypatch):
     )
     with pytest.raises(WhatsAppClientError, match="unavailable"):
         MetaWhatsAppClient(settings).send_text("919999999999", "test")
+
+
+def test_recovery_notification_uses_demo_number_when_traveler_number_is_missing(
+    db_session, plan, monkeypatch
+):
+    user = models.User(name="Demo Traveler", email="demo@example.com")
+    db_session.add(user)
+    db_session.commit()
+    trip = models.Trip(title="Demo trip", user_id=user.id, version=1)
+    db_session.add(trip)
+    db_session.commit()
+
+    client = FakeClient()
+    monkeypatch.setattr("services.whatsapp.service.DEMO_WHATSAPP_NUMBER", "+91XXXXXXXXXX")
+    result = WhatsAppService(client).send_recovery_notification(
+        db_session, trip.id, plan
+    )
+
+    assert result.success is True
+    assert client.sent[0][0] == "+91XXXXXXXXXX"
+
+
+def test_recovery_notification_keeps_configured_traveler_number(db_session, plan):
+    user, trip = _traveler(db_session)
+    client = FakeClient()
+
+    result = WhatsAppService(client).send_recovery_notification(
+        db_session, trip.id, plan
+    )
+
+    assert result.success is True
+    assert client.sent[0][0] == user.whatsapp_phone
 
 
 def _traveler(db_session):

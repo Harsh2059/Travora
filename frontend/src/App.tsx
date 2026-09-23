@@ -22,6 +22,10 @@ const TripViewScreen      = lazy(() => import('./screens/TripViewScreen.tsx'));
 
 const AdminConsoleScreen = lazy(() => import('./screens/AdminConsoleScreen.tsx'));
 
+// Public meta/whatsapp pages
+const PrivacyScreen        = lazy(() => import('./screens/PrivacyScreen.tsx'));
+const DataDeletionScreen   = lazy(() => import('./screens/DataDeletionScreen.tsx'));
+
 // Legacy Phase 2 disruption demo
 const LegacyDisruptionApp = lazy(() => import('./legacy/LegacyDisruptionApp.tsx'));
 
@@ -50,6 +54,8 @@ export default function App() {
           <Route path="/admin"     element={<AdminConsoleScreen />} />
           <Route path="/trip/:tripId" element={<TripViewScreen />} />
           <Route path="/app"       element={<LegacyDisruptionApp />} />
+          <Route path="/privacy"   element={<PrivacyScreen />} />
+          <Route path="/data-deletion" element={<DataDeletionScreen />} />
           {/* Catch-all → welcome */}
           <Route path="*"          element={<Navigate to="/" replace />} />
         </Routes>

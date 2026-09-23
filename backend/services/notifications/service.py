@@ -34,3 +34,24 @@ class NotificationService:
             status="FAILED",
             error=f"Notification channel {channel.value} is not configured.",
         )
+
+    def send_disruption_notification(
+        self,
+        db: Session,
+        channel: NotificationChannel,
+        trip_id: int,
+        disruption: Dict[str, Any],
+    ) -> NotificationResult:
+        if channel == NotificationChannel.WHATSAPP:
+            return self.whatsapp_service.send_disruption_notification(
+                db=db,
+                trip_id=trip_id,
+                disruption=disruption,
+            )
+        return NotificationResult(
+            success=False,
+            channel=channel,
+            recipient="",
+            status="FAILED",
+            error=f"Notification channel {channel.value} is not configured.",
+        )

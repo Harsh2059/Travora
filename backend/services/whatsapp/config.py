@@ -3,6 +3,9 @@ from typing import Optional
 from dataclasses import dataclass
 
 
+DEMO_WHATSAPP_NUMBER = os.getenv("DEMO_WHATSAPP_NUMBER") or "+91XXXXXXXXXX"
+
+
 class WhatsAppConfigurationError(RuntimeError):
     pass
 

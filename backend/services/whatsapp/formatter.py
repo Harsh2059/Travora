@@ -33,5 +33,36 @@ def format_recovery_notification(trip_id: int, plan: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_disruption_alert(disruption: Dict[str, Any]) -> str:
+    metadata = disruption.get("event_metadata") or {}
+    item = disruption.get("item") or {}
+    event_type = disruption.get("event_type") or disruption.get("type") or "Disruption detected"
+    reason = metadata.get("reason") or disruption.get("reason") or event_type
+    severity = disruption.get("severity") or "HIGH"
+    location = (
+        metadata.get("affected_location")
+        or item.get("location")
+        or item.get("origin")
+        or item.get("destination")
+    )
+    delay = metadata.get("delay_minutes") or disruption.get("delay_minutes")
+
+    lines = ["🚨 TRAVORA DISRUPTION ALERT", ""]
+    if location:
+        lines.append(f"📍 Location: {location}")
+    if reason:
+        lines.append(f"⚠️ Event: {reason}")
+    if severity:
+        lines.append(f"🔴 Severity: {severity}")
+    if delay:
+        lines.append(f"⏱️ Expected delay: {delay} minutes")
+    lines.extend([
+        "",
+        "🧭 Recommended action:",
+        "Please consider an alternate route.",
+    ])
+    return "\n".join(lines)
+
+
 def format_help() -> str:
     return "Reply VIEW to see your recovery plan, ACCEPT to confirm it, or REJECT to decline it."
