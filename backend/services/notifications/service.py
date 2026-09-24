@@ -1,17 +1,17 @@
 from typing import Any, Dict, Optional
-
 from sqlalchemy.orm import Session
-
-from .contracts import NotificationChannel, NotificationResult
-from services.whatsapp.service import WhatsAppService
-import models
-from models import SmsJob
 import uuid
 from datetime import datetime
 
+from .contracts import NotificationChannel, NotificationResult
+from .sms_generator import DynamicSmsGenerator
+from services.whatsapp.service import WhatsAppService
+import models
+from models import SmsJob
+
 
 class NotificationService:
-    """Shared channel dispatcher; SMS can register beside WhatsApp later."""
+    """Shared channel dispatcher for WhatsApp and SMS notifications."""
 
     def __init__(self, whatsapp_service: Optional[WhatsAppService] = None):
         self.whatsapp_service = whatsapp_service or WhatsAppService()
@@ -34,17 +34,20 @@ class NotificationService:
         elif channel == NotificationChannel.SMS:
             try:
                 trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-                if not trip or not trip.user or not trip.user.whatsapp_phone:
+                user_phone = trip.user.whatsapp_phone if (trip and trip.user) else None
+                recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
+
+                if not recipient:
                     return NotificationResult(
                         success=False,
                         channel=channel,
                         recipient="",
                         status="FAILED",
-                        error="No traveler phone number available."
+                        error="No recipient phone number available."
                     )
                 
-                # Check for idempotency
-                idemp_key = f"REC_{plan.get('id')}"
+                plan_id = plan.get("id") or plan.get("execution_id") or uuid.uuid4().hex
+                idemp_key = f"REC_{plan_id}"
                 existing_job = db.query(SmsJob).filter(SmsJob.idempotency_key == idemp_key).first()
                 if existing_job:
                     return NotificationResult(
@@ -54,20 +57,11 @@ class NotificationService:
                         status="ALREADY_QUEUED"
                     )
 
-                items = plan.get("changes", [])
-                new_items = [it for it in items if it.get("action") in ["REPLACE", "MODIFY"]]
-                flight_info = ""
-                if new_items:
-                    ni = new_items[0].get("item", {})
-                    provider = ni.get("provider", "Unknown")
-                    start = ni.get("start_time", "Unknown")
-                    flight_info = f" New flight: {provider}. Departure: {start}."
-                
-                message = f"Recovery Confirmed.{flight_info} Open Travora for details."
+                message = DynamicSmsGenerator.generate_recovery_sms(plan)
                 
                 job = SmsJob(
                     id=str(uuid.uuid4()),
-                    recipient=trip.user.whatsapp_phone,
+                    recipient=recipient,
                     message=message,
                     status="PENDING",
                     trip_id=trip_id,
@@ -117,16 +111,19 @@ class NotificationService:
         elif channel == NotificationChannel.SMS:
             try:
                 trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-                if not trip or not trip.user or not trip.user.whatsapp_phone:
+                user_phone = trip.user.whatsapp_phone if (trip and trip.user) else None
+                recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
+
+                if not recipient:
                     return NotificationResult(
                         success=False,
                         channel=channel,
                         recipient="",
                         status="FAILED",
-                        error="No traveler phone number available."
+                        error="No recipient phone number available."
                     )
                 
-                disr_id = disruption.get("id")
+                disr_id = disruption.get("id") or disruption.get("event_id")
                 idemp_key = f"DISR_{disr_id}" if disr_id else None
                 if idemp_key:
                     existing_job = db.query(SmsJob).filter(SmsJob.idempotency_key == idemp_key).first()
@@ -138,13 +135,11 @@ class NotificationService:
                             status="ALREADY_QUEUED"
                         )
                 
-                item = disruption.get("item", {})
-                provider = item.get("provider", "your travel service")
-                message = f"Travel Alert: Your {provider} booking has been disrupted. Open Travora to view your recovery plan."
+                message = DynamicSmsGenerator.generate_disruption_sms(disruption)
                 
                 job = SmsJob(
                     id=str(uuid.uuid4()),
-                    recipient=trip.user.whatsapp_phone,
+                    recipient=recipient,
                     message=message,
                     status="PENDING",
                     trip_id=trip_id,

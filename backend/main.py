@@ -747,7 +747,7 @@ def reset_individual_disruption(trip_id: int, disruption_id: int, db: Session = 
 @app.post("/api/disruptions/reset-all")
 def reset_all_simulations(db: Session = Depends(get_db)):
     """Reset all simulation disruption events across all trips."""
-    deleted_count = db.query(models.DisruptionEvent).delete()
+    deleted_count = db.query(models.DisruptionEvent).delete(synchronize_session=False)
     db.commit()
 
     LATEST_PART4_RECOVERY.clear()

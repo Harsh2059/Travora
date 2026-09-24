@@ -23,9 +23,8 @@ import { notifyTripUpdated, subscribeToTripUpdates } from './tripSync';
 /** Fixed demo user ID for Part 1. Replace with auth when authentication is added. */
 export const DEMO_USER_ID = 1;
 
-export const API_BASE_URL = import.meta.env.PROD
-  ? '/api'
-  : 'http://localhost:8000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD ? '/api' : 'https://travora-dqgn.onrender.com/api');
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
