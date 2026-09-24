@@ -599,6 +599,7 @@ def trigger_disruption(
     LATEST_PART4_RECOVERY.pop(trip_id, None)
 
     assessment_dict = {}
+    active_items = []  # Initialize before try block to prevent NameError if DB query fails
     try:
         active_items = db.query(models.ItineraryItem).filter(
             models.ItineraryItem.trip_id == trip_id,
@@ -651,8 +652,12 @@ def trigger_disruption(
         )
         notification_status = "FAILED"
 
-    # Send SMS notification
+    # Send SMS notification — fresh session state after WhatsApp path
     try:
+        try:
+            db.rollback()  # Safety: ensure clean session state before SMS commit
+        except Exception:
+            pass
         NotificationService().send_disruption_notification(
             db=db,
             channel=NotificationChannel.SMS,
@@ -1003,7 +1008,7 @@ def analyze_part4_recovery_endpoint(
                 "end_time": it.end_time.isoformat() if it.end_time else None,
                 "cost": it.cost,
                 "currency": it.currency,
-                "priority": it.priority or "MUST_PRESERVE",
+                "priority": it.priority or "HIGH",
                 "flexibility": it.flexibility,
                 "status": it.status,
                 "booking_id": it.booking_id,

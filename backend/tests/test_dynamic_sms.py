@@ -11,9 +11,11 @@ from services.notifications.contracts import NotificationChannel
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    user = models.User(name="Dynamic Test User", email="dynamic@sms.com", whatsapp_phone="+919876543210")
-    db.add(user)
-    db.commit()
+    user = db.query(models.User).filter(models.User.email == "dynamic@sms.com").first()
+    if not user:
+        user = models.User(name="Dynamic Test User", email="dynamic@sms.com", whatsapp_phone="+919876543210")
+        db.add(user)
+        db.commit()
 
     trip = models.Trip(title="Dynamic SMS Test Trip", user_id=user.id)
     db.add(trip)
@@ -176,6 +178,11 @@ def test_different_data_produces_different_sms():
 def test_notification_service_sms_disruption_idempotency(setup_db):
     db = setup_db["db"]
     trip = setup_db["trip"]
+
+    # Clean up existing test records if re-running in persistent DB
+    db.query(models.NotificationRecord).filter(models.NotificationRecord.disruption_id == 8888).delete()
+    db.query(models.SmsJob).filter(models.SmsJob.idempotency_key == "DISR_8888").delete()
+    db.commit()
 
     service = NotificationService()
     disruption = {

@@ -131,7 +131,7 @@ def analyze_part4_recovery(
             cands = rank_flight_candidates(filter_flight_candidates(cands, node, nodes))
         
         # If node priority is MUST_PRESERVE and zero candidates exist
-        node_priority = str(node.get("priority") or "MUST_PRESERVE").upper()
+        node_priority = str(node.get("priority") or "HIGH").upper()
         if len(cands) == 0 and node_priority == "MUST_PRESERVE":
             has_unrecoverable_must_preserve = True
             
@@ -151,11 +151,12 @@ def analyze_part4_recovery(
         )
 
     # 4. Form Candidate Combinations Across Affected Nodes
-    affected_node_ids = [str(node.get("id")) for node, _, _ in affected_nodes]
-    candidate_lists = [node_candidates.get(nid, []) for nid in affected_node_ids]
+    # Skip nodes with no candidates (they can't be recovered but don't block nodes that CAN be).
+    # Only include affected nodes that have at least one candidate.
+    recoverable_affected = [(node, status, reason) for (node, status, reason) in affected_nodes if len(node_candidates.get(str(node.get("id")), [])) > 0]
+    unrecoverable_affected = [(node, status, reason) for (node, status, reason) in affected_nodes if len(node_candidates.get(str(node.get("id")), [])) == 0]
     
-    # Filter out empty candidate lists if any affected node has 0 candidates
-    if any(len(cl) == 0 for cl in candidate_lists):
+    if len(recoverable_affected) == 0:
         return Part4RecoveryResult(
             trip_id=trip_id,
             impact_status="DISRUPTED",
@@ -164,8 +165,11 @@ def analyze_part4_recovery(
             plans=[],
             priority_preserving_count=0,
             alternative_count=0,
-            message="NO FEASIBLE RECOVERY. A critical journey requirement can no longer be preserved with the available recovery options."
+            message="NO FEASIBLE RECOVERY. No alternative options were found for the affected booking(s). The disrupted route may not be in the supported recovery inventory, or all alternatives are unavailable."
         )
+    
+    affected_node_ids = [str(node.get("id")) for node, _, _ in recoverable_affected]
+    candidate_lists = [node_candidates.get(nid, []) for nid in affected_node_ids]
 
     # Generate Cartesian product combinations (up to 20 max)
     all_combinations = list(itertools.product(*candidate_lists))[:20]
@@ -212,7 +216,7 @@ def analyze_part4_recovery(
         total_transfers = 0
         all_direct = True
         
-        for (node, status, reason), cand in zip(affected_nodes, combo):
+        for (node, status, reason), cand in zip(recoverable_affected, combo):
             n_id_str = str(node.get("id"))
             changed_ids.append(n_id_str)
             cand_id = cand.get("candidate_id") or cand.get("booking_id") or cand.get("title")
