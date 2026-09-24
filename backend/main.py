@@ -742,6 +742,8 @@ def reset_individual_disruption(trip_id: int, disruption_id: int, db: Session = 
     if not event:
         raise HTTPException(status_code=404, detail="Disruption event not found")
 
+    db.query(models.NotificationRecord).filter(models.NotificationRecord.disruption_id == disruption_id).delete(synchronize_session=False)
+    db.query(models.SmsJob).filter(models.SmsJob.idempotency_key == f"DISR_{disruption_id}").delete(synchronize_session=False)
     db.delete(event)
     db.commit()
 
@@ -752,6 +754,8 @@ def reset_individual_disruption(trip_id: int, disruption_id: int, db: Session = 
 @app.post("/api/disruptions/reset-all")
 def reset_all_simulations(db: Session = Depends(get_db)):
     """Reset all simulation disruption events across all trips."""
+    db.query(models.NotificationRecord).filter(models.NotificationRecord.disruption_id.isnot(None)).delete(synchronize_session=False)
+    db.query(models.SmsJob).filter(models.SmsJob.idempotency_key.like("DISR_%")).delete(synchronize_session=False)
     deleted_count = db.query(models.DisruptionEvent).delete(synchronize_session=False)
     db.commit()
 
