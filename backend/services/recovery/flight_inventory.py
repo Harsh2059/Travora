@@ -89,6 +89,12 @@ FLIGHT_INVENTORY: List[Dict[str, Any]] = [
     _row("IndiGo", "SIM-6E-504", "BOM", "DEL", "12:10", "14:25", 4600, booking_id="6E-RPL-504", resource_id="6E-504"),
     _row("Air India", "SIM-AI-605", "BOM", "DEL", "14:45", "17:00", 5500, booking_id="AI-RPL-605", resource_id="AI-605", quality_tier="PREMIUM", modification_fee=0),
     _row("IndiGo", "SIM-6E-612", "BOM", "DEL", "16:30", "18:45", 4450, booking_id="6E-RPL-612", resource_id="6E-612"),
+    # DEL -> LHR
+    _row("British Airways", "SIM-BA-143", "DEL", "LHR", "10:00", "14:30", 45000, quality_tier="RECOMMENDED"),
+    _row("Air India", "SIM-AI-111", "DEL", "LHR", "14:00", "18:30", 42000, quality_tier="PREMIUM"),
+    # LHR -> BOM
+    _row("Virgin Atlantic", "SIM-VS-354", "LHR", "BOM", "09:00", "23:00", 48000, quality_tier="PREMIUM"),
+    _row("British Airways", "SIM-BA-199", "LHR", "BOM", "21:00", "11:00", 51000, quality_tier="RECOMMENDED"),
     # DEL → JAI (cross-modal train recovery still needs a real city pair)
     _row("IndiGo", "SIM-6E-2181", "DEL", "JAI", "08:00", "09:15", 4200),
     _row("Air India", "SIM-AI-611", "DEL", "JAI", "11:30", "12:50", 5100, quality_tier="PREMIUM", modification_fee=0),
