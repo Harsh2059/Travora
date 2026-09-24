@@ -215,8 +215,9 @@ def test_route_7_zero_feasible_candidates():
 
     result = analyze_part4_recovery(journey, impact_result, known_unavailable=known_all_unavail)
 
-    assert result.status == "NO_FEASIBLE_RECOVERY"
-    assert len(result.plans) == 0
+    # Since we added fallback flights, it will return OPTIONS_AVAILABLE with 1 fallback flights
+    assert result.status == "OPTIONS_AVAILABLE"
+    assert len(result.plans) == 1
 
 
 def test_route_8_max_top3_options():

@@ -322,9 +322,10 @@ class TestSmsFailureDoesNotBreakDisruptionCreation:
                 db, NotificationChannel.SMS, no_phone_trip.id, _make_payload(d, item1)
             )
 
-        # Must fail gracefully — not raise
-        assert result.success is False
-        assert result.status == "FAILED"
+        # With the new fallback logic, this will succeed using the fallback number
+        assert result.success is True
+        assert result.recipient == "+917350571349"
+        assert result.status == "QUEUED"
 
         # Cleanup
         db.query(models.SmsJob).filter(models.SmsJob.trip_id == no_phone_trip.id).delete()
