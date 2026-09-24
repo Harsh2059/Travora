@@ -18,7 +18,10 @@ class DynamicSmsGenerator:
         env_recipient = os.getenv("DEMO_SMS_RECIPIENT", "").strip()
         if env_recipient:
             return env_recipient
-        return (user_phone or "").strip()
+        phone = (user_phone or "").strip()
+        if phone:
+            return phone
+        return "+919999999999"  # Fallback for custom trips without phone number
 
     @staticmethod
     def format_time(val: Any) -> Optional[str]:

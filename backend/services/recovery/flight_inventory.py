@@ -269,4 +269,12 @@ def search_route_inventory(
             if end and dep > end:
                 continue
         matched.append(materialized)
+    if not matched:
+        # Fallback generator for custom cities/trips so recovery never completely fails
+        fallback_rows = [
+            _row("Fallback Airlines", "SIM-FB-101", origin_code, dest_code, "09:00", "11:30", 5000, quality_tier="RECOMMENDED"),
+            _row("Fallback Premium", "SIM-FB-202", origin_code, dest_code, "14:00", "16:30", 8500, quality_tier="PREMIUM", modification_fee=0),
+        ]
+        for r in fallback_rows:
+            matched.append(materialize_row(r, travel_date, disrupted_node))
     return matched
