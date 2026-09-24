@@ -1,10 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException, Body
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, Depends, HTTPException, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 import crud, models, schemas, seed
+import hashlib
+import hmac
 from database import engine, get_db
 from services.graph.builder import build_dependency_graph
 from services.graph.queries import GraphQueries
@@ -21,6 +26,14 @@ from services.ml.preferences import TravelerPreferences
 from services.versioning.comparison import VersionComparisonEngine
 from services.demo.reset_service import DemoResetService
 from services.events.user_requests import UserRequestParser
+from services.notifications.contracts import NotificationChannel
+from services.notifications.service import NotificationService
+from services.whatsapp.client import MetaWhatsAppClient
+from services.whatsapp.config import WhatsAppSettings
+from services.whatsapp.handler import WhatsAppWebhookHandler
+import logging
+
+logger = logging.getLogger("travel_recovery")
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -42,6 +55,12 @@ with engine.connect() as conn:
     try:
         from sqlalchemy import text
         conn.execute(text("ALTER TABLE trips ADD COLUMN view_mode VARCHAR DEFAULT 'ORIGINAL'"))
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import text
+        conn.execute(text("ALTER TABLE users ADD COLUMN whatsapp_phone VARCHAR"))
         conn.commit()
     except Exception:
         pass
@@ -587,6 +606,41 @@ def trigger_disruption(
     except Exception:
         assessment_dict = {"affected_items": [], "total_delay": 0}
 
+    alert_item = next(
+        (item for item in active_items if str(item.id) == str(entity_id)),
+        None,
+    )
+    disruption_for_notification = {
+        "id": disruption_record.id,
+        "event_id": disruption_record.id,
+        "trip_id": trip_id,
+        "entity_id": entity_id,
+        "event_type": event_type,
+        "severity": disruption_record.severity,
+        "event_metadata": event_metadata,
+        "item": {
+            "type": alert_item.type,
+            "provider": alert_item.provider,
+            "origin": alert_item.origin,
+            "destination": alert_item.destination,
+            "location": alert_item.location,
+        } if alert_item else {},
+    }
+    try:
+        notification = NotificationService().send_disruption_notification(
+            db=db,
+            channel=NotificationChannel.WHATSAPP,
+            trip_id=trip_id,
+            disruption=disruption_for_notification,
+        )
+        notification_status = notification.status
+    except Exception as exc:
+        logger.warning(
+            "Disruption persisted but WhatsApp alert failed: %s",
+            type(exc).__name__,
+        )
+        notification_status = "FAILED"
+
     return {
         "id": disruption_record.id,
         "event_id": disruption_record.id,
@@ -599,7 +653,11 @@ def trigger_disruption(
         "status": disruption_record.status,
         "timestamp": disruption_record.timestamp.isoformat() if disruption_record.timestamp else None,
         "event_metadata": event_metadata,
-        "assessment": assessment_dict
+        "assessment": assessment_dict,
+        "notification": {
+            "channel": NotificationChannel.WHATSAPP.value,
+            "status": notification_status,
+        },
     }
 
 @app.get("/api/trips/{trip_id}/disruptions")
@@ -998,6 +1056,97 @@ def get_recovery_options_endpoint(
     res = analyze_part4_recovery_endpoint(trip_id=trip_id, payload=payload, db=db)
     plans = res.get("plans", [])
     return {"options": plans, "plans": plans, **res}
+
+
+def _resolve_whatsapp_plan(trip_id: int) -> Optional[Dict[str, Any]]:
+    cached = LATEST_PART4_RECOVERY.get(trip_id) or {}
+    plans = cached.get("plans") or []
+    if not plans:
+        return None
+    selected = next((p for p in plans if p.get("is_recommended")), plans[0])
+    return selected
+
+
+@app.post("/api/trips/{trip_id}/notifications/whatsapp")
+def send_whatsapp_recovery_notification(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db),
+):
+    """Send the current recovery plan through the shared WhatsApp notification channel."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    plan = payload.get("plan") or _resolve_whatsapp_plan(trip_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Recovery plan not found")
+    result = NotificationService().send_recovery_notification(
+        db=db,
+        channel=NotificationChannel.WHATSAPP,
+        trip_id=trip_id,
+        plan=plan,
+        disruption_id=(plan.get("disruption_ids") or [None])[0],
+    )
+    return {
+        "success": result.success,
+        "channel": result.channel.value,
+        "status": result.status,
+        "provider_message_id": result.provider_message_id,
+        "error": result.error,
+    }
+
+
+@app.get("/webhooks/whatsapp")
+def verify_whatsapp_webhook(
+    hub_mode: Optional[str] = Query(default=None, alias="hub.mode"),
+    hub_verify_token: Optional[str] = Query(default=None, alias="hub.verify_token"),
+    hub_challenge: Optional[str] = Query(default=None, alias="hub.challenge"),
+):
+    settings = WhatsAppSettings.from_env()
+    if (
+        hub_mode != "subscribe"
+        or not hub_challenge
+        or not settings.verify_token
+        or hub_verify_token != settings.verify_token
+    ):
+        raise HTTPException(status_code=403, detail="Webhook verification failed")
+    return int(hub_challenge)
+
+
+@app.post("/webhooks/whatsapp")
+async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+    """Handle Meta webhook messages without exposing provider credentials or business logic."""
+    raw_body = await request.body()
+    settings = WhatsAppSettings.from_env()
+    signature = request.headers.get("X-Hub-Signature-256")
+    if settings.app_secret:
+        expected = "sha256=" + hmac.new(
+            settings.app_secret.encode("utf-8"), raw_body, hashlib.sha256
+        ).hexdigest()
+        if not signature or not hmac.compare_digest(signature, expected):
+            raise HTTPException(status_code=403, detail="Webhook signature validation failed")
+    try:
+        payload = __import__("json").loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="Malformed WhatsApp webhook payload")
+    try:
+        value = payload["entry"][0]["changes"][0]["value"]
+        message = value["messages"][0]
+        sender = message["from"]
+        text = message["text"]["body"]
+    except (KeyError, IndexError, TypeError):
+        raise HTTPException(status_code=400, detail="Malformed WhatsApp webhook payload")
+
+    handler = WhatsAppWebhookHandler(
+        client=MetaWhatsAppClient(),
+        plan_resolver=_resolve_whatsapp_plan,
+    )
+    return handler.handle(
+        db=db,
+        sender=sender,
+        text=text,
+        message_id=message.get("id"),
+    )
 
 
 # ============================================================================
