@@ -161,4 +161,20 @@ class RecoveryExecutionItem(Base):
     execution = relationship("RecoveryExecution", back_populates="items")
 
 
+class SmsJob(Base):
+    __tablename__ = "sms_jobs"
+    id = Column(String, primary_key=True, index=True)
+    recipient = Column(String, index=True)
+    message = Column(String)
+    status = Column(String, default="PENDING", index=True)
+    trip_id = Column(Integer, nullable=True)
+    notification_type = Column(String, nullable=True)
+    idempotency_key = Column(String, unique=True, index=True, nullable=True)
+    error_message = Column(String, nullable=True)
+    gateway_device_id = Column(String, nullable=True)
+    claimed_at = Column(DateTime, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 

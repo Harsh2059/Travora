@@ -118,5 +118,30 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     trips: List[Trip] = []
-    
     model_config = ConfigDict(from_attributes=True)
+
+
+class SmsJobBase(BaseModel):
+    recipient: str
+    message: str
+    status: str = "PENDING"
+    trip_id: Optional[int] = None
+    notification_type: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    error_message: Optional[str] = None
+    gateway_device_id: Optional[str] = None
+    claimed_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+
+class SmsJobResponse(SmsJobBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SmsStatusUpdate(BaseModel):
+    status: str
+    error_message: Optional[str] = None
+    gateway_device_id: Optional[str] = None

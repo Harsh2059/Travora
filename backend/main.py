@@ -641,6 +641,20 @@ def trigger_disruption(
         )
         notification_status = "FAILED"
 
+    # Send SMS notification
+    try:
+        NotificationService().send_disruption_notification(
+            db=db,
+            channel=NotificationChannel.SMS,
+            trip_id=trip_id,
+            disruption=disruption_for_notification,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Disruption SMS queueing failed: %s",
+            type(exc).__name__,
+        )
+
     return {
         "id": disruption_record.id,
         "event_id": disruption_record.id,
@@ -1203,6 +1217,22 @@ def execute_recovery_endpoint(
             trip_rec.view_mode = "RECOVERED"
             db.commit()
 
+        # Send SMS Notification
+        try:
+            NotificationService().send_recovery_notification(
+                db=db,
+                channel=NotificationChannel.SMS,
+                trip_id=trip_id,
+                plan=selected_plan,
+                disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
+            )
+        except Exception as exc:
+            logger.warning(
+                "Recovery SMS queueing failed: %s",
+                type(exc).__name__,
+            )
+
+
         # Fetch complete updated journey details to return complete state payload
         trip_details = get_trip_details(trip_id, db)
         exec_res["originalJourney"] = {
@@ -1686,3 +1716,68 @@ def get_ml_risk_predictions(trip_id: int, db: Session = Depends(get_db)):
         "downstream_cascade_predictions": downstream,
         "advisory_disclaimer": "ML predictions are advisory only and do not dictate hard constraint feasibility."
     }
+# ============================================================================
+# PART 1: SMS GATEWAY API
+# ============================================================================
+
+@app.get("/api/sms-gateway/jobs", response_model=List[schemas.SmsJobResponse])
+def get_sms_jobs(
+    status: str = "PENDING",
+    limit: int = 50,
+    claim: bool = False,
+    device_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.SmsJob).filter(models.SmsJob.status == status).order_by(models.SmsJob.created_at.asc()).limit(limit)
+    jobs = query.all()
+    
+    if claim and jobs:
+        import uuid
+        claim_token = f"{device_id or 'unknown'}_{uuid.uuid4().hex}"
+        db.query(models.SmsJob).filter(
+            models.SmsJob.id.in_([j.id for j in jobs]),
+            models.SmsJob.status == status
+        ).update({
+            models.SmsJob.status: "SENDING",
+            models.SmsJob.claimed_at: datetime.utcnow(),
+            models.SmsJob.gateway_device_id: claim_token
+        }, synchronize_session=False)
+        db.commit()
+        
+        # Return only the jobs this request successfully claimed
+        jobs = db.query(models.SmsJob).filter(models.SmsJob.gateway_device_id == claim_token).all()
+        
+    return jobs
+
+@app.post("/api/sms-gateway/jobs/{job_id}/status", response_model=schemas.SmsJobResponse)
+def update_sms_job_status(
+    job_id: str,
+    payload: schemas.SmsStatusUpdate,
+    db: Session = Depends(get_db)
+):
+    job = db.query(models.SmsJob).filter(models.SmsJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="SMS job not found")
+        
+    allowed_transitions = {
+        "PENDING": ["SENDING", "SENT", "FAILED"],
+        "SENDING": ["SENT", "FAILED"],
+        "SENT": [],
+        "FAILED": []
+    }
+    
+    if payload.status != job.status and payload.status not in allowed_transitions.get(job.status, []):
+        raise HTTPException(status_code=400, detail=f"Invalid transition from {job.status} to {payload.status}")
+        
+    job.status = payload.status
+    if payload.error_message is not None:
+        job.error_message = payload.error_message
+    if payload.gateway_device_id is not None:
+        job.gateway_device_id = payload.gateway_device_id
+        
+    if payload.status == "SENT":
+        job.sent_at = datetime.utcnow()
+        
+    db.commit()
+    db.refresh(job)
+    return job
