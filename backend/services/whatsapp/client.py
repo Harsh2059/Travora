@@ -46,9 +46,34 @@ class MetaWhatsAppClient:
                 logger.info("WhatsApp message sent: status=%s", response.status)
                 return result
         except HTTPError as exc:
-            logger.warning("WhatsApp API request failed: status=%s", exc.code)
+            try:
+                error_body = exc.read().decode("utf-8")
+            except Exception:
+                error_body = "<could not read response body>"
+                
+            error_json = None
+            try:
+                error_json = json.loads(error_body)
+            except Exception:
+                pass
+                
+            logger.warning(
+                "WhatsApp API request failed: status=%s, url=%s, phone_number_id=%s, recipient=%s, body=%s, json=%s",
+                exc.code,
+                endpoint,
+                self.settings.phone_number_id,
+                recipient,
+                error_body,
+                error_json
+            )
+            
+            # Extract Meta error message if available
+            meta_error = "Meta WhatsApp API returned HTTP " + str(exc.code)
+            if error_json and "error" in error_json and "message" in error_json["error"]:
+                meta_error += f": {error_json['error']['message']}"
+                
             raise WhatsAppClientError(
-                f"Meta WhatsApp API returned HTTP {exc.code}", status_code=exc.code
+                meta_error, status_code=exc.code
             ) from exc
         except (URLError, TimeoutError, OSError) as exc:
             logger.warning("WhatsApp API network failure: %s", type(exc).__name__)
