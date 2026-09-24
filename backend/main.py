@@ -1094,9 +1094,15 @@ def get_recovery_options_endpoint(
     return {"options": plans, "plans": plans, **res}
 
 
-def _resolve_whatsapp_plan(trip_id: int) -> Optional[Dict[str, Any]]:
+def _resolve_whatsapp_plan(trip_id: int, db: Session = None) -> Optional[Dict[str, Any]]:
     cached = LATEST_PART4_RECOVERY.get(trip_id) or {}
     plans = cached.get("plans") or []
+    if not plans and db is not None:
+        try:
+            res = analyze_part4_recovery_endpoint(trip_id=trip_id, payload={}, db=db)
+            plans = res.get("plans") or []
+        except Exception:
+            pass
     if not plans:
         return None
     selected = next((p for p in plans if p.get("is_recommended")), plans[0])
@@ -1113,7 +1119,7 @@ def send_whatsapp_recovery_notification(
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
-    plan = payload.get("plan") or _resolve_whatsapp_plan(trip_id)
+    plan = payload.get("plan") or _resolve_whatsapp_plan(trip_id, db=db)
     if not plan:
         raise HTTPException(status_code=404, detail="Recovery plan not found")
     result = NotificationService().send_recovery_notification(
@@ -1175,7 +1181,7 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
 
     handler = WhatsAppWebhookHandler(
         client=MetaWhatsAppClient(),
-        plan_resolver=_resolve_whatsapp_plan,
+        plan_resolver=lambda tid: _resolve_whatsapp_plan(tid, db=db),
     )
     return handler.handle(
         db=db,
