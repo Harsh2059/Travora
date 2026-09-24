@@ -291,6 +291,7 @@ def delete_trip_item(trip_id: int, item_id: int, db: Session = Depends(get_db)):
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    db.query(models.ItineraryDependency).filter((models.ItineraryDependency.source_id == item_id) | (models.ItineraryDependency.target_id == item_id)).delete(synchronize_session=False)
     db.delete(item)
     db.commit()
     return {"status": "deleted", "item_id": item_id}
@@ -724,7 +725,9 @@ def reset_trip_disruptions(trip_id: int, db: Session = Depends(get_db)):
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    db.query(models.DisruptionEvent).filter(models.DisruptionEvent.trip_id == trip_id).delete()
+    db.query(models.NotificationRecord).filter(models.NotificationRecord.trip_id == trip_id, models.NotificationRecord.disruption_id.isnot(None)).delete(synchronize_session=False)
+    db.query(models.SmsJob).filter(models.SmsJob.trip_id == trip_id, models.SmsJob.idempotency_key.like("DISR_%")).delete(synchronize_session=False)
+    db.query(models.DisruptionEvent).filter(models.DisruptionEvent.trip_id == trip_id).delete(synchronize_session=False)
     db.commit()
 
     LATEST_PART4_RECOVERY.pop(trip_id, None)
