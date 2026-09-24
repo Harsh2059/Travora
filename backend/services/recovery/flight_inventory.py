@@ -234,10 +234,8 @@ def search_route_inventory(
     time_window is reserved for future MCT/connection modeling; this prototype
     only returns nonstop rows.
     """
-    origin_code = resolve_airport_code(origin, journey_nodes, role="origin")
-    dest_code = resolve_airport_code(destination, journey_nodes, role="destination")
-    if not origin_code or not dest_code:
-        return []
+    origin_code = resolve_airport_code(origin, journey_nodes, role="origin") or origin
+    dest_code = resolve_airport_code(destination, journey_nodes, role="destination") or destination
 
     rows = list(inventory) if inventory is not None else FLIGHT_INVENTORY
     matched: List[Dict[str, Any]] = []

@@ -189,11 +189,7 @@ def resolve_airport_code(
             return hinted[0]
         return DEFAULT_REGION_AIRPORT.get(region)
 
-    # Last chance: scan itinerary if the raw field was empty/generic.
-    if journey_nodes and role in ("destination", "origin"):
-        scanned = _scan_nodes_for_airports(journey_nodes)
-        if scanned:
-            return scanned[-1] if role == "destination" else scanned[0]
+    # Last chance disabled to avoid overwriting custom cities with random airports.
 
     return None
 
