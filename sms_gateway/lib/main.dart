@@ -19,9 +19,9 @@ class TravoraSmsGatewayApp extends StatelessWidget {
   final GatewayController controller;
 
   const TravoraSmsGatewayApp({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

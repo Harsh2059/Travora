@@ -582,7 +582,10 @@ export default function HomeScreen() {
             </Link>
 
             <button
-              onClick={() => navigate('/build')}
+              onClick={() => {
+                clearActive();
+                navigate('/build');
+              }}
               className="text-xs font-semibold px-3.5 py-1.5 rounded-xl bg-sky-500 text-white hover:bg-sky-600 transition-all flex items-center gap-1.5 shadow-sm"
             >
               <PlusCircle className="h-3.5 w-3.5" />

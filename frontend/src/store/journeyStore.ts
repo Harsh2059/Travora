@@ -599,6 +599,7 @@ export function useJourney(): JourneyState {
   const clearActive = useCallback(() => {
     clearActiveTripId();
     clearLocalJourney();
+    clearDraft(); // also wipe sessionStorage draft so next builder session starts fresh
     setJourney(null);
   }, []);
 

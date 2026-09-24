@@ -38,6 +38,20 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# --- Flutter & Mobile Build Artifacts ---
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+sms_gateway/build/
+sms_gateway/.dart_tool/
+sms_gateway/.flutter-plugins
+sms_gateway/.flutter-plugins-dependencies
+sms_gateway/android/.gradle/
+sms_gateway/android/build/
+sms_gateway/android/local.properties
+sms_gateway/android/*.hprof
+
 # --- Environment Variables & Secrets ---
 .env
 .env.*

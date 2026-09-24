@@ -10,7 +10,7 @@ from datetime import datetime
 import crud, models, schemas, seed
 import hashlib
 import hmac
-from database import engine, get_db
+from database import engine, get_db, SessionLocal
 from services.graph.builder import build_dependency_graph
 from services.graph.queries import GraphQueries
 from services.events.manager import EventManager
@@ -66,6 +66,16 @@ with engine.connect() as conn:
         pass
 
 app = FastAPI(title="Travel Recovery Engine API")
+
+@app.on_event("startup")
+def startup_event():
+    try:
+        db = SessionLocal()
+        seed.seed_demo_data(db)
+        db.close()
+        logger.info("Demo data seed check complete on startup.")
+    except Exception as e:
+        logger.error(f"Startup seed error: {e}")
 
 # Configure CORS for frontend
 app.add_middleware(
@@ -1781,3 +1791,20 @@ def update_sms_job_status(
     db.commit()
     db.refresh(job)
     return job
+
+@app.get("/api/sms-gateway/stats")
+def get_sms_gateway_stats(db: Session = Depends(get_db)):
+    pending = db.query(models.SmsJob).filter(models.SmsJob.status == "PENDING").count()
+    sending = db.query(models.SmsJob).filter(models.SmsJob.status == "SENDING").count()
+    sent = db.query(models.SmsJob).filter(models.SmsJob.status == "SENT").count()
+    failed = db.query(models.SmsJob).filter(models.SmsJob.status == "FAILED").count()
+    total = db.query(models.SmsJob).count()
+    return {
+        "pending": pending,
+        "claimed": sending,
+        "sending": sending,
+        "sent": sent,
+        "failed": failed,
+        "total": total
+    }
+

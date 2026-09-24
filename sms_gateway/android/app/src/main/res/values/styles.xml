@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Standard Flutter launcher themes. LaunchTheme shows a white background while
+     the Flutter engine initialises; NormalTheme is the fully-rendered app theme. -->
+<resources>
+    <!-- Used while the native splash screen is active.
+         Must match the window background colour of the first Flutter frame. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+
+    <!-- Applied once Flutter has drawn its first frame.
+         io.flutter.embedding.android.NormalTheme meta-data tells the engine to
+         switch to this theme after the splash screen. -->
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

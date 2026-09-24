@@ -1,4 +1,4 @@
-﻿import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Compass,
   PlusCircle,
@@ -240,7 +240,7 @@ function TravelBackground() {
 
 export default function WelcomeScreen() {
   const navigate = useNavigate();
-  const { journey, loading } = useJourney();
+  const { journey, loading, clearActive } = useJourney();
 
   return (
     <>
@@ -327,7 +327,10 @@ export default function WelcomeScreen() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate('/build')}
+                  onClick={() => {
+                    clearActive();
+                    navigate('/build');
+                  }}
                   className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-semibold transition-all shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 flex items-center justify-center gap-2"
                 >
                   <PlusCircle className="h-5 w-5" />

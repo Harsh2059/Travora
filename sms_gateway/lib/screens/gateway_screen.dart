@@ -8,9 +8,9 @@ class GatewayScreen extends StatefulWidget {
   final GatewayController controller;
 
   const GatewayScreen({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<GatewayScreen> createState() => _GatewayScreenState();
@@ -101,7 +101,7 @@ class _GatewayScreenState extends State<GatewayScreen> {
                   pollIntervalSeconds: newInterval,
                 );
                 await controller.updateConfig(newConfig);
-                if (mounted) Navigator.pop(ctx);
+                if (ctx.mounted) Navigator.pop(ctx);
               }
             },
             child: const Text('Save'),
