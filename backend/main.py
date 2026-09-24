@@ -1173,23 +1173,38 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
         raise HTTPException(status_code=400, detail="Malformed WhatsApp webhook payload")
     try:
         value = payload["entry"][0]["changes"][0]["value"]
+        
+        # Meta sends status updates too; we only want to process messages
+        if "messages" not in value or not value["messages"]:
+            return {"status": "ignored"}
+            
         message = value["messages"][0]
         sender = message["from"]
         text = message["text"]["body"]
+        phone_number_id = value["metadata"]["phone_number_id"]
     except (KeyError, IndexError, TypeError):
         raise HTTPException(status_code=400, detail="Malformed WhatsApp webhook payload")
 
+    if phone_number_id != settings.phone_number_id:
+        logger.warning(f"Received webhook for unknown phone_number_id: {phone_number_id}")
+        return {"status": "ignored"}
+
     handler = WhatsAppWebhookHandler(
-        client=MetaWhatsAppClient(),
+        client=MetaWhatsAppClient(settings=settings),
         plan_resolver=lambda tid: _resolve_whatsapp_plan(tid, db=db),
     )
-    return handler.handle(
-        db=db,
-        sender=sender,
-        text=text,
-        message_id=message.get("id"),
-    )
-
+    
+    try:
+        handler.handle(
+            db=db,
+            sender=sender,
+            text=text,
+            message_id=message.get("id"),
+        )
+    except Exception as exc:
+        logger.exception("Error during WhatsApp webhook handling")
+        
+    return {"status": "ok"}
 
 # ============================================================================
 # PART 5: BOOKING & EXECUTION ENGINE ENDPOINTS
