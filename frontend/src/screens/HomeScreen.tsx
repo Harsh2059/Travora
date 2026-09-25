@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
+  LayoutDashboard,
+  Settings,
+  Briefcase,
+  Phone,
+  Bell,
+  Menu,
   Compass,
   PlusCircle,
   RefreshCw,
@@ -211,11 +217,11 @@ export default function HomeScreen() {
 
   const [activeDisruption, setActiveDisruption] = useState<any | null>(null);
   const [impactResult, setImpactResult] = useState<ImpactResult | null>(null);
-  const [showToast, setShowToast] = useState<boolean>(false);
   const [showImpactModal, setShowImpactModal] = useState<boolean>(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState<boolean>(false);
   const [showSelectedPlanReviewModal, setShowSelectedPlanReviewModal] = useState<boolean>(false);
   const [showPart5HandoffModal, setShowPart5HandoffModal] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
 
   const [selectedRecoveryPlan, setSelectedRecoveryPlanState] = useState<Part4RecoveryPlan | null>(null);
   const [isSelectedPlanUpdated, setIsSelectedPlanUpdated] = useState<boolean>(false);
@@ -251,7 +257,6 @@ export default function HomeScreen() {
     if (!tripId) {
       setActiveDisruption(null);
       setImpactResult(null);
-      setShowToast(false);
       setSelectedRecoveryPlanState(null);
       setCurrentDisruptionFingerprint('');
       setLatestExecution(null);
@@ -286,14 +291,12 @@ export default function HomeScreen() {
             if (prevId !== activeId) {
               const lastSeen = localStorage.getItem(`travora_last_seen_disruption_${tripId}`);
               if (lastSeen !== activeId) {
-                setShowToast(true);
               }
             }
             return latest;
           });
         } else {
           setActiveDisruption(null);
-          setShowToast(false);
         }
 
         // Always fetch impact analysis from Part 3 Impact Engine to keep UI state in sync
@@ -407,13 +410,7 @@ export default function HomeScreen() {
     }
   }, [latestExecution?.execution_id, latestExecution?.demo_restored, latestExecution?.status]);
 
-  const handleDismissToast = () => {
-    setShowToast(false);
-    if (activeDisruption && journey?.id) {
-      const activeId = String(activeDisruption.id || activeDisruption.timestamp || activeDisruption.detected_at);
-      localStorage.setItem(`travora_last_seen_disruption_${journey.id}`, activeId);
-    }
-  };
+
 
   const handleUpdatePriority = async (nodeId: string, newPriority: TravelerPriority) => {
     if (!journey) return;
@@ -527,94 +524,173 @@ export default function HomeScreen() {
 
 
   return (
-    <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 pb-20">
-      {/* App Floating Header Bar */}
-      <header className="px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 cursor-pointer"
-          >
-            <div className="h-8 w-8 rounded-xl bg-sky-500 text-white flex items-center justify-center shadow-md shadow-sky-500/20">
-              <Compass className="h-4 w-4" />
-            </div>
-            <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-sky-600 to-indigo-600 bg-clip-text text-transparent">
-              Travora
-            </span>
-          </div>
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      {/* Sidebar Overlay (Mobile/when opened) */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            <div className="bg-blue-600 p-1.5 rounded-full text-white">
+              <Compass className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="font-bold text-lg leading-tight text-slate-900 flex items-center gap-1">
+                Travora
+              </h1>
+              <p className="text-[9px] font-bold text-slate-500 tracking-widest mt-0.5">TRAVEL INTELLIGENCE</p>
+            </div>
+          </div>
+          <button onClick={() => setIsSidebarOpen(false)} className="p-2 -mr-2 text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="px-4 py-2 mt-4">
+          <p className="text-[10px] font-bold text-slate-400 mb-4 px-2 tracking-wider">WORKSPACE</p>
+          <nav className="space-y-1">
+            <div className="flex items-center gap-3 bg-blue-600 text-white px-3 py-2.5 rounded-lg font-bold text-sm shadow-md shadow-blue-600/20 cursor-pointer" onClick={() => setIsSidebarOpen(false)}>
+              <LayoutDashboard className="w-4 h-4" />
+              Dashboard
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 hover:bg-slate-50 px-3 py-2.5 rounded-lg font-semibold text-sm transition-colors cursor-not-allowed opacity-50">
+              <Briefcase className="w-4 h-4" />
+              My Journeys
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 hover:bg-slate-50 px-3 py-2.5 rounded-lg font-semibold text-sm justify-between transition-colors cursor-not-allowed opacity-50">
+              <div className="flex items-center gap-3">
+                <Bell className="w-4 h-4" />
+                Alerts & Live Feed
+              </div>
+              <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+            </div>
+            <div className="flex items-center gap-3 text-slate-600 hover:bg-slate-50 px-3 py-2.5 rounded-lg font-semibold text-sm transition-colors cursor-not-allowed opacity-50">
+              <Settings className="w-4 h-4" />
+              Travel Settings
+            </div>
+          </nav>
+        </div>
+
+        <div className="mt-auto p-4 mb-4">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                Live Sync Active
+              </div>
+              <div className="bg-white p-1 rounded border border-slate-200 shadow-sm">
+                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mb-4 leading-relaxed">
+              WhatsApp & SMS dispatch channel connected to live carrier feeds.
+            </p>
+            <button onClick={() => { if (journey?.id) setShowRecoveryModal(true); }} className="w-full py-2 bg-white border border-slate-200 shadow-sm rounded-xl text-[13px] font-bold text-blue-600 flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors">
+              <Phone className="w-4 h-4" />
+              Emergency Hotline
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-[#FAFAFA]">
+        {/* Top Header */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-20 relative">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/home')}>
+              <div className="bg-blue-600 p-1.5 rounded-full text-white">
+                <Compass className="w-4 h-4" />
+              </div>
+              <span className="text-blue-600 font-bold text-lg hidden sm:block">Travora</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3 sm:gap-6">
             <button
               onClick={() => refresh()}
               title="Refresh from server"
-              className="p-2 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors"
             >
               <RefreshCw className="h-4 w-4" />
             </button>
 
             <Link
               to="/admin"
-              className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 border border-amber-200 dark:border-amber-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="text-[13px] font-bold px-4 py-1.5 rounded-full bg-[#FFEDD5] text-[#C2410C] hover:bg-[#FED7AA] transition-colors flex items-center gap-2"
             >
-              <Zap className="h-3.5 w-3.5 text-amber-500" />
-              <span>Admin Console</span>
+              <Zap className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Admin Console</span>
             </Link>
-
 
             <button
               onClick={() => {
                 clearActive();
                 navigate('/build');
               }}
-              className="text-xs font-semibold px-3.5 py-1.5 rounded-xl bg-sky-500 text-white hover:bg-sky-600 transition-all flex items-center gap-1.5 shadow-sm"
+              className="text-[13px] font-bold px-4 py-1.5 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm shadow-blue-600/20"
             >
               <PlusCircle className="h-3.5 w-3.5" />
-              <span>New Journey</span>
+              <span className="hidden sm:inline">New Journey</span>
             </button>
-          </div>
-        </div>
-      </header>
-
-      {/* DISRUPTION TOAST NOTIFICATION BANNER (Unacknowledged) */}
-      {showToast && activeDisruption && affectedNodeVisible && noticeText && (
-        <div className="bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-xl px-4 py-3 sticky top-16 z-20 transition-all animate-in fade-in slide-in-from-top-2">
-          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                <AlertTriangle className="h-4 w-4 text-white animate-bounce" />
+            
+            <div className="hidden sm:flex items-center gap-3 border-l border-slate-200 pl-6 group">
+              <div className="text-right">
+                <p className="text-[13px] font-bold text-slate-900">Marcus Vance</p>
+                <p className="text-[11px] text-slate-500 font-semibold">Platinum Member</p>
               </div>
-              <div>
-                <div className="text-[11px] font-extrabold uppercase tracking-wider text-rose-100 flex items-center gap-1.5">
-                  <span>🔴 Travel Disruption Alert</span>
-                  {detectedTimeStr && <span>· {detectedTimeStr}</span>}
-                </div>
-                <div className="text-sm font-bold text-white mt-0.5">
-                  {noticeText}
-                </div>
+              <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-sm ring-2 ring-white ring-offset-1">
+                <span className="text-sm font-bold">M</span>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setShowImpactModal(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-white text-rose-700 hover:bg-rose-50 font-bold text-xs transition-colors shadow-sm flex items-center gap-1.5"
-              >
-                <Activity className="h-3.5 w-3.5" />
-                <span>View Impact</span>
-              </button>
-              <button
-                onClick={handleDismissToast}
-                title="Acknowledge notification"
-                className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        </header>
 
-      {/* Main Command Center Body */}
-      <main className="max-w-5xl mx-auto px-4 mt-6 space-y-6">
+        {/* Scrollable Area */}
+        <div className="flex-1 overflow-y-auto relative">
+          
+          {/* Disruption Alert Banner */}
+          {activeDisruption && affectedNodeVisible && noticeText && (
+            <div className="bg-[#E11D48] px-6 py-3.5 flex items-center justify-between text-white shadow-sm">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/20 p-2.5 rounded-xl backdrop-blur-sm shadow-inner">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-3 mb-0.5">
+                    <h3 className="font-bold text-[15px] sm:text-[17px]">{noticeText}</h3>
+                  </div>
+                  <p className="text-[12px] sm:text-[13px] text-rose-100/90 font-medium uppercase tracking-wide">
+                    TRAVEL DISRUPTION ALERT {detectedTimeStr && `· ${detectedTimeStr}`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  onClick={() => setShowImpactModal(true)}
+                  className="bg-white text-rose-600 px-3.5 py-1.5 rounded-xl text-[12px] sm:text-[13px] font-bold flex items-center gap-2 shadow-sm hover:bg-rose-50 transition-colors"
+                >
+                  <Activity className="w-4 h-4" />
+                  <span className="hidden sm:inline">View Impact</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="max-w-[1100px] mx-auto p-6 md:p-8 space-y-6">
+
         {!journey ? (
           /* Empty state */
           <div className="max-w-md mx-auto my-16 text-center p-8 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/30">
@@ -921,6 +997,8 @@ export default function HomeScreen() {
             />
           </div>
         )}
+          </div>
+        </div>
       </main>
 
       {/* RESTORE ORIGINAL JOURNEY DEMO MODAL */}
@@ -1161,7 +1239,6 @@ export default function HomeScreen() {
               clearSelectedRecoveryPlan(journey.id!);
               setSelectedRecoveryPlanState(null);
             }
-            // Refresh journey from backend source of truth
             await refresh();
             const exec = await getLatestExecution(journey.id!);
             setLatestExecution(exec);
