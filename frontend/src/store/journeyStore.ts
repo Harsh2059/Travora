@@ -593,9 +593,8 @@ export function useJourney(): JourneyState {
       return;
     }
 
-    // 3. Fallback to Baseline Demo Journey
-    const baseline = getBaselineDemoJourney();
-    setJourney(baseline);
+    // 3. If no backend trip or local draft exists, set journey to null (empty state)
+    setJourney(null);
   }, []);
 
   useEffect(() => {

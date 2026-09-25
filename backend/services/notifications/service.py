@@ -36,7 +36,7 @@ class NotificationService:
         elif channel == NotificationChannel.SMS:
             try:
                 trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-                user_phone = trip.user.whatsapp_phone if (trip and trip.user) else None
+                user_phone = (trip.user.whatsapp_phone or trip.user.phone_number) if (trip and trip.user) else None
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:
@@ -115,7 +115,7 @@ class NotificationService:
         elif channel == NotificationChannel.SMS:
             try:
                 trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-                user_phone = trip.user.whatsapp_phone if (trip and trip.user) else None
+                user_phone = (trip.user.whatsapp_phone or trip.user.phone_number) if (trip and trip.user) else None
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:

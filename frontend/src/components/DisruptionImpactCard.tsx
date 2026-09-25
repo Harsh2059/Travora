@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, ShieldCheck, RefreshCw, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Activity, ShieldCheck, RefreshCw, ArrowRight, Zap } from 'lucide-react';
 import type { Journey, ImpactResult, Part4RecoveryPlan } from '../types';
 import { getJourneyStatus } from '../utils/impactUtils';
 
@@ -24,161 +24,171 @@ export const DisruptionImpactCard: React.FC<DisruptionImpactCardProps> = ({
   isSelectedPlanUpdated,
   onFindRecovery,
   onReviewPlan,
-  onContinueToBooking
+  onContinueToBooking,
 }) => {
   if (!activeDisruption || !scopedImpactResult) return null;
 
   const journeyStatus = getJourneyStatus(scopedImpactResult);
   if (journeyStatus !== 'DISRUPTED') return null;
 
-  // Find affected node
   const targetId = String(activeDisruption.entity_id || activeDisruption.affected_node_id || '');
   const affectedNode = journey.nodes.find(n => n.id === targetId || String(n.backendId) === targetId);
 
-  // Parse time
-  const detectedTimeStr = (activeDisruption.timestamp || activeDisruption.detected_at)
-    ? new Date(activeDisruption.timestamp || activeDisruption.detected_at || '').toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) + ' A ' + new Date(activeDisruption.timestamp || activeDisruption.detected_at || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const detectedTime = (activeDisruption.timestamp || activeDisruption.detected_at)
+    ? new Date(activeDisruption.timestamp || activeDisruption.detected_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
     : '';
 
-  // Get nodes that have impact
-  const impactedNodes = (scopedImpactResult.nodes || []).filter(n => n.status !== 'INTACT');
-  
-  // Try to find the exact reason/headline from the event
-  let headline = `🔴 ${affectedNode?.title || 'Journey Segment'} Disrupted`;
-  if (activeDisruption.type === 'FLIGHT_CANCELLATION') headline = `🔴 ${affectedNode?.title || 'Flight'} Cancelled`;
-  else if (activeDisruption.type === 'WEATHER_DELAY') headline = `🔴 Weather Delay Detected`;
-  else if (activeDisruption.type === 'TRAIN_STRIKE') headline = `🔴 Train Strike Active`;
+  const detectedDate = (activeDisruption.timestamp || activeDisruption.detected_at)
+    ? new Date(activeDisruption.timestamp || activeDisruption.detected_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '';
 
-  let subReason = activeDisruption.reason || activeDisruption.description || '';
+  let headline = affectedNode?.title || 'Journey Segment';
+  let disruptionType = 'Operational Disruption';
+  if (activeDisruption.type === 'FLIGHT_CANCELLATION') disruptionType = 'Cancelled by Airline';
+  else if (activeDisruption.type === 'WEATHER_DELAY') disruptionType = 'Weather Delay';
+  else if (activeDisruption.type === 'TRAIN_STRIKE') disruptionType = 'Train Strike';
+
+  const impactedNodes = (scopedImpactResult.nodes || []).filter(n => n.status !== 'INTACT');
+  const rootNodeId = String(scopedImpactResult.root_node_ids?.[0] ?? '');
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-md">
-      {/* Top Banner */}
-      <div className="bg-rose-50 dark:bg-rose-950/40 px-6 py-5 border-b border-rose-100 dark:border-rose-900/60 flex items-center justify-between">
-        <div>
-          <h2 className="text-rose-700 dark:text-rose-300 font-extrabold text-xl sm:text-2xl flex items-center gap-3">
-            <AlertTriangle className="h-6 w-6 text-rose-600 dark:text-rose-400" />
-            {headline}
-          </h2>
-          {detectedTimeStr && (
-            <p className="text-slate-600 dark:text-slate-400 text-sm font-semibold mt-1">
-              Detected at {detectedTimeStr}
-            </p>
-          )}
-          {subReason && (
-            <p className="text-slate-700 dark:text-slate-300 text-base font-medium mt-2">
-              Reason: {subReason}
-            </p>
-          )}
-        </div>
-      </div>
+    <div className="relative overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-br from-rose-50 via-white to-orange-50/40 shadow-lg shadow-rose-100/50">
+      {/* Pulsing alert indicator top bar */}
+      <div className="h-1 w-full bg-gradient-to-r from-rose-500 via-red-400 to-orange-400" />
 
-      {/* Impacted Items List */}
-      <div className="px-6 py-5 bg-slate-50/50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
-        <h3 className="text-sm font-extrabold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Activity className="w-5 h-5" />
-          {impactedNodes.length} Impacted Journey Segment{impactedNodes.length !== 1 ? 's' : ''}
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {impactedNodes.map(nodeImpact => {
-            const node = journey.nodes.find(n => n.id === nodeImpact.node_id || String(n.backendId) === String(nodeImpact.item_id));
-            if (!node) return null;
+      {/* Alert glow effect */}
+      <div className="absolute -top-8 -right-8 w-32 h-32 bg-rose-400/10 rounded-full blur-2xl pointer-events-none" />
 
-            let statusColor = 'text-slate-500';
-            let bgBadge = 'bg-slate-100';
-            let statusText: string = nodeImpact.status;
-            
-            if (nodeImpact.status === 'BROKEN' || nodeImpact.status === 'NEEDS_CHANGE') {
-              statusColor = 'text-rose-700 dark:text-rose-300';
-              bgBadge = 'bg-rose-100 dark:bg-rose-900/60';
-              statusText = 'CANCELLED';
-            } else if (nodeImpact.status === 'AT_RISK') {
-              statusColor = 'text-amber-700 dark:text-amber-300';
-              bgBadge = 'bg-amber-100 dark:bg-amber-900/60';
-              statusText = 'AT RISK';
-            }
-
-            const isPrimary = nodeImpact.impact_sources?.some((s: any) => s.kind === 'DIRECT') || String(nodeImpact.node_id) === String(scopedImpactResult.root_node_ids?.[0]) || String(nodeImpact.item_id) === String(scopedImpactResult.root_node_ids?.[0]);
-            const impactLabel = isPrimary ? "PRIMARY DISRUPTION" : "RIPPLE IMPACT";
-            const impactColor = isPrimary ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400";
-
-            return (
-              <div key={node.id} className="flex flex-col p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
-                <div className={`text-[10px] font-extrabold uppercase tracking-wider mb-2 ${impactColor}`}>
-                  {impactLabel}
-                </div>
-                <div className="text-base font-extrabold text-slate-900 dark:text-white mb-1 truncate">
-                  {node.title}
-                </div>
-                {nodeImpact.reason && (
-                  <div className="text-xs font-semibold text-slate-500 mb-3 line-clamp-2">
-                    {nodeImpact.reason}
-                  </div>
+      <div className="p-5 sm:p-6">
+        {/* Header Row */}
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-11 h-11 rounded-xl bg-rose-500 flex items-center justify-center shrink-0 shadow-lg shadow-rose-500/30">
+              <AlertTriangle className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest bg-rose-100 text-rose-700 border border-rose-200 px-2.5 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  Live Disruption
+                </span>
+                {detectedTime && (
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Detected {detectedTime}{detectedDate ? `, ${detectedDate}` : ''}
+                  </span>
                 )}
-                <div className="mt-auto flex justify-start">
-                  <div className={`px-2.5 py-1 rounded-md ${bgBadge} ${statusColor} text-[11px] font-extrabold tracking-wider uppercase`}>
-                    {statusText}
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                {headline}
+              </h2>
+              <p className="text-sm font-semibold text-rose-600 mt-0.5">{disruptionType}</p>
+              {activeDisruption.reason && (
+                <p className="text-sm text-slate-600 mt-1.5 leading-relaxed max-w-lg">
+                  {activeDisruption.reason}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2.5 sm:shrink-0">
+            {selectedRecoveryPlan ? (
+              <>
+                <button
+                  onClick={onReviewPlan}
+                  className="px-4 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-xs transition-all"
+                >
+                  {isSelectedPlanUpdated ? '⚡ Updated Plan' : 'Review Plan'}
+                </button>
+                <button
+                  onClick={onContinueToBooking}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Confirm & Book
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={onFindRecovery}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm transition-all shadow-md shadow-rose-600/20 flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Find Recovery Options
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Impact Summary Row */}
+        {impactedNodes.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-rose-100">
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="w-4 h-4 text-rose-500" />
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                {impactedNodes.length} Impacted Segment{impactedNodes.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {impactedNodes.map(nodeImpact => {
+                const node = journey.nodes.find(n =>
+                  n.id === nodeImpact.node_id ||
+                  String(n.backendId) === String(nodeImpact.item_id)
+                );
+                if (!node) return null;
+
+                const isPrimary = String(nodeImpact.node_id) === rootNodeId || String(nodeImpact.item_id) === rootNodeId;
+                const isBroken = nodeImpact.status === 'BROKEN' || nodeImpact.status === 'NEEDS_CHANGE';
+
+                return (
+                  <div
+                    key={node.id}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all ${
+                      isPrimary
+                        ? 'bg-rose-100 border-rose-200 text-rose-800'
+                        : isBroken
+                          ? 'bg-orange-50 border-orange-200 text-orange-800'
+                          : 'bg-amber-50 border-amber-200 text-amber-700'
+                    }`}
+                  >
+                    {isPrimary && (
+                      <Zap className="w-3 h-3 shrink-0" />
+                    )}
+                    <span className="truncate max-w-[140px]">{node.title}</span>
+                    <ArrowRight className="w-3 h-3 shrink-0 opacity-60" />
+                    <span className={`text-[10px] font-black uppercase tracking-wide ${
+                      isPrimary ? 'text-rose-600' : isBroken ? 'text-orange-600' : 'text-amber-600'
+                    }`}>
+                      {isPrimary ? 'CANCELLED' : isBroken ? 'AFFECTED' : 'AT RISK'}
+                    </span>
                   </div>
+                );
+              })}
+            </div>
+
+            {/* Recovery Status Info */}
+            {selectedRecoveryPlan ? (
+              <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-black text-emerald-800 block">
+                    {isSelectedPlanUpdated ? '⚡ Recovery Plan Updated' : '✓ Recovery Plan Selected'}
+                  </span>
+                  <span className="text-[11px] text-emerald-600 font-medium">
+                    {selectedRecoveryPlan.changed_node_ids.length} changes · {selectedRecoveryPlan.preserved_node_ids.length} bookings preserved
+                  </span>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Action Area / Recovery Availability */}
-      <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          {selectedRecoveryPlan ? (
-            <div>
-              <p className="text-amber-700 dark:text-amber-400 font-extrabold text-sm flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4" />
-                {isSelectedPlanUpdated ? 'Updated Recovery Plan Selected' : 'Recovery Plan Ready'}
-              </p>
-              <p className="text-slate-500 text-xs font-medium mt-0.5">
-                {selectedRecoveryPlan.changed_node_ids.length} changes • A {selectedRecoveryPlan.preserved_node_ids.length} untouched
-              </p>
-            </div>
-          ) : (
-            <div>
-              <p className="text-emerald-700 dark:text-emerald-400 font-extrabold text-sm flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4" />
-                Travora Instant Recovery Active
-              </p>
-              <p className="text-slate-500 text-xs font-medium mt-0.5">
-                Connecting to live carrier schedules to find alternative routes.
-              </p>
-            </div>
-          )}
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-2">
-          {selectedRecoveryPlan ? (
-            <>
-              <button
-                onClick={onReviewPlan}
-                className="px-4 py-2 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 hover:bg-amber-200 font-bold text-xs transition-all border border-amber-200 dark:border-amber-800"
-              >
-                {isSelectedPlanUpdated ? 'Review Updated Plan' : 'Review Plan'}
-              </button>
-              <button
-                onClick={onContinueToBooking}
-                className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs transition-all shadow-md shadow-sky-500/20"
-              >
-                Continue to Booking
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={onFindRecovery}
-              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm transition-all shadow-md shadow-rose-600/20 flex items-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Find Recovery Options
-            </button>
-          )}
-        </div>
+            ) : (
+              <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-sky-50 border border-sky-200">
+                <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse shrink-0" />
+                <span className="text-xs font-semibold text-sky-700">
+                  Travora AI is cross-checking {14} live flight schedules for recovery options...
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

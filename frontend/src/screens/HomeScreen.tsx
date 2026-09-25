@@ -450,7 +450,7 @@ export default function HomeScreen() {
 
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+    <div className="flex h-screen bg-[#F0F4F8] font-sans text-slate-900 overflow-hidden">
       {/* Sidebar Overlay (Mobile/when opened) */}
       {isSidebarOpen && (
         <div 
@@ -461,61 +461,54 @@ export default function HomeScreen() {
 
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-1.5 rounded-full text-white">
-              <Compass className="w-5 h-5" />
+          <div className="p-5 flex items-center justify-between border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 p-1.5 rounded-lg text-white shadow-sm">
+              <Compass className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="font-bold text-lg leading-tight text-slate-900 flex items-center gap-1">
-                Travora
-              </h1>
-              <p className="text-[9px] font-bold text-slate-500 tracking-widest mt-0.5">TRAVEL INTELLIGENCE</p>
+              <h1 className="font-black text-base leading-tight text-slate-900">Travora</h1>
+              <p className="text-[9px] font-bold text-slate-400 tracking-widest mt-0.5">TRAVEL INTELLIGENCE</p>
             </div>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="p-2 -mr-2 text-slate-400 hover:text-slate-600">
+          <button onClick={() => setIsSidebarOpen(false)} className="p-2 -mr-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
         
-        <div className="px-4 py-2 mt-4">
-          <p className="text-[10px] font-bold text-slate-400 mb-4 px-2 tracking-wider">WORKSPACE</p>
+        <div className="px-4 py-4 flex-1">
+          <p className="text-[10px] font-bold text-slate-400 mb-3 px-2 tracking-widest">WORKSPACE</p>
           <nav className="space-y-1">
-            <div className="flex items-center gap-3 bg-blue-600 text-white px-3 py-2.5 rounded-lg font-bold text-sm shadow-md shadow-blue-600/20 cursor-pointer" onClick={() => setIsSidebarOpen(false)}>
+            <div className="flex items-center gap-3 bg-blue-600 text-white px-3 py-2.5 rounded-xl font-bold text-sm shadow-md shadow-blue-600/20 cursor-pointer" onClick={() => setIsSidebarOpen(false)}>
               <LayoutDashboard className="w-4 h-4" />
               Dashboard
             </div>
-            <div className="flex items-center gap-3 text-slate-600 hover:bg-slate-50 px-3 py-2.5 rounded-lg font-semibold text-sm transition-colors cursor-not-allowed opacity-50">
+            <div className="flex items-center gap-3 text-slate-500 hover:bg-slate-50 px-3 py-2.5 rounded-xl font-semibold text-sm transition-colors cursor-not-allowed opacity-60">
               <Briefcase className="w-4 h-4" />
               My Journeys
             </div>
-            <div className="flex items-center gap-3 text-slate-600 hover:bg-slate-50 px-3 py-2.5 rounded-lg font-semibold text-sm justify-between transition-colors cursor-not-allowed opacity-50">
+            <div className="flex items-center gap-3 text-slate-500 hover:bg-slate-50 px-3 py-2.5 rounded-xl font-semibold text-sm justify-between transition-colors cursor-not-allowed opacity-60">
               <div className="flex items-center gap-3">
                 <Bell className="w-4 h-4" />
                 Alerts & Live Feed
               </div>
               <div className="w-2 h-2 rounded-full bg-rose-500"></div>
             </div>
-            <div className="flex items-center gap-3 text-slate-600 hover:bg-slate-50 px-3 py-2.5 rounded-lg font-semibold text-sm transition-colors cursor-not-allowed opacity-50">
+            <div className="flex items-center gap-3 text-slate-500 hover:bg-slate-50 px-3 py-2.5 rounded-xl font-semibold text-sm transition-colors cursor-not-allowed opacity-60">
               <Settings className="w-4 h-4" />
               Travel Settings
             </div>
           </nav>
         </div>
 
-        <div className="mt-auto p-4 mb-4">
-          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                Live Sync Active
-              </div>
-              <div className="bg-white p-1 rounded border border-slate-200 shadow-sm">
-                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              </div>
+        <div className="p-4 border-t border-slate-100">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 mb-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+              Live Sync Active
             </div>
-            <p className="text-xs text-slate-500 font-medium mb-4 leading-relaxed">
-              WhatsApp & SMS dispatch channel connected to live carrier feeds.
+            <p className="text-xs text-slate-500 font-medium mb-3 leading-relaxed">
+              WhatsApp & SMS dispatch connected to live carrier feeds.
             </p>
             <button onClick={() => { if (journey?.id) setShowRecoveryModal(true); }} className="w-full py-2 bg-white border border-slate-200 shadow-sm rounded-xl text-[13px] font-bold text-blue-600 flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors">
               <Phone className="w-4 h-4" />
@@ -526,39 +519,40 @@ export default function HomeScreen() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-[#FAFAFA]">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-20 relative">
-          <div className="flex items-center gap-4">
+        <header className="h-14 bg-white/90 backdrop-blur-sm border-b border-slate-200/80 flex items-center justify-between px-4 sm:px-6 shrink-0 z-20 relative shadow-sm">
+          <div className="flex items-center gap-3">
             <button 
               onClick={() => setIsSidebarOpen(true)}
-              className="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-2 -ml-1 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
             >
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/home')}>
-              <div className="bg-blue-600 p-1.5 rounded-full text-white">
+              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-1.5 rounded-lg text-white shadow-sm">
                 <Compass className="w-4 h-4" />
               </div>
-              <span className="text-blue-600 font-bold text-lg hidden sm:block">Travora</span>
+              <span className="text-slate-900 font-black text-base hidden sm:block">Travora</span>
+              <span className="text-[10px] font-black text-slate-400 tracking-widest hidden lg:block">TRAVEL INTELLIGENCE</span>
             </div>
           </div>
           
-          <div className="flex items-center gap-3 sm:gap-6">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => refresh()}
               title="Refresh from server"
-              className="p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors"
+              className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
             >
               <RefreshCw className="h-4 w-4" />
             </button>
 
             <Link
               to="/admin"
-              className="text-[13px] font-bold px-4 py-1.5 rounded-full bg-[#FFEDD5] text-[#C2410C] hover:bg-[#FED7AA] transition-colors flex items-center gap-2"
+              className="text-[12px] font-black px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors flex items-center gap-1.5"
             >
-              <Zap className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Admin Console</span>
+              <Zap className="h-3 w-3" />
+              <span className="hidden sm:inline">Admin</span>
             </Link>
 
             <button
@@ -566,7 +560,7 @@ export default function HomeScreen() {
                 clearActive();
                 navigate('/build');
               }}
-              className="text-[13px] font-bold px-4 py-1.5 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm shadow-blue-600/20"
+              className="text-[12px] font-black px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm shadow-blue-600/20"
             >
               <PlusCircle className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">New Journey</span>
@@ -575,23 +569,23 @@ export default function HomeScreen() {
             {currentUser ? (
               <div
                 onClick={() => setIsProfileModalOpen(true)}
-                className="hidden sm:flex items-center gap-3 border-l border-slate-200 pl-6 group cursor-pointer hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity pl-2 border-l border-slate-200"
               >
-                <div className="text-right">
-                  <p className="text-[13px] font-bold text-slate-900">{currentUser.name || 'Traveler'}</p>
-                  <p className="text-[11px] text-emerald-600 font-semibold flex items-center justify-end gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <div className="hidden sm:block text-right">
+                  <p className="text-[12px] font-black text-slate-900 leading-tight">{currentUser.name || 'Traveler'}</p>
+                  <p className="text-[10px] text-emerald-600 font-bold flex items-center justify-end gap-1">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
                     {currentUser.whatsapp_phone || currentUser.email}
                   </p>
                 </div>
-                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-sm ring-2 ring-white ring-offset-1">
-                  <span className="text-sm font-bold">{(currentUser.name || 'T')[0].toUpperCase()}</span>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-500 flex items-center justify-center text-white shadow-sm">
+                  <span className="text-xs font-black">{(currentUser.name || 'T')[0].toUpperCase()}</span>
                 </div>
               </div>
             ) : (
               <button
                 onClick={() => setIsAuthModalOpen(true)}
-                className="hidden sm:flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition-all"
               >
                 <User className="w-3.5 h-3.5" />
                 <span>Sign In</span>
@@ -602,27 +596,30 @@ export default function HomeScreen() {
 
         {/* Scrollable Area */}
         <div className="flex-1 overflow-y-auto relative">
-          <div className="max-w-[1400px] mx-auto p-6 md:p-8 space-y-6">
+          <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-5 space-y-5">
         {!journey ? (
           /* Empty state */
-          <div className="max-w-md mx-auto my-16 text-center p-8 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/30">
-            <div className="h-14 w-14 rounded-2xl bg-sky-50 dark:bg-sky-950/50 text-sky-500 flex items-center justify-center mx-auto mb-4">
-              <Compass className="h-7 w-7" />
+          <div className="max-w-lg mx-auto my-20 text-center">
+            <div className="bg-white rounded-3xl p-10 border border-slate-200 shadow-xl shadow-slate-100">
+              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white flex items-center justify-center mx-auto mb-5 shadow-lg shadow-indigo-500/20">
+                <Compass className="h-8 w-8" />
+              </div>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">No Active Journey</h2>
+              <p className="text-sm text-slate-500 mt-3 leading-relaxed max-w-sm mx-auto">
+                You haven't created a trip yet. Build your journey and Travora will monitor it in real-time.
+              </p>
+              <button
+                onClick={() => navigate('/build')}
+                className="mt-6 px-8 py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-sm transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2 mx-auto"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Create Your First Journey
+              </button>
             </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">No Active Journey</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-              You haven't created a trip yet. Start building your journey now.
-            </p>
-            <button
-              onClick={() => navigate('/build')}
-              className="mt-6 px-6 py-3 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-semibold text-sm transition-all shadow-md shadow-sky-500/20"
-            >
-              Create Your First Journey
-            </button>
           </div>
         ) : (
           /* Active Journey Command Center */
-          <div className="space-y-6">
+          <div className="space-y-5">
             <CurrentJourneyHeader journey={journey} syncActive={true} />
             
             <DisruptionImpactCard
@@ -638,8 +635,9 @@ export default function HomeScreen() {
               onContinueToBooking={() => setShowPart5HandoffModal(true)}
             />
             
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              <div className="lg:col-span-7 xl:col-span-7 space-y-6">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+              {/* Left: Journey Timeline - wider */}
+              <div className="xl:col-span-7 space-y-5">
                 <Part1JourneyView
                   journey={journey}
                   viewMode={viewMode}
@@ -655,7 +653,9 @@ export default function HomeScreen() {
                   }}
                 />
               </div>
-              <div className="lg:col-span-5 xl:col-span-5 w-full space-y-6">
+
+              {/* Right: Recovery / Trip Details - sticky */}
+              <div className="xl:col-span-5 space-y-4 xl:sticky xl:top-5">
                 {activeDisruption ? (
                   <>
                     <RecoveryOptionsPanel
@@ -729,9 +729,15 @@ export default function HomeScreen() {
 
       {/* DEMO TOAST NOTIFICATION */}
       {toastNotification && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white dark:bg-white dark:text-slate-900 px-4 py-3 rounded-2xl shadow-2xl font-bold text-xs flex items-center gap-2 animate-in slide-in-from-bottom duration-200">
-          <CheckCircle2 className="h-4 w-4 text-emerald-400 dark:text-emerald-600" />
-          <span>{toastNotification}</span>
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-300"
+          style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', backdropFilter: 'blur(12px)' }}
+        >
+          <div className="w-7 h-7 rounded-xl bg-emerald-500 flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/30">
+            <CheckCircle2 className="h-4 w-4 text-white" />
+          </div>
+          <div>
+            <p className="text-white font-black text-xs">{toastNotification}</p>
+          </div>
         </div>
       )}
 

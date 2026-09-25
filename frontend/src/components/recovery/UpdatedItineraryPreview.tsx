@@ -4,7 +4,12 @@ import {
   AlertTriangle,
   ShieldCheck,
   RotateCcw,
-  RefreshCw
+  Plane,
+  ArrowRight,
+  Clock,
+  Hotel,
+  Car,
+  Zap,
 } from 'lucide-react';
 import type { Journey, Part4RecoveryPlan, ImpactResult } from '../../types';
 import { executePart5Recovery } from '../../services/recoveryApi';
@@ -30,13 +35,21 @@ function fmtTime(isoStr?: string | null): string {
   }
 }
 
+function getNodeIcon(type: string) {
+  const t = (type || '').toLowerCase();
+  if (t === 'flight') return <Plane className="w-3.5 h-3.5" />;
+  if (t === 'hotel') return <Hotel className="w-3.5 h-3.5" />;
+  if (t === 'cab' || t === 'taxi' || t === 'transfer') return <Car className="w-3.5 h-3.5" />;
+  return <Zap className="w-3.5 h-3.5" />;
+}
+
 export const UpdatedItineraryPreview: React.FC<UpdatedItineraryPreviewProps> = ({
   journey,
   plan,
   impactResult: _impactResult,
   disruptionFingerprint,
   onConfirmSuccess,
-  onChangeOption
+  onChangeOption,
 }) => {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -51,12 +64,7 @@ export const UpdatedItineraryPreview: React.FC<UpdatedItineraryPreviewProps> = (
     setErrorMessage(null);
 
     try {
-      await executePart5Recovery(
-        journey.id as number,
-        plan,
-        disruptionFingerprint
-      );
-      
+      await executePart5Recovery(journey.id as number, plan, disruptionFingerprint);
       clearSelectedRecoveryPlan(journey.id as number);
       await onConfirmSuccess();
     } catch (err: any) {
@@ -70,220 +78,197 @@ export const UpdatedItineraryPreview: React.FC<UpdatedItineraryPreviewProps> = (
 
   const netCost = plan.estimated_additional_cost ?? 0;
 
+  // Downstream nodes (not being replaced)
+  const downstreamNodes = journey.nodes.filter((node) => {
+    const isReplaced = replacementChanges.some(
+      (c) => c.node_id === String(node.id) || (node.backendId && c.node_id === String(node.backendId))
+    );
+    return !isReplaced && node.status !== 'CANCELLED' && node.status !== 'REPLACED';
+  });
+
   return (
-    <div className="bg-white dark:bg-slate-900 border-2 border-emerald-500/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
-      {/* Header Banner */}
-      <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+    <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
+      {/* Accent top bar */}
+      <div className="h-1 w-full bg-gradient-to-r from-emerald-400 via-sky-400 to-indigo-400" />
+
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-br from-emerald-50/60 to-white flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
-            <CheckCircle2 className="h-5 w-5" />
+          <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
+            <CheckCircle2 className="w-4.5 h-4.5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                 Itinerary Preview
               </span>
-              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
                 Pre-Confirmation
               </span>
             </div>
-            <h3 className="text-lg font-extrabold text-slate-900 dark:text-white mt-0.5 tracking-tight">
-              Updated Itinerary Preview
-            </h3>
+            <h3 className="text-sm font-black text-slate-900 mt-1 tracking-tight">Updated Itinerary</h3>
           </div>
         </div>
 
         <button
           onClick={onChangeOption}
-          className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 transition-colors flex items-center gap-1.5"
+          className="text-xs font-bold text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors flex items-center gap-1.5"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Change Option</span>
+          <RotateCcw className="w-3 h-3" />
+          Change
         </button>
       </div>
 
-      <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
-        Here is what your updated journey will look like with the selected recovery option. Review the changes before confirming.
-      </p>
-
-      {/* Selected Option Summary Banner */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-sky-950/30 dark:to-indigo-950/30 border border-sky-100 dark:border-sky-900/40 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-600 dark:text-sky-400 block">
-            SELECTED RECOVERY OPTION
-          </span>
-          <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
-            {plan.title}
-          </h4>
-        </div>
-
-        <div className="text-right shrink-0">
-          <span className="text-[10px] font-bold text-slate-500 uppercase block">NET ADDITIONAL COST</span>
-          <span className="text-base font-extrabold text-sky-700 dark:text-sky-300">
-            {netCost === 0 ? 'Zero Surcharge' : `+₹${netCost.toLocaleString()}`}
-          </span>
-        </div>
-      </div>
-
-      {/* BEFORE / AFTER COMPARISON BLOCK */}
-      <div className="space-y-3">
-        <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-          <RefreshCw className="w-3.5 h-3.5 text-sky-500" />
-          <span>Segment Changes Breakdown</span>
-        </h4>
-
-        <div className="space-y-3">
-          {replacementChanges.map((change, idx) => {
-            const origNode = change.original_details || {};
-            const newDetails = change.new_details || {};
-            const carrier = change.provider || newDetails.provider || newDetails.airline || change.new_title || 'Replacement Carrier';
-            const flNo = newDetails.flight_number || newDetails.resource_id || '';
-
-            return (
-              <div
-                key={change.node_id || idx}
-                className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-extrabold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4" />
-                    DISRUPTED: {change.original_title}
-                  </span>
-                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-                    CANCELLED
-                  </span>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      NEW REPLACEMENT: {carrier} {flNo}
-                    </span>
-                    <span className="text-xs font-extrabold text-emerald-700 dark:text-emerald-300">
-                      {change.estimated_cost ? `₹${change.estimated_cost.toLocaleString()}` : 'Included'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-emerald-950 dark:text-emerald-100 font-semibold pt-1">
-                    <div>
-                      <span>{change.origin || origNode.origin || 'Mumbai'}</span>
-                      <span className="mx-2 text-emerald-500">→</span>
-                      <span>{change.destination || origNode.destination || 'Delhi'}</span>
-                    </div>
-                    <div>
-                      {fmtTime(change.start_time || newDetails.departure_time)} - {fmtTime(change.end_time || newDetails.arrival_time)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* RECALCULATED DOWNSTREAM STATUSES */}
-      <div className="space-y-3 pt-1">
-        <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Downstream Journey Recalculations</span>
-        </h4>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {journey.nodes.map((node) => {
-            const isReplacedNode = replacementChanges.some(
-              (c) => c.node_id === String(node.id) || (node.backendId && c.node_id === String(node.backendId))
-            );
-            if (isReplacedNode) return null;
-
-            const nType = (node.type || '').toUpperCase();
-            let statusLabel = 'Preserved';
-            let iconColor = 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800';
-
-            if (nType === 'FLIGHT' || nType === 'TRAIN') {
-              statusLabel = 'Connection preserved';
-            } else if (nType === 'CAB' || nType === 'TAXI' || nType === 'TRANSFER') {
-              statusLabel = 'Pickup automatically rescheduled';
-            } else if (nType === 'HOTEL') {
-              statusLabel = 'Check-in preserved';
-            } else if (nType === 'ACTIVITY' || nType === 'EVENT') {
-              statusLabel = 'Activity schedule valid';
-            }
-
-            return (
-              <div
-                key={node.id}
-                className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs font-bold ${iconColor}`}
-              >
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                <div className="truncate">
-                  <span className="block truncate text-slate-900 dark:text-white">{node.title}</span>
-                  <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                    ✓ {statusLabel}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Protection & Guarantee Badge */}
-      <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 flex items-center gap-3">
-        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-        <div className="text-xs">
-          <span className="font-extrabold text-emerald-900 dark:text-emerald-200 block">
-            Recovery Guarantee & Protection
-          </span>
-          <span className="font-medium text-emerald-700 dark:text-emerald-400 text-[11px]">
-            100% Airline Rebooking Credit applied. Downstream bookings automatically updated.
-          </span>
-        </div>
-      </div>
-
-      {/* Failure Error Notice */}
-      {errorMessage && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2.5">
-          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-          <div className="flex-1">
-            <span>{errorMessage}</span>
+      <div className="p-4 space-y-4">
+        {/* Selected Option Banner */}
+        <div className="p-3.5 rounded-xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-100 flex items-center justify-between">
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-sky-500 mb-0.5">Selected Plan</div>
+            <div className="text-sm font-black text-slate-900 truncate max-w-[180px]">{plan.title}</div>
           </div>
+          <div className="text-right shrink-0">
+            <div className="text-[9px] font-bold text-slate-400 uppercase">Net Cost</div>
+            <div className="text-base font-black text-sky-700">
+              {netCost === 0 ? '₹0' : `+₹${netCost.toLocaleString()}`}
+            </div>
+          </div>
+        </div>
+
+        {/* Changes Breakdown */}
+        {replacementChanges.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">Segment Changes</div>
+            {replacementChanges.map((change, idx) => {
+              const newDetails = change.new_details || {};
+              const carrier = change.provider || newDetails.provider || newDetails.airline || change.new_title || 'Replacement';
+              const flNo = newDetails.flight_number || newDetails.resource_id || '';
+              const depT = fmtTime(change.start_time || newDetails.departure_time);
+              const arrT = fmtTime(change.end_time || newDetails.arrival_time);
+
+              return (
+                <div key={change.node_id || idx} className="rounded-xl border border-slate-200 overflow-hidden">
+                  {/* Before */}
+                  <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 border-b border-rose-100">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <span className="text-xs font-bold text-rose-700 truncate flex-1">{change.original_title || 'Original Booking'}</span>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-rose-200 text-rose-800">Cancelled</span>
+                  </div>
+
+                  {/* After */}
+                  <div className="px-3 py-3 bg-white space-y-2">
+                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-600">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Replacement Booking
+                    </div>
+                    <div className="font-black text-sm text-slate-900">{carrier} {flNo}</div>
+                    {(depT || arrT) && (
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                        <span>{depT || '—'}</span>
+                        <div className="flex-1 flex items-center gap-1">
+                          <div className="flex-1 h-px bg-slate-200" />
+                          <ArrowRight className="w-3 h-3 text-slate-300" />
+                        </div>
+                        <span>{arrT || '—'}</span>
+                      </div>
+                    )}
+                    {(change.origin || change.destination) && (
+                      <div className="text-[10px] text-slate-400 font-semibold">
+                        {change.origin || '?'} → {change.destination || '?'}
+                      </div>
+                    )}
+                    {change.estimated_cost != null && (
+                      <div className="text-xs font-bold text-sky-600">
+                        {change.estimated_cost === 0 ? 'Included via airline credit' : `₹${change.estimated_cost.toLocaleString()}`}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Downstream Preserved */}
+        {downstreamNodes.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">Downstream Bookings</div>
+            <div className="grid grid-cols-1 gap-1.5">
+              {downstreamNodes.map((node) => {
+                const nType = (node.type || '').toUpperCase();
+                let statusLabel = 'Preserved';
+                if (nType === 'CAB' || nType === 'TAXI' || nType === 'TRANSFER') statusLabel = 'Pickup rescheduled';
+                else if (nType === 'HOTEL') statusLabel = 'Check-in preserved';
+                else if (nType === 'FLIGHT' || nType === 'TRAIN') statusLabel = 'Connection preserved';
+
+                return (
+                  <div
+                    key={node.id}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-100"
+                  >
+                    <div className="w-6 h-6 rounded-md bg-emerald-100 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0">
+                      {getNodeIcon(node.type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-slate-800 truncate">{node.title}</div>
+                      <div className="text-[10px] text-emerald-600 font-semibold">✓ {statusLabel}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Protection Badge */}
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-sky-50 border border-emerald-100">
+          <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+          <div className="text-xs">
+            <div className="font-black text-emerald-900">Recovery Guarantee</div>
+            <div className="text-emerald-600 font-medium text-[11px]">100% Airline Credit · Zero Cancellation Fee · Auto-synced downstream</div>
+          </div>
+        </div>
+
+        {/* Error State */}
+        {errorMessage && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span className="flex-1">{errorMessage}</span>
+            <button
+              onClick={handleConfirmRecovery}
+              className="px-2 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors shrink-0"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="pt-2 flex items-center gap-2">
+          <button
+            onClick={onChangeOption}
+            disabled={submitting}
+            className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-50"
+          >
+            Back
+          </button>
           <button
             onClick={handleConfirmRecovery}
-            className="px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors"
+            disabled={submitting}
+            className="flex-[2] py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            Retry
+            {submitting ? (
+              <>
+                <div className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                <span>Applying...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Confirm Plan</span>
+              </>
+            )}
           </button>
         </div>
-      )}
-
-      {/* Confirmation Actions */}
-      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <button
-          onClick={onChangeOption}
-          disabled={submitting}
-          className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
-        >
-          Back to Options
-        </button>
-
-        <button
-          onClick={handleConfirmRecovery}
-          disabled={submitting}
-          className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition-all shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2.5 disabled:opacity-50"
-        >
-          {submitting ? (
-            <>
-              <div className="h-4 w-4 rounded-full animate-spin border-2 border-white border-t-transparent" />
-              <span>Applying recovery...</span>
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="h-4 w-4" />
-              <span>Confirm & Apply Recovery</span>
-            </>
-          )}
-        </button>
       </div>
     </div>
   );

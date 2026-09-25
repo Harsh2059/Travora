@@ -13,14 +13,15 @@ class DynamicSmsGenerator:
     @staticmethod
     def get_recipient_phone(user_phone: Optional[str]) -> str:
         """
-        Returns DEMO_SMS_RECIPIENT from environment if set, else user's phone.
+        Prioritizes user's registered phone number.
+        Returns user's phone if available, else DEMO_SMS_RECIPIENT env var if set, else default fallback.
         """
-        env_recipient = os.getenv("DEMO_SMS_RECIPIENT", "").strip()
-        if env_recipient:
-            return env_recipient
         phone = (user_phone or "").strip()
         if phone:
             return phone
+        env_recipient = os.getenv("DEMO_SMS_RECIPIENT", "").strip()
+        if env_recipient:
+            return env_recipient
         return "+917350571349"  # Fallback for custom trips without phone number
 
     @staticmethod

@@ -133,7 +133,8 @@ class WhatsAppService:
             )
 
         trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-        recipient = trip.user.whatsapp_phone if (trip and trip.user and trip.user.whatsapp_phone) else DEMO_WHATSAPP_NUMBER
+        user_phone = (trip.user.whatsapp_phone or trip.user.phone_number) if (trip and trip.user) else None
+        recipient = user_phone if user_phone else DEMO_WHATSAPP_NUMBER
 
         # If plans are available, format recovery options dynamically and register context
         if plans and len(plans) > 0:
