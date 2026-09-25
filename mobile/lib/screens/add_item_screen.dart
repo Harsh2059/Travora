@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/trip_provider.dart';
-import '../core/theme/app_theme.dart';
 
 class AddItemScreen extends StatefulWidget {
   const AddItemScreen({super.key});
@@ -90,17 +89,17 @@ class _AddItemScreenState extends State<AddItemScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Add to Journey'),
+        title: Text('Add to Journey'),
       ),
       body: _isCreating
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator())
           : Form(
               key: _formKey,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(16),
                 children: [
-                  const Text('Add a sub-trip, side-quest, or new transport to your current journey.', style: TextStyle(color: AppColors.textSecondary)),
-                  const SizedBox(height: 24),
+                  Text('Add a sub-trip, side-quest, or new transport to your current journey.', style: TextStyle(color: (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : const Color(0xFF64748B)))),
+                  SizedBox(height: 24),
                   DropdownButtonFormField<String>(
                     initialValue: _selectedType,
                     decoration: const InputDecoration(
@@ -119,7 +118,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       });
                     },
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   TextFormField(
                     controller: _originController,
                     decoration: const InputDecoration(
@@ -129,7 +128,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                     ),
                     validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null,
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   if (_selectedType != 'HOTEL' && _selectedType != 'ACTIVITY')
                     TextFormField(
                       controller: _destinationController,
@@ -141,7 +140,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null,
                     ),
                   if (_selectedType != 'HOTEL' && _selectedType != 'ACTIVITY')
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                   TextFormField(
                     controller: _providerController,
                     decoration: const InputDecoration(
@@ -150,24 +149,24 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       prefixIcon: Icon(Icons.business),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   ListTile(
-                    title: const Text('Date'),
+                    title: Text('Date'),
                     subtitle: Text('${_startDate.day}/${_startDate.month}/${_startDate.year}'),
-                    trailing: const Icon(Icons.calendar_today),
+                    trailing: Icon(Icons.calendar_today),
                     shape: RoundedRectangleBorder(
                       side: BorderSide(color: Colors.grey.shade300),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     onTap: _pickDate,
                   ),
-                  const SizedBox(height: 32),
+                  SizedBox(height: 32),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: EdgeInsets.symmetric(vertical: 16),
                     ),
                     onPressed: _submit,
-                    child: const Text('Add to Journey', style: TextStyle(fontSize: 16)),
+                    child: Text('Add to Journey', style: TextStyle(fontSize: 16)),
                   ),
                 ],
               ),

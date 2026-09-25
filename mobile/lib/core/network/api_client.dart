@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_endpoints.dart';
 
 class ApiException implements Exception {
@@ -14,20 +15,24 @@ class ApiException implements Exception {
 class ApiClient {
   final http.Client _client = http.Client();
   final Duration _timeout = const Duration(seconds: 15);
+  final _storage = const FlutterSecureStorage();
 
   Future<dynamic> get(String endpoint, {Map<String, String>? queryParams}) async {
     final uri = Uri.parse('${ApiEndpoints.baseUrl}$endpoint').replace(queryParameters: queryParams);
-    return _request(() => _client.get(uri));
+    final hdrs = await _headers();
+    return _request(() => _client.get(uri, headers: hdrs));
   }
 
   Future<dynamic> post(String endpoint, {Map<String, dynamic>? body}) async {
     final uri = Uri.parse('${ApiEndpoints.baseUrl}$endpoint');
-    return _request(() => _client.post(uri, headers: _headers(), body: jsonEncode(body ?? {})));
+    final hdrs = await _headers();
+    return _request(() => _client.post(uri, headers: hdrs, body: jsonEncode(body ?? {})));
   }
 
   Future<dynamic> patch(String endpoint, {Map<String, dynamic>? body}) async {
     final uri = Uri.parse('${ApiEndpoints.baseUrl}$endpoint');
-    return _request(() => _client.patch(uri, headers: _headers(), body: jsonEncode(body ?? {})));
+    final hdrs = await _headers();
+    return _request(() => _client.patch(uri, headers: hdrs, body: jsonEncode(body ?? {})));
   }
 
   Future<dynamic> _request(Future<http.Response> Function() requestFunc) async {
@@ -48,8 +53,12 @@ class ApiClient {
     }
   }
 
-  Map<String, String> _headers() => {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
+  Future<Map<String, String>> _headers() async {
+    final token = await _storage.read(key: 'auth_token');
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
 }

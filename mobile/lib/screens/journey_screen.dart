@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/trip_provider.dart';
 import '../models/trip.dart';
-import '../core/theme/app_theme.dart';
+import '../widgets/travora_card.dart';
+import '../widgets/transport_icon.dart';
+import '../widgets/status_badge.dart';
 
 class JourneyScreen extends StatelessWidget {
   const JourneyScreen({super.key});
@@ -12,143 +14,216 @@ class JourneyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Itinerary')),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: Text('Journey', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        elevation: 0,
+      ),
       body: Consumer<TripProvider>(
         builder: (context, provider, child) {
           final trip = provider.activeTrip;
           if (trip == null) {
-            return const Center(child: Text('No active journey.'));
+            return Center(child: Text('No active journey.'));
           }
 
-          final items = trip.items..sort((a, b) => (a.startTime ?? DateTime.now()).compareTo(b.startTime ?? DateTime.now()));
+          final items = List<ItineraryItem>.from(trip.items)
+            ..sort((a, b) => (a.startTime ?? DateTime.now()).compareTo(b.startTime ?? DateTime.now()));
 
           return RefreshIndicator(
+            color: Theme.of(context).colorScheme.primary,
             onRefresh: () => provider.refreshActiveTrip(),
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final isFirst = index == 0;
-                final isLast = index == items.length - 1;
-                return _buildTimelineItem(item, isFirst, isLast);
-              },
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _buildHeader(context, trip, items),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final item = items[index];
+                        final isFirst = index == 0;
+                        final isLast = index == items.length - 1;
+                        return _buildTimelineItem(context, item, isFirst, isLast);
+                      },
+                      childCount: items.length,
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              ],
             ),
           );
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/add-item'),
-        icon: const Icon(Icons.add_location_alt),
-        label: const Text('Add to Journey'),
-        backgroundColor: AppColors.primary,
+        icon: Icon(Icons.add_location_alt),
+        label: Text('Add to Journey'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
       ),
     );
   }
 
-  Widget _buildTimelineItem(ItineraryItem item, bool isFirst, bool isLast) {
+  Widget _buildHeader(BuildContext context, Trip trip, List<ItineraryItem> items) {
+    String route = trip.title;
+    String dates = '';
+    
+    if (items.isNotEmpty) {
+      final first = items.first;
+      final last = items.last;
+      
+      if (first.origin != null && last.destination != null) {
+        route = '${first.origin} → ${last.destination}';
+      }
+      if (first.startTime != null) {
+        dates = DateFormat('dd MMM').format(first.startTime!);
+        if (last.endTime != null || last.startTime != null) {
+          final endDt = last.endTime ?? last.startTime;
+          if (endDt != null) dates += ' — ${DateFormat('dd MMM').format(endDt)}';
+        }
+      }
+    }
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 8, 24, 24),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(route, style: Theme.of(context).textTheme.headlineLarge),
+          SizedBox(height: 8),
+          Text(dates, style: TextStyle(fontSize: 16, color: (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : const Color(0xFF64748B)), fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineItem(BuildContext context, ItineraryItem item, bool isFirst, bool isLast) {
+    final timeStr = item.startTime != null ? DateFormat('hh:mm a').format(item.startTime!) : '--:--';
+    
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Timeline connector
           SizedBox(
-            width: 40,
+            width: 60,
             child: Column(
               children: [
-                Container(width: 2, height: 24, color: isFirst ? Colors.transparent : AppColors.primary.withValues(alpha: 0.3)),
+                Container(width: 2, height: 32, color: isFirst ? Colors.transparent : Colors.grey.shade300),
                 Container(
-                  width: 16,
-                  height: 16,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
-                    color: AppColors.primary,
+                    color: Colors.white,
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 4),
+                    border: Border.all(color: Colors.grey.shade300, width: 2),
+                  ),
+                  child: Center(
+                    child: TransportIcon(type: item.type, color: Theme.of(context).colorScheme.primary, size: 16),
                   ),
                 ),
-                Expanded(child: Container(width: 2, color: isLast ? Colors.transparent : AppColors.primary.withValues(alpha: 0.3))),
+                Expanded(child: Container(width: 2, color: isLast ? Colors.transparent : Colors.grey.shade300)),
               ],
             ),
           ),
+          
+          // Card content
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _buildTransportCard(item),
+              padding: EdgeInsets.only(bottom: 24, top: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(timeStr, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: (Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF1E293B)))),
+                      SizedBox(width: 12),
+                      Container(width: 4, height: 4, decoration: BoxDecoration(color: Colors.grey, shape: BoxShape.circle)),
+                      SizedBox(width: 12),
+                      Text(item.type.toUpperCase(), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : const Color(0xFF64748B)), letterSpacing: 1.0)),
+                    ],
+                  ),
+                  SizedBox(height: 12),
+                  TravoraCard(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.provider.isNotEmpty ? item.provider : item.type,
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                            ),
+                            StatusBadge(status: item.status),
+                          ],
+                        ),
+                        SizedBox(height: 12),
+                        
+                        if (item.origin != null && item.destination != null)
+                          Padding(
+                            padding: EdgeInsets.only(bottom: 8),
+                            child: Text('${item.origin} → ${item.destination}', style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+                          )
+                        else if (item.location != null)
+                          Padding(
+                            padding: EdgeInsets.only(bottom: 8),
+                            child: Text(item.location!, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+                          ),
+                        
+                        if (item.bookingId != null && item.bookingId!.isNotEmpty)
+                          Padding(
+                            padding: EdgeInsets.only(top: 8),
+                            child: Row(
+                              children: [
+                                Text('Booking Ref: ', style: TextStyle(color: (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : const Color(0xFF64748B)), fontSize: 13)),
+                                Text(item.bookingId!, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                          
+                        if (item.itemMetadata.isNotEmpty) ...[
+                          Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Divider(height: 1),
+                          ),
+                          ...item.itemMetadata.entries.map((entry) {
+                            return Padding(
+                              padding: EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                children: [
+                                  Text('${entry.key.replaceAll('_', ' ')}: ', style: TextStyle(color: (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : const Color(0xFF64748B)), fontSize: 13)),
+                                  Text('${entry.value}', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                ],
+                              ),
+                            );
+                          }),
+                        ]
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildTransportCard(ItineraryItem item) {
-    IconData icon;
-    if (item.type == 'FLIGHT') {
-      icon = Icons.flight;
-    } else if (item.type == 'TRAIN') {
-      icon = Icons.train;
-    } else if (item.type == 'CAB') {
-      icon = Icons.local_taxi;
-    } else if (item.type == 'HOTEL') {
-      icon = Icons.hotel;
-    } else {
-      icon = Icons.directions_bus;
-    }
-
-    final String timeStr = item.startTime != null ? DateFormat('jm').format(item.startTime!) : '';
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Column(
-              children: [
-                Text(timeStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 8),
-                Icon(icon, color: AppColors.primary),
-              ],
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(item.type, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
-                      Text(item.status, style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  if (item.origin != null && item.destination != null) 
-                    Text('${item.origin} → ${item.destination}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  if (item.location != null)
-                    Text('Location: ${item.location}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  
-                  const SizedBox(height: 8),
-                  
-                  // Provider / Airline / Operator
-                  if (item.provider.isNotEmpty)
-                    Text('Operator: ${item.provider}'),
-                  
-                  // PNR or Booking ID
-                  if (item.bookingId != null)
-                    Text('Booking Ref / PNR: ${item.bookingId}'),
-                    
-                  // Dynamic Metadata (Flight Number, Terminal, Coach, Seat, Driver)
-                  ...item.itemMetadata.entries.map((entry) {
-                    final key = entry.key.replaceAll('_', ' ').toUpperCase();
-                    return Text('$key: ${entry.value}');
-                  }),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+extension StringExtension on TextStyle {
+  TextStyle get capitalize => copyWith(); // helper
 }

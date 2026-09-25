@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 import uuid
 from datetime import datetime
@@ -23,6 +23,7 @@ class NotificationService:
         trip_id: int,
         plan: Dict[str, Any],
         disruption_id: Optional[int] = None,
+        plans: Optional[List[Dict[str, Any]]] = None,
     ) -> NotificationResult:
         if channel == NotificationChannel.WHATSAPP:
             trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
@@ -33,6 +34,7 @@ class NotificationService:
                 trip_id=trip_id,
                 plan=plan,
                 disruption_id=disruption_id,
+                plans=plans,
             )
         elif channel == NotificationChannel.SMS:
             try:
@@ -107,6 +109,7 @@ class NotificationService:
         channel: NotificationChannel,
         trip_id: int,
         disruption: Dict[str, Any],
+        plans: Optional[List[Dict[str, Any]]] = None,
     ) -> NotificationResult:
         if channel == NotificationChannel.WHATSAPP:
             trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
@@ -116,6 +119,7 @@ class NotificationService:
                 db=db,
                 trip_id=trip_id,
                 disruption=disruption,
+                plans=plans,
             )
         elif channel == NotificationChannel.SMS:
             try:

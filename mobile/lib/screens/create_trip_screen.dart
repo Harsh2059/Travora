@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../core/theme/app_theme.dart';
 import 'review_trip_screen.dart';
 
 class CreateTripScreen extends StatefulWidget {
@@ -76,12 +75,12 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Plan New Trip'),
+        title: Text('Plan New Trip'),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(16),
           children: [
             TextFormField(
               controller: _titleController,
@@ -90,9 +89,9 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 24),
-            const Text('Itinerary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 16),
+            SizedBox(height: 24),
+            Text('Itinerary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            SizedBox(height: 16),
             ..._locationControllers.asMap().entries.map((entry) {
               final index = entry.key;
               final controller = entry.value;
@@ -103,7 +102,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
               if (isDest) label = 'Destination';
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: EdgeInsets.only(bottom: 12),
                 child: Row(
                   children: [
                     Expanded(
@@ -119,7 +118,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                     ),
                     if (!isOrigin && !isDest)
                       IconButton(
-                        icon: const Icon(Icons.remove_circle_outline, color: AppColors.alertRed),
+                        icon: Icon(Icons.remove_circle_outline, color: const Color(0xFFDC2626)),
                         onPressed: () => _removeStop(index),
                       ),
                   ],
@@ -130,28 +129,28 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: _addStop,
-                icon: const Icon(Icons.add),
-                label: const Text('Add Stop'),
+                icon: Icon(Icons.add),
+                label: Text('Add Stop'),
               ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             ListTile(
-              title: const Text('Departure Date'),
+              title: Text('Departure Date'),
               subtitle: Text('${_startDate.day}/${_startDate.month}/${_startDate.year}'),
-              trailing: const Icon(Icons.calendar_today),
+              trailing: Icon(Icons.calendar_today),
               shape: RoundedRectangleBorder(
                 side: BorderSide(color: Colors.grey.shade300),
                 borderRadius: BorderRadius.circular(8),
               ),
               onTap: _pickDate,
             ),
-            const SizedBox(height: 32),
+            SizedBox(height: 32),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: EdgeInsets.symmetric(vertical: 16),
               ),
               onPressed: _continue,
-              child: const Text('Review Itinerary', style: TextStyle(fontSize: 16)),
+              child: Text('Review Itinerary', style: TextStyle(fontSize: 16)),
             ),
           ],
         ),

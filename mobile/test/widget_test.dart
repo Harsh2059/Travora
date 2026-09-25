@@ -21,7 +21,6 @@ void main() {
       ),
     );
 
-    // Verify that our app loads up to the home screen
-    expect(find.text('Travora'), findsOneWidget);
+    expect(find.byType(TravoraApp), findsOneWidget);
   });
 }

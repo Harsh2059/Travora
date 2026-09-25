@@ -78,13 +78,14 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
         currentUser = await _userService.getUserProfile(AppConfig.currentUserId);
       } catch (e) {
         // Fallback gracefully since live backend might not have this endpoint yet
+        final prefs = await SharedPreferences.getInstance();
         currentUser = User(
           id: AppConfig.currentUserId,
-          name: 'Traveler',
-          email: 'traveler@example.com',
-          whatsappPhone: '',
-          smsEnabled: false,
-          whatsappEnabled: false,
+          name: prefs.getString('user_name') ?? 'Traveler',
+          email: prefs.getString('user_email') ?? 'traveler@example.com',
+          whatsappPhone: prefs.getString('user_phone') ?? '',
+          smsEnabled: prefs.getBool('user_sms') ?? false,
+          whatsappEnabled: prefs.getBool('user_whatsapp') ?? false,
         );
       }
       userTrips = await _tripService.getUserTrips(AppConfig.currentUserId);
@@ -246,6 +247,16 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
           smsEnabled: updates['sms_enabled'] ?? currentUser!.smsEnabled,
           whatsappEnabled: updates['whatsapp_enabled'] ?? currentUser!.whatsappEnabled,
         );
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_name', currentUser!.name);
+        await prefs.setString('user_email', currentUser!.email);
+        if (currentUser!.whatsappPhone != null) {
+          await prefs.setString('user_phone', currentUser!.whatsappPhone!);
+        }
+        await prefs.setBool('user_sms', currentUser!.smsEnabled);
+        await prefs.setBool('user_whatsapp', currentUser!.whatsappEnabled);
+
         notifyListeners();
       }
       return true;
@@ -253,11 +264,11 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // Execute Recovery
-  Future<bool> executeRecovery(String optionId) async {
+  Future<bool> executeRecovery(RecoveryOption option) async {
     if (activeTripId == null) return false;
     _setState(ProviderState.loading);
     try {
-      lastExecution = await _recoveryService.executeRecovery(activeTripId!, optionId);
+      lastExecution = await _recoveryService.executeRecovery(activeTripId!, option);
       await refreshActiveTrip();
       return true;
     } catch (e) {

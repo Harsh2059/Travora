@@ -8,9 +8,14 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
+    hashed_password = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True, index=True)
     whatsapp_phone = Column(String, unique=True, nullable=True, index=True)
     sms_enabled = Column(Boolean, default=True)
     whatsapp_enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    role = Column(String, default="traveler")
+    auth_provider = Column(String, default="local")
     trips = relationship("Trip", back_populates="user")
 
 
@@ -179,4 +184,71 @@ class SmsJob(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class Ticket(Base):
+    __tablename__ = "tickets"
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(String, unique=True, index=True) # TRV-TKT-...
+    trip_id = Column(Integer, ForeignKey("trips.id"))
+    recovery_plan_id = Column(String, index=True)
+    execution_id = Column(String, ForeignKey("recovery_executions.execution_id"))
+    
+    # Passenger info
+    passenger_name = Column(String)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    
+    # Transport info
+    transport_mode = Column(String) # FLIGHT, TRAIN, CAB, BUS, HOTEL
+    provider = Column(String)
+    transport_identifier = Column(String, nullable=True) # flight num, train num
+    origin = Column(String, nullable=True)
+    destination = Column(String, nullable=True)
+    terminal = Column(String, nullable=True)
+    platform = Column(String, nullable=True)
+    
+    # Timing
+    departure_time = Column(DateTime, nullable=True)
+    arrival_time = Column(DateTime, nullable=True)
+    
+    # Booking specifics
+    pnr = Column(String, nullable=True)
+    booking_reference = Column(String, nullable=True)
+    seat = Column(String, nullable=True)
+    coach = Column(String, nullable=True)
+    berth = Column(String, nullable=True)
+    
+    # Add-ons
+    baggage_info = Column(String, nullable=True)
+    meal_info = Column(String, nullable=True)
+    
+    # Pricing
+    fare = Column(Float, nullable=True)
+    currency = Column(String, default="INR")
+    
+    # State
+    booking_status = Column(String, default="CONFIRMED")
+    ticket_metadata = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
+    trip = relationship("Trip")
+    user = relationship("User")
+    execution = relationship("RecoveryExecution")
+
+
+class WhatsAppRecoveryContext(Base):
+    __tablename__ = "whatsapp_recovery_contexts"
+    id = Column(Integer, primary_key=True, index=True)
+    sender = Column(String, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id"), index=True)
+    disruption_id = Column(Integer, ForeignKey("disruption_events.id"), nullable=True, index=True)
+    disruption_fingerprint = Column(String, nullable=True, index=True)
+    status = Column(String, default="ACTIVE", index=True)  # ACTIVE | SELECTED | CANCELLED
+    options = Column(JSON, default=dict)  # {"1": "plan_id_1", "2": "plan_id_2"}
+    plans_data = Column(JSON, default=dict)  # {"plan_id_1": {...}, "plan_id_2": {...}}
+    selected_option = Column(String, nullable=True)  # "1"
+    selected_plan_id = Column(String, nullable=True)
+    execution_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    trip = relationship("Trip")
+    disruption = relationship("DisruptionEvent")

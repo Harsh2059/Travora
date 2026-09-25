@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/trip_provider.dart';
-import '../core/theme/app_theme.dart';
 
 class ReviewTripScreen extends StatefulWidget {
   final String title;
@@ -72,10 +71,10 @@ class _ReviewTripScreenState extends State<ReviewTripScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Review Trip'),
+        title: Text('Review Trip'),
       ),
       body: _isCreating
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -86,17 +85,17 @@ class _ReviewTripScreenState extends State<ReviewTripScreen> {
               ),
             )
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               children: [
                 Text(widget.title, style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 8),
-                Text('Departure: ${widget.startDate.day}/${widget.startDate.month}/${widget.startDate.year}', style: const TextStyle(color: AppColors.textSecondary)),
-                const SizedBox(height: 24),
-                const Text('Route Overview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 16),
+                SizedBox(height: 8),
+                Text('Departure: ${widget.startDate.day}/${widget.startDate.month}/${widget.startDate.year}', style: TextStyle(color: (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : const Color(0xFF64748B)))),
+                SizedBox(height: 24),
+                Text('Route Overview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                SizedBox(height: 16),
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: List.generate(widget.locations.length, (index) {
@@ -107,20 +106,20 @@ class _ReviewTripScreenState extends State<ReviewTripScreen> {
                           children: [
                             Column(
                               children: [
-                                const Icon(Icons.circle, size: 12, color: AppColors.primary),
+                                Icon(Icons.circle, size: 12, color: Theme.of(context).colorScheme.primary),
                                 if (!isLast)
                                   Container(
                                     width: 2,
                                     height: 30,
-                                    color: AppColors.primary.withValues(alpha: 0.3),
+                                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
                                   ),
                               ],
                             ),
-                            const SizedBox(width: 16),
+                            SizedBox(width: 16),
                             Expanded(
                               child: Padding(
-                                padding: const EdgeInsets.only(bottom: 24),
-                                child: Text(loc, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                padding: EdgeInsets.only(bottom: 24),
+                                child: Text(loc, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                               ),
                             ),
                           ],
@@ -129,24 +128,24 @@ class _ReviewTripScreenState extends State<ReviewTripScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: 32),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('Edit'),
+                        child: Text('Edit'),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    SizedBox(width: 16),
                     Expanded(
                       flex: 2,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: EdgeInsets.symmetric(vertical: 16),
                         ),
                         onPressed: _createTrip,
-                        child: const Text('Create Trip', style: TextStyle(fontSize: 16)),
+                        child: Text('Create Trip', style: TextStyle(fontSize: 16)),
                       ),
                     ),
                   ],

@@ -111,6 +111,7 @@ class RecoveryHistory(RecoveryHistoryBase):
 class UserBase(BaseModel):
     name: str
     email: str
+    phone_number: Optional[str] = None
     whatsapp_phone: Optional[str] = None
     sms_enabled: bool = True
     whatsapp_enabled: bool = True
@@ -118,12 +119,35 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     pass
 
-class UserUpdate(BaseModel):
+class UserRegister(BaseModel):
+    name: str
+    email: str
+    password: str
+    phone_number: Optional[str] = None
+    whatsapp_phone: Optional[str] = None
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
+    phone_number: Optional[str] = None
     whatsapp_phone: Optional[str] = None
     sms_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
+
+class UserResponse(UserBase):
+    id: int
+    created_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+>>>>>>> b471658a29d3325fa07c4de4cf3d87c6d8c75579
 
 class User(UserBase):
     id: int
@@ -155,3 +179,36 @@ class SmsStatusUpdate(BaseModel):
     status: str
     error_message: Optional[str] = None
     gateway_device_id: Optional[str] = None
+
+class TicketBase(BaseModel):
+    ticket_id: str
+    trip_id: int
+    recovery_plan_id: str
+    execution_id: str
+    passenger_name: str
+    user_id: int
+    transport_mode: str
+    provider: str
+    transport_identifier: Optional[str] = None
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    terminal: Optional[str] = None
+    platform: Optional[str] = None
+    departure_time: Optional[datetime] = None
+    arrival_time: Optional[datetime] = None
+    pnr: Optional[str] = None
+    booking_reference: Optional[str] = None
+    seat: Optional[str] = None
+    coach: Optional[str] = None
+    berth: Optional[str] = None
+    baggage_info: Optional[str] = None
+    meal_info: Optional[str] = None
+    fare: Optional[float] = None
+    currency: str = "INR"
+    booking_status: str = "CONFIRMED"
+    ticket_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class TicketResponse(TicketBase):
+    id: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

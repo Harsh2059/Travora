@@ -19,10 +19,10 @@ class RecoveryService {
     return [];
   }
 
-  Future<RecoveryExecution> executeRecovery(int tripId, String recoveryOptionId) async {
+  Future<RecoveryExecution> executeRecovery(int tripId, RecoveryOption option) async {
     final response = await _apiClient.post(
       ApiEndpoints.executeRecovery(tripId),
-      body: {'recovery_plan_id': recoveryOptionId}
+      body: {'selectedPlan': option.metadata}
     );
     return RecoveryExecution.fromJson(response);
   }

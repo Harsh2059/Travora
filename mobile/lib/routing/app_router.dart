@@ -14,13 +14,45 @@ import '../screens/profile_screen.dart';
 import '../screens/privacy_screen.dart';
 import '../screens/main_shell.dart';
 
+import '../screens/auth/splash_screen.dart';
+import '../screens/auth/login_screen.dart';
+import '../providers/auth_provider.dart';
+
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> _shellNavigatorKey = GlobalKey<NavigatorState>();
 
-final GoRouter appRouter = GoRouter(
-  navigatorKey: _rootNavigatorKey,
-  initialLocation: '/',
-  routes: [
+GoRouter createRouter(AuthProvider authProvider) {
+  return GoRouter(
+    navigatorKey: _rootNavigatorKey,
+    initialLocation: '/splash',
+    refreshListenable: authProvider,
+    redirect: (context, state) {
+      final authState = authProvider.state;
+      final isGoingToAuth = state.matchedLocation == '/login' || state.matchedLocation == '/splash';
+      
+      if (authState == AuthState.checkingSession && state.matchedLocation != '/splash') {
+        return '/splash';
+      }
+      
+      if (authState == AuthState.unauthenticated && !isGoingToAuth) {
+        return '/login';
+      }
+      
+      if (authState == AuthState.authenticated && isGoingToAuth) {
+        return '/';
+      }
+      
+      return null;
+    },
+    routes: [
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
     ShellRoute(
       navigatorKey: _shellNavigatorKey,
       builder: (context, state, child) {
@@ -87,3 +119,4 @@ final GoRouter appRouter = GoRouter(
     ),
   ],
 );
+}
