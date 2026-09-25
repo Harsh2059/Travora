@@ -62,12 +62,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> register(String name, String email, String password, String phone) async {
+  Future<bool> register(String name, String email, String password, String phone, String whatsappPhone) async {
     _state = AuthState.authenticating;
     _errorMessage = null;
     notifyListeners();
 
-    final result = await _authService.register(name, email, password, phone);
+    final result = await _authService.register(name, email, password, phone, whatsappPhone);
     
     if (result['success'] == true) {
       if (result['requiresLogin'] == true) {
