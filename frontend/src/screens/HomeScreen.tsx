@@ -268,24 +268,11 @@ export default function HomeScreen() {
           setCurrentDisruptionFingerprint(newFp);
 
           if (activeDisruptions.length === 0) {
-            // After successful recovery, keep the selected plan so OriginalÃ¢â€ â€Recovered
-            // toggle remains possible. Only clear when there is no completed execution.
-            const hasCompletedRecovery =
-              execRes &&
-              (execRes.status === 'COMPLETED' || execRes.status === 'PARTIALLY_COMPLETED');
-            const hasStoredPlan = Boolean(getSelectedRecoveryPlanWithMeta(tripId));
-            if (!hasCompletedRecovery && !hasStoredPlan) {
-              clearSelectedRecoveryPlan(tripId);
-              setSelectedRecoveryPlanState(null);
-              setIsSelectedPlanUpdated(false);
-              setShowSelectedPlanReviewModal(false);
-            } else if (hasStoredPlan) {
-              const storedMeta = getSelectedRecoveryPlanWithMeta(tripId);
-              if (storedMeta) {
-                setSelectedRecoveryPlanState(storedMeta.plan);
-                setIsSelectedPlanUpdated(storedMeta.isUpdated);
-              }
-            }
+            // When there are no active disruptions, clear any draft/stale selected recovery plan
+            clearSelectedRecoveryPlan(tripId);
+            setSelectedRecoveryPlanState(null);
+            setIsSelectedPlanUpdated(false);
+            setShowSelectedPlanReviewModal(false);
           } else {
             // Active disruptions exist Ã¢â‚¬â€ run successor matching on fingerprint change
             const storedMeta = getSelectedRecoveryPlanWithMeta(tripId);
@@ -658,7 +645,7 @@ export default function HomeScreen() {
                   viewMode={viewMode}
                   impactNodeMap={impactNodeMap}
                   impactResult={impactResult}
-                  selectedRecoveryPlan={selectedRecoveryPlan}
+                  selectedRecoveryPlan={activeDisruption ? selectedRecoveryPlan : null}
                   onUpdatePriority={handleUpdatePriority}
                   onEditDraft={() => navigate('/build', { state: { mode: 'edit' } })}
                   onResetJourney={() => {
