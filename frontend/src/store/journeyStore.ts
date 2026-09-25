@@ -612,7 +612,6 @@ export function useJourney(): JourneyState {
   }, [journey?.id]);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       const j = await fetchActiveJourney();
       setJourney(j);
