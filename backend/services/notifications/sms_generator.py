@@ -19,9 +19,7 @@ class DynamicSmsGenerator:
         if env_recipient:
             return env_recipient
         phone = (user_phone or "").strip()
-        if phone:
-            return phone
-        return "+917350571349"  # Fallback for custom trips without phone number
+        return phone
 
     @staticmethod
     def format_time(val: Any) -> Optional[str]:

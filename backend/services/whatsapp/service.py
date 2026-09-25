@@ -58,10 +58,12 @@ class WhatsAppService:
         else:
             recipient = trip.user.whatsapp_phone
             if not recipient:
-                # Hackathon/demo-only fallback; replace with a configured traveler number later.
-                recipient = DEMO_WHATSAPP_NUMBER
-                logger.info(
-                    "Using demo WhatsApp number because traveler has no WhatsApp number configured."
+                return NotificationResult(
+                    success=False,
+                    channel=NotificationChannel.WHATSAPP,
+                    recipient="",
+                    status="FAILED",
+                    error="Traveler has no WhatsApp phone number configured.",
                 )
             request = NotificationRequest(
                 recipient=recipient,
@@ -108,8 +110,18 @@ class WhatsAppService:
                 provider_message_id=existing.provider_message_id,
             )
 
+        trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+        if not trip or not trip.user or not trip.user.whatsapp_phone:
+            return NotificationResult(
+                success=False,
+                channel=NotificationChannel.WHATSAPP,
+                recipient="",
+                status="FAILED",
+                error="Traveler has no WhatsApp phone number configured.",
+            )
+
         request = NotificationRequest(
-            recipient=DEMO_WHATSAPP_NUMBER,
+            recipient=trip.user.whatsapp_phone,
             message_type="DISRUPTION_ALERT",
             text=format_disruption_alert(disruption),
             trip_id=trip_id,

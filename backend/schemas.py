@@ -111,9 +111,19 @@ class RecoveryHistory(RecoveryHistoryBase):
 class UserBase(BaseModel):
     name: str
     email: str
+    whatsapp_phone: Optional[str] = None
+    sms_enabled: bool = True
+    whatsapp_enabled: bool = True
 
 class UserCreate(UserBase):
     pass
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    whatsapp_phone: Optional[str] = None
+    sms_enabled: Optional[bool] = None
+    whatsapp_enabled: Optional[bool] = None
 
 class User(UserBase):
     id: int

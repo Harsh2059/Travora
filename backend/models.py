@@ -9,6 +9,8 @@ class User(Base):
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     whatsapp_phone = Column(String, unique=True, nullable=True, index=True)
+    sms_enabled = Column(Boolean, default=True)
+    whatsapp_enabled = Column(Boolean, default=True)
     trips = relationship("Trip", back_populates="user")
 
 

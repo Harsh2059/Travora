@@ -322,10 +322,10 @@ class TestSmsFailureDoesNotBreakDisruptionCreation:
                 db, NotificationChannel.SMS, no_phone_trip.id, _make_payload(d, item1)
             )
 
-        # With the new fallback logic, this will succeed using the fallback number
-        assert result.success is True
-        assert result.recipient == "+917350571349"
-        assert result.status == "QUEUED"
+        assert result.success is False
+        assert result.recipient == ""
+        assert result.status == "FAILED"
+        assert result.error == "No recipient phone number available."
 
         # Cleanup
         db.query(models.SmsJob).filter(models.SmsJob.trip_id == no_phone_trip.id).delete()
@@ -389,10 +389,11 @@ class TestIdempotencyKeyIsDisruptionNotTrip:
 
         # Keys must NOT be DISR_{trip_id} (which would collide for second disruption)
         trip_based_key = f"DISR_{trip.id}"
-        assert trip_based_key not in keys, (
-            f"Idempotency key must not be based on trip_id alone! "
-            f"Found trip-based key '{trip_based_key}' which would block second disruption."
-        )
+        if trip.id != d1.id and trip.id != d2.id:
+            assert trip_based_key not in keys, (
+                f"Idempotency key must not be based on trip_id alone! "
+                f"Found trip-based key '{trip_based_key}' which would block second disruption."
+            )
 
         # Keys must be per disruption
         assert f"DISR_{d1.id}" in keys

@@ -25,6 +25,9 @@ class NotificationService:
         disruption_id: Optional[int] = None,
     ) -> NotificationResult:
         if channel == NotificationChannel.WHATSAPP:
+            trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+            if not trip or not trip.user or not trip.user.whatsapp_enabled:
+                return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="WhatsApp notifications disabled")
             return self.whatsapp_service.send_recovery_notification(
                 db=db,
                 trip_id=trip_id,
@@ -34,7 +37,10 @@ class NotificationService:
         elif channel == NotificationChannel.SMS:
             try:
                 trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-                user_phone = trip.user.whatsapp_phone if (trip and trip.user) else None
+                if not trip or not trip.user or not trip.user.sms_enabled:
+                    return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="SMS notifications disabled")
+                
+                user_phone = trip.user.whatsapp_phone
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:
@@ -103,6 +109,9 @@ class NotificationService:
         disruption: Dict[str, Any],
     ) -> NotificationResult:
         if channel == NotificationChannel.WHATSAPP:
+            trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+            if not trip or not trip.user or not trip.user.whatsapp_enabled:
+                return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="WhatsApp notifications disabled")
             return self.whatsapp_service.send_disruption_notification(
                 db=db,
                 trip_id=trip_id,
@@ -111,7 +120,10 @@ class NotificationService:
         elif channel == NotificationChannel.SMS:
             try:
                 trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-                user_phone = trip.user.whatsapp_phone if (trip and trip.user) else None
+                if not trip or not trip.user or not trip.user.sms_enabled:
+                    return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="SMS notifications disabled")
+                    
+                user_phone = trip.user.whatsapp_phone
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:

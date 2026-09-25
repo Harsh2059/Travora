@@ -158,6 +158,27 @@ def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     users = crud.get_users(db, skip=skip, limit=limit)
     return users
 
+@app.get("/api/users/{user_id}/profile", response_model=schemas.User)
+def read_user_profile(user_id: int, db: Session = Depends(get_db)):
+    db_user = crud.get_user(db, user_id=user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
+
+@app.put("/api/users/{user_id}/profile", response_model=schemas.User)
+def update_user_profile(user_id: int, profile: schemas.UserUpdate, db: Session = Depends(get_db)):
+    db_user = crud.get_user(db, user_id=user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    update_data = profile.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_user, key, value)
+    
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
 @app.get("/api/users/{user_id}/trips", response_model=List[schemas.Trip])
 def read_user_trips(user_id: int, db: Session = Depends(get_db)):
     db_user = crud.get_user(db, user_id=user_id)
