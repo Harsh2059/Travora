@@ -562,7 +562,7 @@ export default function TripBuilderScreen() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      From Place
+                      {selectedType === 'taxi' ? 'Pickup Location' : 'From Place'}
                     </label>
                     <input
                       type="text"
@@ -571,13 +571,13 @@ export default function TripBuilderScreen() {
                         setOrigin(e.target.value);
                         setIsFormDirty(true);
                       }}
-                      placeholder="e.g., Mumbai Airport"
+                      placeholder={selectedType === 'taxi' ? "e.g., Mumbai Airport" : "e.g., Mumbai Airport"}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      To Place
+                      {selectedType === 'taxi' ? 'Dropoff Location' : 'To Place'}
                     </label>
                     <input
                       type="text"

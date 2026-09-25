@@ -671,35 +671,6 @@ export default function HomeScreen() {
                       }}
                     />
 
-                    {selectedRecoveryPlan && (
-                      <UpdatedItineraryPreview
-                        journey={journey}
-                        plan={selectedRecoveryPlan}
-                        impactResult={impactResult}
-                        disruptionFingerprint={currentDisruptionFingerprint}
-                        onConfirmSuccess={async () => {
-                          setToastNotification('🟢 Journey Updated: Your recovery plan has been applied.');
-                          setTimeout(() => setToastNotification(null), 5000);
-                          setSelectedRecoveryPlanState(null);
-                          setIsSelectedPlanUpdated(false);
-                          setShowSelectedPlanReviewModal(false);
-                          setShowPart5HandoffModal(false);
-                          setShowRecoveryModal(false);
-                          if (journey.id) {
-                            notifyViewModeChanged(journey.id, 'RECOVERED');
-                          }
-                          await refresh();
-                          if (journey.id) {
-                            const exec = await getLatestExecution(journey.id);
-                            setLatestExecution(exec);
-                          }
-                        }}
-                        onChangeOption={() => {
-                          clearSelectedRecoveryPlan(journey.id as number);
-                          setSelectedRecoveryPlanState(null);
-                          setIsSelectedPlanUpdated(false);
-                        }}
-                      />
                     )}
                   </>
                 ) : (
@@ -707,6 +678,40 @@ export default function HomeScreen() {
                 )}
               </div>
             </div>
+
+            {/* Full-width Horizontal Updated Itinerary Preview */}
+            {activeDisruption && selectedRecoveryPlan && (
+              <div className="mt-8">
+                <UpdatedItineraryPreview
+                  journey={journey}
+                  plan={selectedRecoveryPlan}
+                  impactResult={impactResult}
+                  disruptionFingerprint={currentDisruptionFingerprint}
+                  onConfirmSuccess={async () => {
+                    setToastNotification('🟢 Journey Updated: Your recovery plan has been applied.');
+                    setTimeout(() => setToastNotification(null), 5000);
+                    setSelectedRecoveryPlanState(null);
+                    setIsSelectedPlanUpdated(false);
+                    setShowSelectedPlanReviewModal(false);
+                    setShowPart5HandoffModal(false);
+                    setShowRecoveryModal(false);
+                    if (journey.id) {
+                      notifyViewModeChanged(journey.id, 'RECOVERED');
+                    }
+                    await refresh();
+                    if (journey.id) {
+                      const exec = await getLatestExecution(journey.id);
+                      setLatestExecution(exec);
+                    }
+                  }}
+                  onChangeOption={() => {
+                    clearSelectedRecoveryPlan(journey.id as number);
+                    setSelectedRecoveryPlanState(null);
+                    setIsSelectedPlanUpdated(false);
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
           </div>
