@@ -47,7 +47,27 @@ class WhatsAppWebhookHandler:
             if not user:
                 return self._reply(sender, "We could not find a traveler linked to this WhatsApp number.", "MISSING_TRAVELER")
 
-        trip = db.query(models.Trip).filter(models.Trip.user_id == user.id).order_by(models.Trip.id.desc()).first()
+        # Check for active recovery context for this sender first (to correctly route multi-trip users)
+        active_ctx = None
+        if db is not None:
+            active_contexts = (
+                db.query(models.WhatsAppRecoveryContext)
+                .filter(models.WhatsAppRecoveryContext.status == "ACTIVE")
+                .order_by(models.WhatsAppRecoveryContext.id.desc())
+                .all()
+            )
+            for ac in active_contexts:
+                if clean_phone_number(ac.sender) == clean_sender or (
+                    user and ac.trip and ac.trip.user_id == user.id
+                ):
+                    active_ctx = ac
+                    break
+
+        if active_ctx:
+            trip = db.query(models.Trip).filter(models.Trip.id == active_ctx.trip_id).first()
+        else:
+            trip = db.query(models.Trip).filter(models.Trip.user_id == user.id).order_by(models.Trip.id.desc()).first()
+
         if not trip:
             return self._reply(sender, "We could not find an active trip for your account.", "MISSING_TRIP")
 
@@ -109,9 +129,70 @@ class WhatsAppWebhookHandler:
                     "MISSING_RECOVERY_PLAN",
                 )
 
+            # Safe diagnostic logging: [WHATSAPP REPLY]
+            masked_sender = (sender[:3] + "..." + sender[-4:]) if (sender and len(sender) >= 7) else "<masked>"
+            ctx_id = getattr(context, "id", None) or getattr(getattr(context, "_db_model", None), "id", None)
+            reply_log = (
+                f"[WHATSAPP REPLY]\n"
+                f"sender={masked_sender}\n"
+                f"trip_id={trip.id}\n"
+                f"context_id={ctx_id}\n"
+                f"option={option_num}\n"
+                f"plan_id={plan_id}"
+            )
+            print(reply_log, flush=True)
+            logger.info(reply_log)
+
             context_fingerprint = context.disruption_fingerprint or plan.get("disruption_fingerprint") or get_active_disruption_fingerprint(db, trip.id)
             current_fingerprint = get_active_disruption_fingerprint(db, trip.id)
-            if context_fingerprint and current_fingerprint and current_fingerprint != context_fingerprint:
+
+            # Reconcile legacy contexts where only single disruption_id was stored as the fingerprint
+            if (
+                context_fingerprint
+                and current_fingerprint
+                and context_fingerprint != current_fingerprint
+                and context.disruption_id is not None
+                and context_fingerprint == str(context.disruption_id)
+            ):
+                current_active_ids = current_fingerprint.split("_")
+                if str(context.disruption_id) in current_active_ids:
+                    # Check if any new active disruption was added AFTER this context was created
+                    ctx_created_at = getattr(context, "created_at", None)
+                    has_newer_disruption = False
+                    if ctx_created_at and db is not None:
+                        has_newer_disruption = bool(
+                            db.query(models.DisruptionEvent)
+                            .filter(
+                                models.DisruptionEvent.trip_id == trip.id,
+                                models.DisruptionEvent.status == "ACTIVE",
+                                models.DisruptionEvent.id != context.disruption_id,
+                                models.DisruptionEvent.timestamp > ctx_created_at,
+                            )
+                            .first()
+                        )
+                    if not has_newer_disruption:
+                        context_fingerprint = current_fingerprint
+
+            # Safe diagnostic logging: [WHATSAPP PLAN VALIDATION]
+            stored_journey_ver = getattr(context, "journey_version", None) or context_fingerprint or "1.0"
+            current_journey_ver = current_fingerprint or "1.0"
+            stored_p_status = plan.get("status") or getattr(context, "status", "ACTIVE")
+            is_plan_expired = bool(context_fingerprint and current_fingerprint and current_fingerprint != context_fingerprint)
+            current_p_status = "STALE" if is_plan_expired else "ACTIVE"
+
+            val_log = (
+                f"[WHATSAPP PLAN VALIDATION]\n"
+                f"stored_fingerprint={context_fingerprint}\n"
+                f"current_fingerprint={current_fingerprint}\n"
+                f"stored_journey_version={stored_journey_ver}\n"
+                f"current_journey_version={current_journey_ver}\n"
+                f"stored_plan_status={stored_p_status}\n"
+                f"current_plan_status={current_p_status}"
+            )
+            print(val_log, flush=True)
+            logger.info(val_log)
+
+            if is_plan_expired:
                 return self._reply(
                     sender,
                     "This recovery plan has expired because your journey changed. Please request new details.",

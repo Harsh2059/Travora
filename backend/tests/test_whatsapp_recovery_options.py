@@ -13,6 +13,7 @@ from services.whatsapp.client import MetaWhatsAppClient
 from services.whatsapp.context import (
     clear_in_memory_contexts,
     get_active_recovery_context,
+    get_latest_recovery_context,
     store_recovery_context,
 )
 from services.whatsapp.formatter import (
@@ -532,3 +533,203 @@ def test_12_dynamic_confirmation_format_clean():
     assert "PNR:" not in msg
     assert "None" not in msg
     assert "null" not in msg
+
+
+# 13. Regression: Fresh disruption -> generate options -> store context -> immediate reply "1" -> executes successfully
+def test_13_disruption_generate_options_store_context_immediate_reply_succeeds(db_session, monkeypatch):
+    user, trip, item = _make_traveler_and_trip(db_session)
+    disruption = models.DisruptionEvent(
+        trip_id=trip.id,
+        event_type="FLIGHT_CANCELLED",
+        entity_id=item.id,
+        severity="HIGH",
+        status="ACTIVE",
+        timestamp=datetime.utcnow()
+    )
+    db_session.add(disruption)
+    db_session.commit()
+
+    client = FakeWhatsAppClient()
+    service = WhatsAppService(client)
+    plans = _make_sample_plans(trip.id)
+    disruption_dict = {"id": disruption.id, "event_id": disruption.id, "event_type": "FLIGHT_CANCELLED"}
+
+    # Disruption alert with options sent to user
+    res_notif = service.send_disruption_notification(
+        db=db_session,
+        trip_id=trip.id,
+        disruption=disruption_dict,
+        plans=plans,
+    )
+    assert res_notif.success is True
+
+    executed = []
+    def fake_execute(**kwargs):
+        executed.append(kwargs)
+        return {
+            "status": "COMPLETED",
+            "message": "booked",
+            "confirmed_bookings": [{
+                "status": "BOOKED",
+                "replacement_title": "IndiGo 6E456",
+                "provider": "IndiGo",
+                "type": "FLIGHT",
+                "origin": "Mumbai",
+                "destination": "Delhi",
+                "departure_time": "2026-09-22T20:15:00",
+                "arrival_time": "2026-09-22T22:20:00",
+                "pnr": "IND123",
+            }],
+        }
+
+    monkeypatch.setattr("services.whatsapp.handler.execute_plan", fake_execute)
+
+    # Traveler immediately replies "1"
+    handler = WhatsAppWebhookHandler(client)
+    reply_res = handler.handle(db_session, user.whatsapp_phone, "1")
+
+    # MUST NOT be EXPIRED_RECOVERY_PLAN
+    assert reply_res["action"] == "SELECT_OPTION"
+    assert reply_res["status"] == "SENT"
+    assert len(executed) == 1
+    assert executed[0]["plan"]["id"] == plans[0]["id"]
+    assert "✅ RECOVERY CONFIRMED" in client.sent[-1][1]
+
+    # Verify context is marked SELECTED
+    ctx = get_active_recovery_context(db_session, user.whatsapp_phone, trip.id)
+    assert ctx is None  # no longer ACTIVE
+    latest = get_latest_recovery_context(db_session, user.whatsapp_phone, trip.id)
+    assert latest.status == "SELECTED"
+    assert latest.selected_option == "1"
+
+
+# 14. Regression: Genuinely changed journey causes stale-plan protection to work
+def test_14_genuinely_changed_journey_causes_stale_plan_protection(db_session, monkeypatch):
+    user, trip, item = _make_traveler_and_trip(db_session)
+    disruption1 = models.DisruptionEvent(
+        trip_id=trip.id,
+        event_type="FLIGHT_CANCELLED",
+        entity_id=item.id,
+        severity="HIGH",
+        status="ACTIVE",
+        timestamp=datetime.utcnow()
+    )
+    db_session.add(disruption1)
+    db_session.commit()
+
+    client = FakeWhatsAppClient()
+    service = WhatsAppService(client)
+    plans = _make_sample_plans(trip.id)
+    disruption_dict = {"id": disruption1.id, "event_id": disruption1.id, "event_type": "FLIGHT_CANCELLED"}
+
+    service.send_disruption_notification(
+        db=db_session,
+        trip_id=trip.id,
+        disruption=disruption_dict,
+        plans=plans,
+    )
+
+    # Journey genuinely changes: a second disruption occurs before user replies
+    item2 = models.ItineraryItem(
+        trip_id=trip.id,
+        type="HOTEL",
+        provider="Taj",
+        location="Delhi",
+        cost=8000.0,
+    )
+    db_session.add(item2)
+    db_session.commit()
+
+    disruption2 = models.DisruptionEvent(
+        trip_id=trip.id,
+        event_type="HOTEL_BOOKING_CANCELLED",
+        entity_id=item2.id,
+        severity="HIGH",
+        status="ACTIVE",
+        timestamp=datetime.utcnow()
+    )
+    db_session.add(disruption2)
+    db_session.commit()
+
+    executed = []
+    def fake_execute(**kwargs):
+        executed.append(kwargs)
+        return {"status": "COMPLETED"}
+
+    monkeypatch.setattr("services.whatsapp.handler.execute_plan", fake_execute)
+
+    # Traveler replies "1" to the stale options
+    handler = WhatsAppWebhookHandler(client)
+    reply_res = handler.handle(db_session, user.whatsapp_phone, "1")
+
+    # MUST be caught by stale-plan protection
+    assert reply_res["action"] == "EXPIRED_RECOVERY_PLAN"
+    assert len(executed) == 0
+    assert "This recovery plan has expired because your journey changed" in client.sent[-1][1]
+
+
+# 15. Regression: Multi-trip traveler correctly routes WhatsApp reply to the trip with active recovery
+def test_15_multi_trip_traveler_routes_to_active_recovery_trip(db_session, monkeypatch):
+    user = models.User(name="Multi Trip Traveler", email="multi@example.com", whatsapp_phone="+918888888888")
+    db_session.add(user)
+    db_session.commit()
+
+    # Trip 10 and Trip 20
+    trip10 = models.Trip(id=10, title="Trip 10", user_id=user.id)
+    trip20 = models.Trip(id=20, title="Trip 20", user_id=user.id)
+    db_session.add_all([trip10, trip20])
+    db_session.commit()
+
+    item10 = models.ItineraryItem(trip_id=trip10.id, type="FLIGHT", provider="IndiGo", cost=3000.0)
+    db_session.add(item10)
+    db_session.commit()
+
+    disruption10 = models.DisruptionEvent(
+        trip_id=trip10.id,
+        event_type="FLIGHT_CANCELLED",
+        entity_id=item10.id,
+        status="ACTIVE",
+        timestamp=datetime.utcnow()
+    )
+    db_session.add(disruption10)
+    db_session.commit()
+
+    client = FakeWhatsAppClient()
+    service = WhatsAppService(client)
+    plans10 = _make_sample_plans(trip10.id)
+
+    service.send_disruption_notification(
+        db=db_session,
+        trip_id=trip10.id,
+        disruption={"id": disruption10.id, "event_id": disruption10.id, "event_type": "FLIGHT_CANCELLED"},
+        plans=plans10,
+    )
+
+    executed_trips = []
+    def fake_execute(**kwargs):
+        executed_trips.append(kwargs["trip_id"])
+        return {
+            "status": "COMPLETED",
+            "message": "booked",
+            "confirmed_bookings": [{
+                "status": "BOOKED",
+                "replacement_title": "IndiGo 6E456",
+                "provider": "IndiGo",
+                "type": "FLIGHT",
+                "origin": "Mumbai",
+                "destination": "Delhi",
+                "departure_time": "2026-09-22T20:15:00",
+                "arrival_time": "2026-09-22T22:20:00",
+                "pnr": "IND123",
+            }],
+        }
+
+    monkeypatch.setattr("services.whatsapp.handler.execute_plan", fake_execute)
+
+    handler = WhatsAppWebhookHandler(client)
+    reply_res = handler.handle(db_session, user.whatsapp_phone, "1")
+
+    assert reply_res["action"] == "SELECT_OPTION"
+    assert reply_res["status"] == "SENT"
+    assert executed_trips == [10]  # Targeted Trip 10 despite Trip 20 having higher ID
+

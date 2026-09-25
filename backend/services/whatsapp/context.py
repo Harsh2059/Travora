@@ -45,6 +45,14 @@ class RecoveryContextAdapter:
         self.execution_id = execution_id
         self._db_model = db_model
 
+    @property
+    def id(self) -> Optional[int]:
+        return getattr(self._db_model, "id", None)
+
+    @property
+    def created_at(self) -> Optional[datetime]:
+        return getattr(self._db_model, "created_at", None)
+
     def get_plan(self, plan_id: str) -> Optional[Dict[str, Any]]:
         return self.plans_data.get(str(plan_id))
 

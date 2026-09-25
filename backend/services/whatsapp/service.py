@@ -14,6 +14,7 @@ from .formatter import (
     format_recovery_notification,
     format_whatsapp_recovery_options,
 )
+from services.recovery.execution_engine import get_active_disruption_fingerprint
 
 logger = logging.getLogger("travel_recovery.whatsapp")
 
@@ -78,7 +79,15 @@ class WhatsAppService:
             else:
                 text = format_recovery_notification(trip_id, plan)
 
-            fingerprint = str(disruption_id or plan.get("disruption_fingerprint") or "")
+            fingerprint = (
+                plan.get("disruption_fingerprint")
+                or (all_plans[0].get("disruption_fingerprint") if all_plans else None)
+                or (get_active_disruption_fingerprint(db, trip_id) if db is not None else None)
+                or str(disruption_id or "")
+            )
+            for p in all_plans:
+                if "disruption_fingerprint" not in p and fingerprint:
+                    p["disruption_fingerprint"] = fingerprint
             store_recovery_context(
                 db=db,
                 sender=recipient,
@@ -155,7 +164,14 @@ class WhatsAppService:
                 disruption=disruption,
                 plans=plans,
             )
-            fingerprint = str(disruption_id or "")
+            fingerprint = (
+                (plans[0].get("disruption_fingerprint") if plans else None)
+                or (get_active_disruption_fingerprint(db, trip_id) if db is not None else None)
+                or str(disruption_id or "")
+            )
+            for p in plans:
+                if "disruption_fingerprint" not in p and fingerprint:
+                    p["disruption_fingerprint"] = fingerprint
             store_recovery_context(
                 db=db,
                 sender=recipient,
