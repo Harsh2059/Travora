@@ -71,7 +71,7 @@ export const UpcomingTripDetails: React.FC<UpcomingTripDetailsProps> = ({ journe
             { label: 'Hotel protection', check: true },
             { label: 'Cab auto-sync', check: true },
             { label: 'WhatsApp alerts', check: true },
-          ].map(({ label, check }) => (
+          ].map(({ label }) => (
             <div key={label} className="flex items-center gap-1.5 text-xs text-slate-600">
               <div className="w-3.5 h-3.5 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />

@@ -443,7 +443,6 @@ export default function TripBuilderScreen() {
           journey={draftJourney}
           onEditNode={openEditModal}
           onDeleteNode={handleDeleteNode}
-          onAddNextStop={openAddModal}
           onResetJourney={() => setNodes([])}
         />
       </main>

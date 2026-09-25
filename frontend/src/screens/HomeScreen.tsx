@@ -20,7 +20,7 @@ import {
   AlertCircle,
   User,
 } from 'lucide-react';
-import { useJourney, fetchTripDisruptions, fetchTripImpact, updateItemOnBackend, saveLocalJourney, getSelectedRecoveryPlanWithMeta, clearSelectedRecoveryPlan, saveSelectedRecoveryPlan } from '../store/journeyStore';
+import { useJourney, fetchTripDisruptions, fetchTripImpact, getSelectedRecoveryPlanWithMeta, clearSelectedRecoveryPlan, saveSelectedRecoveryPlan } from '../store/journeyStore';
 import { analyzePart4Recovery, getLatestExecution } from '../services/recoveryApi';
 import { getStoredUser } from '../services/auth';
 import type { UserProfile } from '../services/auth';
@@ -42,7 +42,7 @@ import { RecoveryPlanView } from '../components/recovery/RecoveryPlanView';
 import { SelectedRecoveryPlanReview } from '../components/recovery/SelectedRecoveryPlanReview';
 import { Part5BookingExecutionView } from '../components/recovery/Part5BookingExecutionView';
 import { RestoreJourneyModal } from '../components/recovery/RestoreJourneyModal';
-import type { Journey, ImpactResult, ImpactNodeStatus, TravelerPriority, Part4RecoveryPlan } from '../types';
+import type { Journey, ImpactResult, ImpactNodeStatus, Part4RecoveryPlan } from '../types';
 import {
   getJourneyStatus,
   getJourneyStatusDisplay,
@@ -356,32 +356,7 @@ export default function HomeScreen() {
 
 
 
-  const handleUpdatePriority = async (nodeId: string, newPriority: TravelerPriority) => {
-    if (!journey) return;
 
-    // Update in memory & storage
-    const updatedNodes = journey.nodes.map((n) =>
-      n.id === nodeId ? { ...n, priority: newPriority } : n
-    );
-    const updatedJourney: Journey = { ...journey, nodes: updatedNodes };
-    saveLocalJourney(updatedJourney);
-
-    // Persist to backend if persisted node exists
-    const targetNode = journey.nodes.find((n) => n.id === nodeId);
-    if (journey.id && targetNode && targetNode.backendId) {
-      try {
-        await updateItemOnBackend(journey.id, targetNode.backendId, {
-          ...targetNode,
-          priority: newPriority,
-        });
-      } catch (err) {
-        console.error('Failed to update priority on backend:', err);
-      }
-    }
-
-    // Refresh journey
-    await refresh();
-  };
 
   const handleConfirmRestoreOriginal = async () => {
     if (!journey?.id) return;
@@ -644,7 +619,6 @@ export default function HomeScreen() {
                   impactNodeMap={impactNodeMap}
                   impactResult={impactResult}
                   selectedRecoveryPlan={activeDisruption ? selectedRecoveryPlan : null}
-                  onUpdatePriority={handleUpdatePriority}
                   onEditDraft={() => navigate('/build', { state: { mode: 'edit' } })}
                   onResetJourney={() => {
                     if (window.confirm('Are you sure you want to clear your active journey?')) {

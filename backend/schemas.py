@@ -147,7 +147,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
->>>>>>> b471658a29d3325fa07c4de4cf3d87c6d8c75579
+
 
 class User(UserBase):
     id: int

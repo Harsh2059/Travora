@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  ShieldCheck, AlertTriangle, CheckCircle2, Clock, Plane,
-  ArrowRight, Zap, Star, TrendingDown, Timer, ChevronRight
+  ShieldCheck, AlertTriangle, CheckCircle2, Plane,
+  Zap, Star, TrendingDown, Timer
 } from 'lucide-react';
 import type { Part4RecoveryPlan, Part4RecoveryResult, Journey } from '../../types';
 import { analyzePart4Recovery } from '../../services/recoveryApi';
@@ -180,8 +180,6 @@ export const RecoveryOptionsPanel: React.FC<RecoveryOptionsPanelProps> = ({
           const newDetails = replChange?.new_details || {};
           const carrier = replChange?.provider || newDetails.provider || newDetails.airline || replChange?.new_title || plan.title;
           const flNo = newDetails.flight_number || newDetails.resource_id || '';
-          const orig = replChange?.origin || newDetails.origin || primaryNode?.origin || '';
-          const dest = replChange?.destination || newDetails.destination || primaryNode?.destination || '';
           const depT = fmtTime(replChange?.start_time || newDetails.departure_time);
           const arrT = fmtTime(replChange?.end_time || newDetails.arrival_time);
           const durationM = newDetails.duration_minutes || newDetails.duration || 0;
