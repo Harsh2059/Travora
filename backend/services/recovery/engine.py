@@ -79,8 +79,14 @@ def analyze_part4_recovery(
             is_primary = True
         elif imp:
             sources = imp.get("impact_sources", [])
-            if any(s.get("kind") == "DIRECT" for s in sources):
+            has_direct = any(str(s.get("kind", "")).upper().endswith("DIRECT") for s in sources)
+            has_propagated = any(str(s.get("kind", "")).upper().endswith("PROPAGATED") for s in sources)
+            if has_direct:
                 is_primary = True
+            elif not has_propagated and not root_node_ids:
+                is_primary = True
+        else:
+            is_primary = True
                 
         if status in ["BROKEN", "NEEDS_CHANGE"] and is_primary:
             affected_nodes.append((node, status, imp.get("reason", "Disruption detected") if imp else "Disrupted"))

@@ -195,6 +195,12 @@ def assess_downstream_feasibility(
         # Cab / metro / transfer timed off the original landing: must still be
         # reachable if we KEEP the original booking time.
         if n_type in ("CAB", "TAXI", "TRANSFER", "METRO", "TRAIN", "FLIGHT"):
+            n_status = str(node.get("status") or "").upper()
+            if n_status in ("BROKEN", "NEEDS_CHANGE", "CANCELLED", "REPLACED"):
+                if label not in would_change:
+                    would_change.append(label)
+                continue
+
             if ready_at > n_start:
                 return False, would_change, would_keep, (
                     f"Arrives {arr.isoformat()} too late to keep {label} at {n_start.isoformat()}"

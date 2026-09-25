@@ -25,21 +25,27 @@ if not JWT_SECRET:
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7)))  # 7 days
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
+
 http_bearer = HTTPBearer(auto_error=False)
 
-
-# ── Password Hashing ────────────────────────────────────────────────────────
 def hash_password(password: str) -> str:
     """Hash plaintext password using bcrypt."""
-    return pwd_context.hash(password)
+    pw_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pw_bytes, salt).decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: Optional[str]) -> bool:
     """Verify plaintext password against bcrypt hash."""
     if not hashed_password:
         return False
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        pw_bytes = plain_password.encode('utf-8')[:72]
+        hash_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(pw_bytes, hash_bytes)
+    except Exception:
+        return False
 
 
 # ── Phone Normalization ─────────────────────────────────────────────────────
