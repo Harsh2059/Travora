@@ -28,7 +28,7 @@ def e2e_setup():
         db.delete(user)
         db.commit()
 
-    user = models.User(name="E2E Test User", email="e2e_wiring@test.com", whatsapp_phone="+917710989533")
+    user = models.User(name="E2E Test User", email="e2e_wiring@test.com", whatsapp_phone="+917710989999")
     db.add(user)
     db.commit()
 

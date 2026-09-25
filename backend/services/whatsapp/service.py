@@ -64,10 +64,12 @@ class WhatsAppService:
         else:
             recipient = trip.user.whatsapp_phone or trip.user.phone_number
             if not recipient:
-                # Hackathon/demo-only fallback; replace with a configured traveler number later.
-                recipient = DEMO_WHATSAPP_NUMBER
-                logger.info(
-                    "Using demo WhatsApp number because traveler has no WhatsApp number configured."
+                return NotificationResult(
+                    success=False,
+                    channel=NotificationChannel.WHATSAPP,
+                    recipient="",
+                    status="FAILED",
+                    error="Traveler has no WhatsApp phone number configured.",
                 )
 
             all_plans = plans or [plan]

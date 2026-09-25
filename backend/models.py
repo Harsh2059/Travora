@@ -11,7 +11,11 @@ class User(Base):
     hashed_password = Column(String, nullable=True)
     phone_number = Column(String, nullable=True, index=True)
     whatsapp_phone = Column(String, unique=True, nullable=True, index=True)
+    sms_enabled = Column(Boolean, default=True)
+    whatsapp_enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    role = Column(String, default="traveler")
+    auth_provider = Column(String, default="local")
     trips = relationship("Trip", back_populates="user")
 
 

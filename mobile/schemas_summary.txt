@@ -1,0 +1,69 @@
+Schema: HTTPValidationError
+  - detail: array (ref: )
+
+Schema: ItineraryItem
+  - type: string (ref: )
+  - provider: string (ref: )
+  - origin: any (ref: )
+  - destination: any (ref: )
+  - location: any (ref: )
+  - start_time: any (ref: )
+  - end_time: any (ref: )
+  - cost: number (ref: )
+  - currency: string (ref: )
+  - priority: string (ref: )
+  - flexibility: string (ref: )
+  - status: string (ref: )
+  - booking_id: any (ref: )
+  - refundable: boolean (ref: )
+  - refund_percentage: number (ref: )
+  - cancellation_fee: number (ref: )
+  - changeable: boolean (ref: )
+  - change_fee: number (ref: )
+  - cancellation_deadline: any (ref: )
+  - change_deadline: any (ref: )
+  - non_refundable_amount: number (ref: )
+  - item_metadata: object (ref: )
+  - id: integer (ref: )
+  - trip_id: integer (ref: )
+
+Schema: SmsJobResponse
+  - recipient: string (ref: )
+  - message: string (ref: )
+  - status: string (ref: )
+  - trip_id: any (ref: )
+  - notification_type: any (ref: )
+  - idempotency_key: any (ref: )
+  - error_message: any (ref: )
+  - gateway_device_id: any (ref: )
+  - claimed_at: any (ref: )
+  - sent_at: any (ref: )
+  - id: string (ref: )
+  - created_at: string (ref: )
+  - updated_at: string (ref: )
+
+Schema: SmsStatusUpdate
+  - status: string (ref: )
+  - error_message: any (ref: )
+  - gateway_device_id: any (ref: )
+
+Schema: Trip
+  - title: string (ref: )
+  - version: integer (ref: )
+  - id: integer (ref: )
+  - user_id: integer (ref: )
+  - items: array (ref: )
+
+Schema: User
+  - name: string (ref: )
+  - email: string (ref: )
+  - id: integer (ref: )
+  - trips: array (ref: )
+
+Schema: ValidationError
+  - loc: array (ref: )
+  - msg: string (ref: )
+  - type: string (ref: )
+  - input: any (ref: )
+  - ctx: object (ref: )
+

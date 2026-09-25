@@ -85,7 +85,7 @@ def test_disruption_message_uses_available_fields():
     assert "240 minutes" in message
 
 
-def test_disruption_notification_uses_demo_number_and_deduplicates(db_session, monkeypatch):
+def test_disruption_notification_fails_without_traveler_number(db_session, monkeypatch):
     user = models.User(name="Demo Traveler", email="alert@example.com")
     db_session.add(user)
     db_session.commit()
@@ -104,12 +104,9 @@ def test_disruption_notification_uses_demo_number_and_deduplicates(db_session, m
     }
 
     first = service.send_disruption_notification(db_session, trip.id, disruption)
-    second = service.send_disruption_notification(db_session, trip.id, disruption)
-
-    assert first.status == "SENT"
-    assert second.status == "SKIPPED_DUPLICATE"
-    assert len(client.sent) == 1
-    assert client.sent[0][0] == "+919999999999"
+    assert first.success is False
+    assert first.status == "FAILED"
+    assert first.error == "Traveler has no WhatsApp phone number configured."
 
 
 def test_disruption_notification_failure_is_recorded_without_raising(db_session):
@@ -145,7 +142,7 @@ def test_meta_api_failure_is_wrapped(monkeypatch):
         MetaWhatsAppClient(settings).send_text("919999999999", "test")
 
 
-def test_recovery_notification_uses_demo_number_when_traveler_number_is_missing(
+def test_recovery_notification_fails_when_traveler_number_is_missing(
     db_session, plan, monkeypatch
 ):
     user = models.User(name="Demo Traveler", email="demo@example.com")
@@ -161,8 +158,9 @@ def test_recovery_notification_uses_demo_number_when_traveler_number_is_missing(
         db_session, trip.id, plan
     )
 
-    assert result.success is True
-    assert client.sent[0][0] == "+91XXXXXXXXXX"
+    assert result.success is False
+    assert result.status == "FAILED"
+    assert result.error == "Traveler has no WhatsApp phone number configured."
 
 
 def test_recovery_notification_keeps_configured_traveler_number(db_session, plan):

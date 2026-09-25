@@ -1,0 +1,90 @@
+Path: /api/trips/{trip_id}/disruptions
+  Method: POST
+    Req Schema: {'type': 'object', 'additionalProperties': True, 'title': 'Event Payload'}
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+  Method: GET
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/disruptions/reset
+  Method: POST
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/disruptions/{disruption_id}/reset
+  Method: POST
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/disruptions/{disruption_id}
+  Method: DELETE
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/disruptions/reset-all
+  Method: POST
+    Res 200 Schema: {}
+
+Path: /api/trips/{trip_id}/impact/analyze
+  Method: POST
+    Req Schema: {'type': 'object', 'additionalProperties': True, 'default': {}, 'title': 'Payload'}
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/impact
+  Method: GET
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery/analyze
+  Method: POST
+    Req Schema: {'type': 'object', 'additionalProperties': True, 'default': {}, 'title': 'Payload'}
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery
+  Method: GET
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery/options
+  Method: POST
+    Req Schema: {'type': 'object', 'additionalProperties': True, 'default': {}, 'title': 'Payload'}
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery/revalidate
+  Method: POST
+    Req Schema: {'type': 'object', 'additionalProperties': True, 'title': 'Payload'}
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery/execute
+  Method: POST
+    Req Schema: {'type': 'object', 'additionalProperties': True, 'title': 'Payload'}
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery/execution
+  Method: GET
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery/execution/{execution_id}
+  Method: GET
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery/restore
+  Method: POST
+    Req Schema: {'type': 'object', 'additionalProperties': True, 'default': {}, 'title': 'Payload'}
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
+Path: /api/trips/{trip_id}/recovery/activate-recovered
+  Method: POST
+    Req Schema: {'type': 'object', 'additionalProperties': True, 'default': {}, 'title': 'Payload'}
+    Res 200 Schema: {}
+    Res 422 Schema: {'$ref': '#/components/schemas/HTTPValidationError'}
+
