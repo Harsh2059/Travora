@@ -24,15 +24,15 @@ MAX_VISIBLE_RECOVERY_OPTIONS = 3
 
 # Minutes after arrival required before a downstream booking can still be kept.
 DOWNSTREAM_BUFFERS_MIN = {
-    "CAB": 15,
-    "TAXI": 15,
-    "TRANSFER": 15,
+    "CAB": 20,
+    "TAXI": 20,
+    "TRANSFER": 25,
     "METRO": 15,
-    "TRAIN": 20,
+    "TRAIN": 25,
     "HOTEL": 20,
     "ACTIVITY": 30,
-    "EVENT": 30,
-    "FLIGHT": 30,
+    "EVENT": 45,
+    "FLIGHT": 90,
 }
 
 TYPE_LABELS = {
@@ -165,48 +165,36 @@ def assess_downstream_feasibility(
             would_keep.append(label)
             continue
 
-        buffer = DOWNSTREAM_BUFFERS_MIN.get(n_type, 15)
+        buffer = DOWNSTREAM_BUFFERS_MIN.get(n_type, 20)
         ready_at = arr + timedelta(minutes=buffer)
+
         flex = _flexibility(node)
-        priority = str(node.get("priority") or "").upper()
-        is_fixed = flex in ("FIXED", "STRICT") or priority == "MUST_PRESERVE"
 
         if n_type in ("HOTEL",):
-            # Overnight stay: late check-in is allowed unless the hotel is FIXED / MUST_PRESERVE
-            # and the traveler would arrive after checkout or after check-in for strict bookings.
+            # Overnight stay: late check-in is allowed unless the hotel is FIXED
+            # and the traveler would arrive after checkout.
             if n_end and arr >= n_end:
                 return False, would_change, would_keep, (
                     f"Arrives {arr.isoformat()} after hotel checkout {n_end.isoformat()}"
                 )
-            if is_fixed and ready_at > n_start:
+            if flex in ("FIXED", "STRICT") and ready_at > n_start:
                 return False, would_change, would_keep, (
-                    f"Arrives {arr.isoformat()} too late for {label} at {n_start.isoformat()}"
+                    f"Arrives too late for fixed hotel check-in at {n_start.isoformat()}"
                 )
             would_keep.append(label)
             continue
 
-        if n_type in ("ACTIVITY", "EVENT"):
-            if is_fixed and ready_at > n_start:
-                return False, would_change, would_keep, (
-                    f"Arrives {arr.isoformat()} too late for {label} at {n_start.isoformat()}"
-                )
-            would_keep.append(label)
-            continue
-
-        # Cab / metro / transfer: automatically reschedulable unless strictly fixed/must preserve
-        if n_type in ("CAB", "TAXI", "TRANSFER", "METRO"):
+        if n_type in ("ACTIVITY", "EVENT") or flex in ("FIXED", "STRICT"):
             if ready_at > n_start:
-                if is_fixed:
-                    return False, would_change, would_keep, (
-                        f"Arrives {arr.isoformat()} too late for {label} at {n_start.isoformat()}"
-                    )
-                if label not in would_change:
-                    would_change.append(label)
-            else:
-                would_keep.append(label)
+                return False, would_change, would_keep, (
+                    f"Arrives {arr.isoformat()} too late for {label} at {n_start.isoformat()}"
+                )
+            would_keep.append(label)
             continue
 
-        if n_type in ("TRAIN", "FLIGHT"):
+        # Cab / metro / transfer timed off the original landing: must still be
+        # reachable if we KEEP the original booking time.
+        if n_type in ("CAB", "TAXI", "TRANSFER", "METRO", "TRAIN", "FLIGHT"):
             n_status = str(node.get("status") or "").upper()
             if n_status in ("BROKEN", "NEEDS_CHANGE", "CANCELLED", "REPLACED"):
                 if label not in would_change:
@@ -214,15 +202,9 @@ def assess_downstream_feasibility(
                 continue
 
             if ready_at > n_start:
-                if is_fixed:
-                    return False, would_change, would_keep, (
-                        f"Arrives {arr.isoformat()} too late to keep {label} at {n_start.isoformat()}"
-                    )
-                if label not in would_change:
-                    would_change.append(label)
-            else:
-                would_keep.append(label)
-            continue
+                return False, would_change, would_keep, (
+                    f"Arrives {arr.isoformat()} too late to keep {label} at {n_start.isoformat()}"
+                )
 
         would_keep.append(label)
 
