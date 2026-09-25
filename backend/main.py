@@ -636,14 +636,24 @@ def trigger_disruption(
             "origin": alert_item.origin,
             "destination": alert_item.destination,
             "location": alert_item.location,
+            "start_time": alert_item.start_time.isoformat() if alert_item and alert_item.start_time else None,
+            "end_time": alert_item.end_time.isoformat() if alert_item and alert_item.end_time else None,
+            "flight_number": ((alert_item.item_metadata or {}).get("flight_number") if alert_item and isinstance(alert_item.item_metadata, dict) else None),
         } if alert_item else {},
     }
+    recovery_plans = []
+    try:
+        recovery_plans = _resolve_all_whatsapp_plans(trip_id=trip_id, db=db)
+    except Exception as exc:
+        logger.warning("Could not pre-resolve recovery plans for WhatsApp notification: %s", exc)
+
     try:
         notification = NotificationService().send_disruption_notification(
             db=db,
             channel=NotificationChannel.WHATSAPP,
             trip_id=trip_id,
             disruption=disruption_for_notification,
+            plans=recovery_plans,
         )
         notification_status = notification.status
     except Exception as exc:
@@ -1094,7 +1104,7 @@ def get_recovery_options_endpoint(
     return {"options": plans, "plans": plans, **res}
 
 
-def _resolve_whatsapp_plan(trip_id: int, db: Session = None) -> Optional[Dict[str, Any]]:
+def _resolve_all_whatsapp_plans(trip_id: int, db: Session = None) -> List[Dict[str, Any]]:
     cached = LATEST_PART4_RECOVERY.get(trip_id) or {}
     plans = cached.get("plans") or []
     if not plans and db is not None:
@@ -1103,6 +1113,11 @@ def _resolve_whatsapp_plan(trip_id: int, db: Session = None) -> Optional[Dict[st
             plans = res.get("plans") or []
         except Exception:
             pass
+    return plans
+
+
+def _resolve_whatsapp_plan(trip_id: int, db: Session = None) -> Optional[Dict[str, Any]]:
+    plans = _resolve_all_whatsapp_plans(trip_id, db=db)
     if not plans:
         return None
     selected = next((p for p in plans if p.get("is_recommended")), plans[0])
@@ -1115,19 +1130,21 @@ def send_whatsapp_recovery_notification(
     payload: Dict[str, Any] = Body(default={}),
     db: Session = Depends(get_db),
 ):
-    """Send the current recovery plan through the shared WhatsApp notification channel."""
+    """Send the current recovery plan(s) through the shared WhatsApp notification channel."""
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
-    plan = payload.get("plan") or _resolve_whatsapp_plan(trip_id, db=db)
-    if not plan:
+    plans = payload.get("plans") or _resolve_all_whatsapp_plans(trip_id, db=db)
+    plan = payload.get("plan") or (plans[0] if plans else None)
+    if not plan and not plans:
         raise HTTPException(status_code=404, detail="Recovery plan not found")
     result = NotificationService().send_recovery_notification(
         db=db,
         channel=NotificationChannel.WHATSAPP,
         trip_id=trip_id,
-        plan=plan,
-        disruption_id=(plan.get("disruption_ids") or [None])[0],
+        plan=plan or plans[0],
+        disruption_id=((plan or plans[0]).get("disruption_ids") or [None])[0],
+        plans=plans,
     )
     return {
         "success": result.success,
@@ -1192,6 +1209,7 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
     handler = WhatsAppWebhookHandler(
         client=MetaWhatsAppClient(settings=settings),
         plan_resolver=lambda tid: _resolve_whatsapp_plan(tid, db=db),
+        plans_resolver=lambda tid: _resolve_all_whatsapp_plans(tid, db=db),
     )
     
     try:

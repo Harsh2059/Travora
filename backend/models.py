@@ -225,3 +225,23 @@ class Ticket(Base):
     trip = relationship("Trip")
     user = relationship("User")
     execution = relationship("RecoveryExecution")
+
+
+class WhatsAppRecoveryContext(Base):
+    __tablename__ = "whatsapp_recovery_contexts"
+    id = Column(Integer, primary_key=True, index=True)
+    sender = Column(String, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id"), index=True)
+    disruption_id = Column(Integer, ForeignKey("disruption_events.id"), nullable=True, index=True)
+    disruption_fingerprint = Column(String, nullable=True, index=True)
+    status = Column(String, default="ACTIVE", index=True)  # ACTIVE | SELECTED | CANCELLED
+    options = Column(JSON, default=dict)  # {"1": "plan_id_1", "2": "plan_id_2"}
+    plans_data = Column(JSON, default=dict)  # {"plan_id_1": {...}, "plan_id_2": {...}}
+    selected_option = Column(String, nullable=True)  # "1"
+    selected_plan_id = Column(String, nullable=True)
+    execution_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    trip = relationship("Trip")
+    disruption = relationship("DisruptionEvent")

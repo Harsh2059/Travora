@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -8,7 +8,12 @@ import models
 from services.notifications.contracts import NotificationChannel, NotificationRequest, NotificationResult
 from .client import MetaWhatsAppClient
 from .config import DEMO_WHATSAPP_NUMBER
-from .formatter import format_disruption_alert, format_recovery_notification
+from .context import store_recovery_context
+from .formatter import (
+    format_disruption_alert,
+    format_recovery_notification,
+    format_whatsapp_recovery_options,
+)
 
 logger = logging.getLogger("travel_recovery.whatsapp")
 
@@ -45,6 +50,7 @@ class WhatsAppService:
         trip_id: int,
         plan: Dict[str, Any],
         disruption_id: Optional[int] = None,
+        plans: Optional[List[Dict[str, Any]]] = None,
     ) -> NotificationResult:
         trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
         if not trip or not trip.user:
@@ -63,10 +69,27 @@ class WhatsAppService:
                 logger.info(
                     "Using demo WhatsApp number because traveler has no WhatsApp number configured."
                 )
+
+            all_plans = plans or [plan]
+            if len(all_plans) > 1:
+                text = format_whatsapp_recovery_options(trip_id, None, all_plans)
+            else:
+                text = format_recovery_notification(trip_id, plan)
+
+            fingerprint = str(disruption_id or plan.get("disruption_fingerprint") or "")
+            store_recovery_context(
+                db=db,
+                sender=recipient,
+                trip_id=trip_id,
+                disruption_id=disruption_id,
+                disruption_fingerprint=fingerprint,
+                plans=all_plans,
+            )
+
             request = NotificationRequest(
                 recipient=recipient,
                 message_type="RECOVERY_PLAN",
-                text=format_recovery_notification(trip_id, plan),
+                text=text,
                 trip_id=trip_id,
                 disruption_id=disruption_id,
                 recovery_plan_id=str(plan.get("id") or plan.get("plan_id") or ""),
@@ -92,6 +115,7 @@ class WhatsAppService:
         db: Session,
         trip_id: int,
         disruption: Dict[str, Any],
+        plans: Optional[List[Dict[str, Any]]] = None,
     ) -> NotificationResult:
         disruption_id = disruption.get("id") or disruption.get("event_id")
         existing = db.query(models.NotificationRecord).filter(
@@ -108,10 +132,32 @@ class WhatsAppService:
                 provider_message_id=existing.provider_message_id,
             )
 
+        trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+        recipient = trip.user.whatsapp_phone if (trip and trip.user and trip.user.whatsapp_phone) else DEMO_WHATSAPP_NUMBER
+
+        # If plans are available, format recovery options dynamically and register context
+        if plans and len(plans) > 0:
+            text = format_whatsapp_recovery_options(
+                trip_id=trip_id,
+                disruption=disruption,
+                plans=plans,
+            )
+            fingerprint = str(disruption_id or "")
+            store_recovery_context(
+                db=db,
+                sender=recipient,
+                trip_id=trip_id,
+                disruption_id=disruption_id,
+                disruption_fingerprint=fingerprint,
+                plans=plans,
+            )
+        else:
+            text = format_disruption_alert(disruption)
+
         request = NotificationRequest(
-            recipient=DEMO_WHATSAPP_NUMBER,
+            recipient=recipient,
             message_type="DISRUPTION_ALERT",
-            text=format_disruption_alert(disruption),
+            text=text,
             trip_id=trip_id,
             disruption_id=disruption_id,
             timestamp=datetime.now(timezone.utc),
