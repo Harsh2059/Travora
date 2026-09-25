@@ -77,7 +77,7 @@ export const DisruptionImpactCard: React.FC<DisruptionImpactCardProps> = ({
           {impactedNodes.length} Impacted Journey Segment{impactedNodes.length !== 1 ? 's' : ''}
         </h3>
         
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {impactedNodes.map(nodeImpact => {
             const node = journey.nodes.find(n => n.id === nodeImpact.node_id || String(n.backendId) === String(nodeImpact.item_id));
             if (!node) return null;
@@ -97,19 +97,19 @@ export const DisruptionImpactCard: React.FC<DisruptionImpactCardProps> = ({
             }
 
             return (
-              <div key={node.id} className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    {node.title}
-                  </div>
-                  {nodeImpact.reason && (
-                    <div className="text-xs font-medium text-slate-500 mt-0.5">
-                      {nodeImpact.reason}
-                    </div>
-                  )}
+              <div key={node.id} className="flex flex-col p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shadow-slate-200/20">
+                <div className="text-sm font-extrabold text-slate-900 dark:text-white mb-1 truncate">
+                  {node.title}
                 </div>
-                <div className={`px-2.5 py-1 rounded-lg ${bgBadge} ${statusColor} text-[10px] font-extrabold tracking-wider`}>
-                  {statusText}
+                {nodeImpact.reason && (
+                  <div className="text-[11px] font-semibold text-slate-500 mb-2 truncate">
+                    {nodeImpact.reason}
+                  </div>
+                )}
+                <div className="mt-auto flex justify-start">
+                  <div className={`px-2 py-0.5 rounded-md ${bgBadge} ${statusColor} text-[10px] font-extrabold tracking-wider uppercase`}>
+                    {statusText}
+                  </div>
                 </div>
               </div>
             );

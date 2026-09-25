@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -30,6 +30,8 @@ import { findSuccessorPlan } from '../utils/successorMatcher';
 import { Part1JourneyView } from '../components/Part1JourneyView';
 import { CurrentJourneyHeader } from '../components/CurrentJourneyHeader';
 import { DisruptionImpactCard } from '../components/DisruptionImpactCard';
+import { RecoveryOptionsPanel } from '../components/recovery/RecoveryOptionsPanel';
+import { UpcomingTripDetails } from '../components/UpcomingTripDetails';
 import { RecoveryPlanView } from '../components/recovery/RecoveryPlanView';
 import { SelectedRecoveryPlanReview } from '../components/recovery/SelectedRecoveryPlanReview';
 import { Part5BookingExecutionView } from '../components/recovery/Part5BookingExecutionView';
@@ -580,7 +582,7 @@ export default function HomeScreen() {
 
         {/* Scrollable Area */}
         <div className="flex-1 overflow-y-auto relative">
-          <div className="max-w-[1100px] mx-auto p-6 md:p-8 space-y-6">
+          <div className="max-w-[1400px] mx-auto p-6 md:p-8 space-y-6">
         {!journey ? (
           /* Empty state */
           <div className="max-w-md mx-auto my-16 text-center p-8 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/30">
@@ -615,20 +617,42 @@ export default function HomeScreen() {
               onReviewPlan={() => setShowSelectedPlanReviewModal(true)}
               onContinueToBooking={() => setShowPart5HandoffModal(true)}
             />
-            <Part1JourneyView
-              journey={journey}
-              viewMode={viewMode}
-              impactNodeMap={impactNodeMap}
-              impactResult={impactResult}
-              selectedRecoveryPlan={selectedRecoveryPlan}
-              onUpdatePriority={handleUpdatePriority}
-              onEditDraft={() => navigate('/build', { state: { mode: 'edit' } })}
-              onResetJourney={() => {
-                if (window.confirm('Are you sure you want to clear your active journey?')) {
-                  clearActive();
-                }
-              }}
-            />
+            
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <div className="lg:col-span-7 xl:col-span-7 space-y-6">
+                <Part1JourneyView
+                  journey={journey}
+                  viewMode={viewMode}
+                  impactNodeMap={impactNodeMap}
+                  impactResult={impactResult}
+                  selectedRecoveryPlan={selectedRecoveryPlan}
+                  onUpdatePriority={handleUpdatePriority}
+                  onEditDraft={() => navigate('/build', { state: { mode: 'edit' } })}
+                  onResetJourney={() => {
+                    if (window.confirm('Are you sure you want to clear your active journey?')) {
+                      clearActive();
+                    }
+                  }}
+                />
+              </div>
+              <div className="lg:col-span-5 xl:col-span-5 w-full">
+                {activeDisruption ? (
+                  <RecoveryOptionsPanel
+                    tripId={journey.id!}
+                    currentDisruptionFingerprint={currentDisruptionFingerprint}
+                    selectedRecoveryPlan={selectedRecoveryPlan}
+                    onPlanSelected={(plan) => {
+                      saveSelectedRecoveryPlan(journey.id as number, plan, currentDisruptionFingerprint || "", false);
+                      setSelectedRecoveryPlanState(plan);
+                      setIsSelectedPlanUpdated(false);
+                      setShowSelectedPlanReviewModal(true);
+                    }}
+                  />
+                ) : (
+                  <UpcomingTripDetails journey={journey} />
+                )}
+              </div>
+            </div>
           </div>
         )}
           </div>
