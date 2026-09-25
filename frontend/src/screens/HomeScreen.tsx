@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -11,7 +11,6 @@ import {
   PlusCircle,
   RefreshCw,
   Plane,
-  Sparkles,
   Zap,
   AlertTriangle,
   X,
@@ -29,76 +28,19 @@ import {
 } from '../store/tripSync';
 import { findSuccessorPlan } from '../utils/successorMatcher';
 import { Part1JourneyView } from '../components/Part1JourneyView';
+import { CurrentJourneyHeader } from '../components/CurrentJourneyHeader';
+import { DisruptionImpactCard } from '../components/DisruptionImpactCard';
 import { RecoveryPlanView } from '../components/recovery/RecoveryPlanView';
 import { SelectedRecoveryPlanReview } from '../components/recovery/SelectedRecoveryPlanReview';
 import { Part5BookingExecutionView } from '../components/recovery/Part5BookingExecutionView';
 import { RestoreJourneyModal } from '../components/recovery/RestoreJourneyModal';
-import type { Journey, ImpactResult, ImpactNodeStatus, TravelerPriority, Part4RecoveryPlan, Part4RecoveryResult } from '../types';
+import type { Journey, ImpactResult, ImpactNodeStatus, TravelerPriority, Part4RecoveryPlan } from '../types';
 import {
   getJourneyStatus,
   getJourneyStatusDisplay,
   getImpactSummaryBuckets,
   scopeImpactToNodeIds,
 } from '../utils/impactUtils';
-
-function fmtDisplayTime(s?: string): string {
-  if (!s) return '';
-  try {
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return s;
-    return d.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-  } catch {
-    return s;
-  }
-}
-
-function getDisruptionNoticeText(disruption: any, node?: any): string {
-  const title =
-    node?.provider ||
-    node?.title ||
-    disruption?.event_metadata?.provider ||
-    disruption?.provider ||
-    'Booking';
-  const type = disruption?.event_type || disruption?.type || '';
-  const meta = disruption?.event_metadata || {};
-  const delay = meta?.delay_minutes ?? disruption?.delay_minutes;
-
-  if (type === 'FLIGHT_CANCELLED') {
-    return `Your ${title} flight has been cancelled.`;
-  }
-  if (type === 'FLIGHT_DELAYED') {
-    return `Your ${title} flight has been delayed${delay ? ` by ${delay} minutes` : ''}.`;
-  }
-  if (type === 'TRAIN_CANCELLED') {
-    return `Your ${title} train has been cancelled.`;
-  }
-  if (type === 'TRAIN_DELAYED') {
-    return `Your ${title} train has been delayed${delay ? ` by ${delay} minutes` : ''}.`;
-  }
-  if (type === 'CAB_CANCELLED' || type === 'CAB_UNAVAILABLE') {
-    return `Your ${title} cab booking is unavailable.`;
-  }
-  if (type === 'CAB_DELAYED') {
-    return `Your ${title} cab has been delayed${delay ? ` by ${delay} minutes` : ''}.`;
-  }
-  if (type === 'HOTEL_CANCELLED') {
-    return `Your hotel booking (${title}) has been cancelled.`;
-  }
-  if (type === 'ACTIVITY_CANCELLED') {
-    return `Your ${title} activity has been cancelled.`;
-  }
-  if (type === 'MISSED_CONNECTION') {
-    return `A connecting transit for ${title} has been missed.`;
-  }
-
-  return `A disruption has been detected for your ${title} booking.`;
-}
 
 /** Prefer clean airline/provider label over long composed titles. */
 function displayProviderLabel(
@@ -108,7 +50,7 @@ function displayProviderLabel(
 ): string {
   const raw = (provider || title || '').trim();
   if (!raw) return fallback;
-  // Strip " (route…)" / " (Repl. for …)" suffixes from composed titles
+  // Strip " (routeÃ¢â‚¬Â¦)" / " (Repl. for Ã¢â‚¬Â¦)" suffixes from composed titles
   const cleaned = raw.split(' (Repl.')[0].split(' (')[0].trim();
   return cleaned || fallback;
 }
@@ -200,15 +142,15 @@ function resolveRestoreComparison(
 
 function renderStatusBadge(status: ImpactNodeStatus) {
   if (status === 'BROKEN') {
-    return <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-600 text-white shadow-sm">🔴 BROKEN</span>;
+    return <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-600 text-white shadow-sm">Ã°Å¸â€Â´ BROKEN</span>;
   }
   if (status === 'NEEDS_CHANGE') {
-    return <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-orange-500 text-white shadow-sm">🟠 NEEDS CHANGE</span>;
+    return <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-orange-500 text-white shadow-sm">Ã°Å¸Å¸Â  NEEDS CHANGE</span>;
   }
   if (status === 'AT_RISK') {
-    return <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-sm">🟡 AT RISK</span>;
+    return <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-sm">Ã°Å¸Å¸Â¡ AT RISK</span>;
   }
-  return <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-sm">🟢 INTACT</span>;
+  return <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-sm">Ã°Å¸Å¸Â¢ INTACT</span>;
 }
 
 export default function HomeScreen() {
@@ -225,7 +167,6 @@ export default function HomeScreen() {
 
   const [selectedRecoveryPlan, setSelectedRecoveryPlanState] = useState<Part4RecoveryPlan | null>(null);
   const [isSelectedPlanUpdated, setIsSelectedPlanUpdated] = useState<boolean>(false);
-  const [recoveryAnalysisResult, setRecoveryAnalysisResult] = useState<Part4RecoveryResult | null>(null);
 
   // Ref to track the active disruption fingerprint for in-flight async requests
   const activeFetchFpRef = useRef<string>('');
@@ -308,7 +249,7 @@ export default function HomeScreen() {
           setCurrentDisruptionFingerprint(newFp);
 
           if (activeDisruptions.length === 0) {
-            // After successful recovery, keep the selected plan so Original↔Recovered
+            // After successful recovery, keep the selected plan so OriginalÃ¢â€ â€Recovered
             // toggle remains possible. Only clear when there is no completed execution.
             const hasCompletedRecovery =
               execRes &&
@@ -319,7 +260,6 @@ export default function HomeScreen() {
               setSelectedRecoveryPlanState(null);
               setIsSelectedPlanUpdated(false);
               setShowSelectedPlanReviewModal(false);
-              setRecoveryAnalysisResult(null);
             } else if (hasStoredPlan) {
               const storedMeta = getSelectedRecoveryPlanWithMeta(tripId);
               if (storedMeta) {
@@ -328,7 +268,7 @@ export default function HomeScreen() {
               }
             }
           } else {
-            // Active disruptions exist — run successor matching on fingerprint change
+            // Active disruptions exist Ã¢â‚¬â€ run successor matching on fingerprint change
             const storedMeta = getSelectedRecoveryPlanWithMeta(tripId);
             if (storedMeta) {
               if (storedMeta.disruptionFingerprint === newFp) {
@@ -340,8 +280,6 @@ export default function HomeScreen() {
                 try {
                   const res = await analyzePart4Recovery(tripId);
                   if (activeFetchFpRef.current !== newFp) return;
-
-                  setRecoveryAnalysisResult(res);
 
                   const currentFeasiblePlans = res?.plans ?? [];
                   const successor = findSuccessorPlan(storedMeta.plan, currentFeasiblePlans);
@@ -470,11 +408,6 @@ export default function HomeScreen() {
   }
 
   // Find node affected by active disruption
-  const affectedNode = journey?.nodes.find((n) => {
-    if (!activeDisruption) return false;
-    const targetId = String(activeDisruption.entity_id || activeDisruption.affected_node_id || '');
-    return n.id === targetId || String(n.backendId) === targetId;
-  });
 
   // Scope disruption alerts to the currently viewed journey (hide REPLACED-only noise)
   const visibleJourneyNodes = (journey?.nodes || []).filter((n) => {
@@ -494,20 +427,7 @@ export default function HomeScreen() {
   );
   const scopedImpactResult = scopeImpactToNodeIds(impactResult, visibleJourneyIds);
 
-  const affectedNodeVisible =
-    affectedNode &&
-    (visibleJourneyIds.has(String(affectedNode.id)) ||
-      visibleJourneyIds.has(String(affectedNode.backendId ?? '')));
-
-  const noticeText =
-    activeDisruption && affectedNodeVisible
-      ? getDisruptionNoticeText(activeDisruption, affectedNode)
-      : activeDisruption && !affectedNodeVisible
-        ? ''
-        : activeDisruption
-          ? getDisruptionNoticeText(activeDisruption, affectedNode)
-          : '';
-  const detectedTimeStr = activeDisruption ? fmtDisplayTime(activeDisruption.timestamp || activeDisruption.detected_at) : '';
+  // We no longer need noticeText and detectedTimeStr as they are in DisruptionImpactCard
 
   // Build impactNodeMap for Route Map rendering
   const impactNodeMap: Record<string, { status: ImpactNodeStatus; reason: string }> = {};
@@ -660,37 +580,7 @@ export default function HomeScreen() {
 
         {/* Scrollable Area */}
         <div className="flex-1 overflow-y-auto relative">
-          
-          {/* Disruption Alert Banner */}
-          {activeDisruption && affectedNodeVisible && noticeText && (
-            <div className="bg-[#E11D48] px-6 py-3.5 flex items-center justify-between text-white shadow-sm">
-              <div className="flex items-center gap-4">
-                <div className="bg-white/20 p-2.5 rounded-xl backdrop-blur-sm shadow-inner">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-3 mb-0.5">
-                    <h3 className="font-bold text-[15px] sm:text-[17px]">{noticeText}</h3>
-                  </div>
-                  <p className="text-[12px] sm:text-[13px] text-rose-100/90 font-medium uppercase tracking-wide">
-                    TRAVEL DISRUPTION ALERT {detectedTimeStr && `· ${detectedTimeStr}`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <button
-                  onClick={() => setShowImpactModal(true)}
-                  className="bg-white text-rose-600 px-3.5 py-1.5 rounded-xl text-[12px] sm:text-[13px] font-bold flex items-center gap-2 shadow-sm hover:bg-rose-50 transition-colors"
-                >
-                  <Activity className="w-4 h-4" />
-                  <span className="hidden sm:inline">View Impact</span>
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="max-w-[1100px] mx-auto p-6 md:p-8 space-y-6">
-
         {!journey ? (
           /* Empty state */
           <div className="max-w-md mx-auto my-16 text-center p-8 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/30">
@@ -699,7 +589,7 @@ export default function HomeScreen() {
             </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">No Active Journey</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-              You haven't created a trip yet. Start building your horizontal route rail now.
+              You haven't created a trip yet. Start building your journey now.
             </p>
             <button
               onClick={() => navigate('/build')}
@@ -711,276 +601,20 @@ export default function HomeScreen() {
         ) : (
           /* Active Journey Command Center */
           <div className="space-y-6">
-            {/* Greeting Header */}
-            <div className="px-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>Good morning, Traveler</span>
-              </span>
-            </div>
-
-            {/* PERSISTENT DISRUPTION ALERT CARD */}
-            {activeDisruption && (() => {
-              const journeyStatus = getJourneyStatus(scopedImpactResult);
-              const jDisplay = getJourneyStatusDisplay(journeyStatus);
-              const buckets = getImpactSummaryBuckets(scopedImpactResult);
-
-              if (selectedRecoveryPlan) {
-                return (
-                  <div className="bg-gradient-to-r from-amber-500/10 via-amber-50/50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-300 dark:border-amber-800/80 rounded-3xl p-5 shadow-lg shadow-amber-500/5 transition-all">
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                      <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                        <div className="h-10 w-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20 mt-0.5">
-                          <ShieldCheck className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                              {isSelectedPlanUpdated ? '🟠 RECOVERY PLAN UPDATED' : '🟠 RECOVERY PLAN SELECTED'}
-                            </span>
-                            <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
-                              {selectedRecoveryPlan.title}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-700 dark:text-slate-200 mt-1 leading-relaxed font-medium">
-                            {isSelectedPlanUpdated
-                              ? 'Your recovery plan has been updated after a new disruption.'
-                              : 'A recovery plan is ready to restore your journey.'}{' '}
-                            {selectedRecoveryPlan.changed_node_ids.length} booking{selectedRecoveryPlan.changed_node_ids.length === 1 ? '' : 's'} will be replaced · {selectedRecoveryPlan.preserved_node_ids.length} remain unchanged.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 self-start shrink-0">
-                        <button
-                          onClick={() => setShowPart5HandoffModal(true)}
-                          className="px-4 py-2 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs transition-all shadow-md shadow-sky-500/20 flex items-center gap-1.5"
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                          <span>Continue to Booking</span>
-                        </button>
-                        <button
-                          onClick={() => setShowSelectedPlanReviewModal(true)}
-                          className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 hover:bg-amber-100 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5"
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                          <span>{isSelectedPlanUpdated ? 'Review Updated Plan' : 'Review Plan'}</span>
-                        </button>
-                        <button
-                          onClick={() => setShowRecoveryModal(true)}
-                          className="px-3.5 py-2 rounded-2xl bg-amber-100/80 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-100 hover:bg-amber-200 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5"
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                          <span>Change Plan</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-3xl p-5 shadow-lg shadow-rose-500/5 transition-all">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                      <div className="h-10 w-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-500/20 mt-0.5">
-                        <AlertTriangle className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        {/* Primary: journey-level status */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-extrabold uppercase tracking-wider text-rose-700 dark:text-rose-300">
-                            {jDisplay.headline}
-                          </span>
-                          {detectedTimeStr && (
-                            <span className="text-[10px] font-semibold text-rose-500/80 dark:text-rose-400/80">
-                              · Detected {detectedTimeStr}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-700 dark:text-slate-200 mt-1 leading-relaxed font-medium">
-                          {jDisplay.description}
-                        </p>
-                        {/* Bucket summary */}
-                        {buckets.total > 0 && (
-                          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-bold">
-                            {buckets.needs_recovery > 0 && (
-                              <span className="text-rose-700 dark:text-rose-300">
-                                🔴 {buckets.needs_recovery} require{buckets.needs_recovery === 1 ? 's' : ''} recovery
-                              </span>
-                            )}
-                            {buckets.at_risk > 0 && (
-                              <span className="text-amber-700 dark:text-amber-300">
-                                🟡 {buckets.at_risk} at risk
-                              </span>
-                            )}
-                            {buckets.unchanged > 0 && (
-                              <span className="text-emerald-700 dark:text-emerald-300">
-                                🟢 {buckets.unchanged} unchanged
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {/* Secondary: specific booking notice */}
-                        {noticeText && (
-                          <p className="mt-2 text-[11px] font-semibold text-rose-600/80 dark:text-rose-400/80 leading-relaxed">
-                            {noticeText}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 self-start shrink-0">
-                      <button
-                        onClick={() => setShowImpactModal(true)}
-                        className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5"
-                      >
-                        <Activity className="h-4 w-4" />
-                        <span>View Impact</span>
-                      </button>
-                      {journeyStatus === 'DISRUPTED' && (
-                        <button
-                          onClick={() => setShowRecoveryModal(true)}
-                          className="px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all shadow-md shadow-rose-600/20 flex items-center gap-1.5"
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                          <span>Find Recovery Options</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* RECOVERED JOURNEY BANNER CARD */}
-            {!activeDisruption && impactResult?.journey_status === 'RECOVERED' && (
-              <div className="bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-3xl p-5 shadow-lg shadow-emerald-500/5 transition-all animate-in fade-in duration-200">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3.5">
-                    <div className="h-10 w-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20 mt-0.5">
-                      <CheckCircle2 className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                        <span>🟢 JOURNEY RECOVERED</span>
-                      </div>
-                      <p className="text-xs text-slate-700 dark:text-slate-200 mt-1 leading-relaxed font-medium">
-                        Your replacement bookings are confirmed. No active disruptions remain.
-                      </p>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            )}
-
-            {/* RECOVERY PLAN SUMMARY CARD (Requirement 9 & 10) */}
-            {selectedRecoveryPlan && (
-              <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-3xl p-5 border border-amber-300 dark:border-amber-800 shadow-md space-y-3 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
-                    <ShieldCheck className="h-4 w-4 text-amber-500" />
-                    <span>{isSelectedPlanUpdated ? '🟠 UPDATED PROPOSED RECOVERY PLAN' : '🟠 SELECTED PROPOSED RECOVERY PLAN'}</span>
-                  </span>
-                  <button
-                    onClick={() => setShowRecoveryModal(true)}
-                    className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1"
-                  >
-                    <span>Change Plan</span>
-                  </button>
-                </div>
-
-                {isSelectedPlanUpdated && (
-                  <div className="p-3 rounded-2xl bg-amber-100/70 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-semibold flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                    <span>Your recovery plan has been updated after a new disruption.</span>
-                  </div>
-                )}
-
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
-                  <div>
-                    <h4 className="font-bold text-base text-slate-900 dark:text-white">
-                      {selectedRecoveryPlan.title}
-                    </h4>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300 mt-1 font-medium">
-                      <span>{selectedRecoveryPlan.changed_node_ids.length} replacements proposed</span>
-                      <span>·</span>
-                      <span>{selectedRecoveryPlan.preserved_node_ids.length} bookings kept unchanged</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
-                    <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Est. Addl Cost</span>
-                      <span className="text-sky-600 dark:text-sky-400 font-extrabold text-sm">
-                        {selectedRecoveryPlan.estimated_additional_cost !== null && selectedRecoveryPlan.estimated_additional_cost !== undefined
-                          ? `₹${selectedRecoveryPlan.estimated_additional_cost.toLocaleString()}`
-                          : 'PARTIAL'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Est. Refund</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
-                        {selectedRecoveryPlan.estimated_refund !== null && selectedRecoveryPlan.estimated_refund !== undefined
-                          ? `₹${selectedRecoveryPlan.estimated_refund.toLocaleString()}`
-                          : 'Unknown'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowSelectedPlanReviewModal(true)}
-                        className="px-4 py-2.5 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs transition-all shadow-md shadow-sky-500/20 flex items-center gap-1.5 shrink-0"
-                      >
-                        <ShieldCheck className="h-4 w-4" />
-                        <span>{isSelectedPlanUpdated ? 'Review Updated Plan' : 'Review Recovery Plan'}</span>
-                      </button>
-                      <button
-                        onClick={() => setShowRecoveryModal(true)}
-                        className="px-3.5 py-2.5 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 shrink-0"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        <span>Change Plan</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* STATE D: NO FEASIBLE RECOVERY CARD (Requirement 8 & 9D) */}
-            {activeDisruption && !selectedRecoveryPlan && (recoveryAnalysisResult?.status === 'NO_FEASIBLE_RECOVERY' || (impactResult && impactResult.nodes && impactResult.nodes.some(n => n.status === 'BROKEN' && n.priority === 'MUST_PRESERVE') && recoveryAnalysisResult?.plans?.length === 0)) && (
-              <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-3xl p-5 shadow-lg space-y-3 animate-in fade-in duration-200">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                  <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                    <div className="h-10 w-10 rounded-2xl bg-slate-400 text-white flex items-center justify-center shrink-0 shadow-md mt-0.5">
-                      <AlertCircle className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                          ⚪ RECOVERY REVIEWED
-                        </span>
-                        <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                          NO FEASIBLE RECOVERY
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-700 dark:text-slate-200 mt-1 leading-relaxed font-medium">
-                        No feasible recovery plan found. A critical journey requirement can no longer be preserved with the available recovery options. Unaffected bookings remain unchanged.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 self-start shrink-0">
-                    <button
-                      onClick={() => setShowImpactModal(true)}
-                      className="px-4 py-2 rounded-2xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-200 shadow-sm"
-                    >
-                      View Impact
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* HERO HORIZONTAL JOURNEY ROUTE RAIL (With Impact Status Badges) */}
+            <CurrentJourneyHeader journey={journey} syncActive={true} />
+            
+            <DisruptionImpactCard
+              journey={journey}
+              activeDisruption={activeDisruption}
+              scopedImpactResult={scopedImpactResult}
+              selectedRecoveryPlan={selectedRecoveryPlan}
+              isSelectedPlanUpdated={isSelectedPlanUpdated}
+              onViewImpact={() => setShowImpactModal(true)}
+              onFindRecovery={() => setShowRecoveryModal(true)}
+              onChangePlan={() => setShowRecoveryModal(true)}
+              onReviewPlan={() => setShowSelectedPlanReviewModal(true)}
+              onContinueToBooking={() => setShowPart5HandoffModal(true)}
+            />
             <Part1JourneyView
               journey={journey}
               viewMode={viewMode}
@@ -1044,7 +678,7 @@ export default function HomeScreen() {
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-slate-900 dark:text-white">Travel Impact Analysis</h3>
-                    <span className="text-[11px] font-semibold text-slate-500">Part 3 · Impact Engine</span>
+                    <span className="text-[11px] font-semibold text-slate-500">Part 3 Ã‚Â· Impact Engine</span>
                   </div>
                 </div>
                 <button
@@ -1055,7 +689,7 @@ export default function HomeScreen() {
                 </button>
               </div>
 
-              {/* ── JOURNEY STATUS HEADLINE (primary message) ── */}
+              {/* Ã¢â€â‚¬Ã¢â€â‚¬ JOURNEY STATUS HEADLINE (primary message) Ã¢â€â‚¬Ã¢â€â‚¬ */}
               <div className={`rounded-2xl border p-4 ${jDisplay.bannerStyle}`}>
                 <div className={`text-sm font-extrabold tracking-tight mb-1 ${jDisplay.headlineStyle}`}>
                   {jDisplay.headline}
