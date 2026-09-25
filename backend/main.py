@@ -33,6 +33,10 @@ from services.whatsapp.config import WhatsAppSettings
 from services.whatsapp.handler import WhatsAppWebhookHandler
 import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger("travel_recovery")
 
 models.Base.metadata.create_all(bind=engine)
@@ -763,6 +767,8 @@ def trigger_disruption(
     db.add(disruption_record)
     db.commit()
     db.refresh(disruption_record)
+    logger.info("[DISRUPTION] created id=%s trip_id=%s", disruption_record.id, trip_id)
+    print(f"[DISRUPTION] created id={disruption_record.id} trip_id={trip_id}", flush=True)
 
     # ── D: Invalidate any cached Part 4 recovery for this trip ──
     # Home polling will detect the new disruption_fingerprint and clear the selected plan.
@@ -816,7 +822,14 @@ def trigger_disruption(
     except Exception as exc:
         logger.warning("Could not pre-resolve recovery plans for WhatsApp notification: %s", exc)
 
+    logger.info("[NOTIFICATION] recovery plans count=%d", len(recovery_plans))
+    print(f"[NOTIFICATION] recovery plans count={len(recovery_plans)}", flush=True)
+
     try:
+        try:
+            db.rollback()  # Safety: ensure clean session state after recovery resolution before WhatsApp dispatch
+        except Exception:
+            pass
         notification = NotificationService().send_disruption_notification(
             db=db,
             channel=NotificationChannel.WHATSAPP,
@@ -904,6 +917,7 @@ def reset_trip_disruptions(trip_id: int, db: Session = Depends(get_db)):
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
+    db.query(models.WhatsAppRecoveryContext).filter(models.WhatsAppRecoveryContext.trip_id == trip_id).delete(synchronize_session=False)
     db.query(models.NotificationRecord).filter(models.NotificationRecord.trip_id == trip_id, models.NotificationRecord.disruption_id.isnot(None)).delete(synchronize_session=False)
     db.query(models.SmsJob).filter(models.SmsJob.trip_id == trip_id, models.SmsJob.idempotency_key.like("DISR_%")).delete(synchronize_session=False)
     db.query(models.DisruptionEvent).filter(models.DisruptionEvent.trip_id == trip_id).delete(synchronize_session=False)
@@ -924,6 +938,7 @@ def reset_individual_disruption(trip_id: int, disruption_id: int, db: Session = 
     if not event:
         raise HTTPException(status_code=404, detail="Disruption event not found")
 
+    db.query(models.WhatsAppRecoveryContext).filter(models.WhatsAppRecoveryContext.disruption_id == disruption_id).delete(synchronize_session=False)
     db.query(models.NotificationRecord).filter(models.NotificationRecord.disruption_id == disruption_id).delete(synchronize_session=False)
     db.query(models.SmsJob).filter(models.SmsJob.idempotency_key == f"DISR_{disruption_id}").delete(synchronize_session=False)
     db.delete(event)
@@ -936,6 +951,7 @@ def reset_individual_disruption(trip_id: int, disruption_id: int, db: Session = 
 @app.post("/api/disruptions/reset-all")
 def reset_all_simulations(db: Session = Depends(get_db)):
     """Reset all simulation disruption events across all trips."""
+    db.query(models.WhatsAppRecoveryContext).delete(synchronize_session=False)
     db.query(models.NotificationRecord).filter(models.NotificationRecord.disruption_id.isnot(None)).delete(synchronize_session=False)
     db.query(models.SmsJob).filter(models.SmsJob.idempotency_key.like("DISR_%")).delete(synchronize_session=False)
     deleted_count = db.query(models.DisruptionEvent).delete(synchronize_session=False)

@@ -105,6 +105,7 @@ class NotificationService:
         disruption: Dict[str, Any],
         plans: Optional[List[Dict[str, Any]]] = None,
     ) -> NotificationResult:
+        print(f"[NOTIFICATION] notification service entered channel={channel.value}", flush=True)
         if channel == NotificationChannel.WHATSAPP:
             return self.whatsapp_service.send_disruption_notification(
                 db=db,
@@ -113,6 +114,7 @@ class NotificationService:
                 plans=plans,
             )
         elif channel == NotificationChannel.SMS:
+            print("[SMS] dispatch attempted", flush=True)
             try:
                 trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
                 user_phone = trip.user.whatsapp_phone if (trip and trip.user) else None
