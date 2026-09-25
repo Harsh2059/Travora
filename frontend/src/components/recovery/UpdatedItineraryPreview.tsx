@@ -6,7 +6,6 @@ import {
   RotateCcw,
   Plane,
   ArrowRight,
-  Clock,
   Hotel,
   Car,
   Zap,

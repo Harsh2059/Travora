@@ -62,7 +62,7 @@ class WhatsAppService:
                 error="Traveler has no WhatsApp phone number configured.",
             )
         else:
-            recipient = trip.user.whatsapp_phone
+            recipient = trip.user.whatsapp_phone or trip.user.phone_number
             if not recipient:
                 # Hackathon/demo-only fallback; replace with a configured traveler number later.
                 recipient = DEMO_WHATSAPP_NUMBER

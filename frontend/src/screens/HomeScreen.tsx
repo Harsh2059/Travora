@@ -670,8 +670,6 @@ export default function HomeScreen() {
                         setIsSelectedPlanUpdated(false);
                       }}
                     />
-
-                    )}
                   </>
                 ) : (
                   <UpcomingTripDetails journey={journey} />
