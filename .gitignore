@@ -55,11 +55,13 @@ sms_gateway/android/*.hprof
 # --- Environment Variables & Secrets ---
 .env
 .env.*
-!.env.example
 backend/.env
 backend/.env.*
 frontend/.env
 frontend/.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
 
 # --- Local Databases & Test Artifacts ---
 *.db
