@@ -47,7 +47,7 @@ export const CurrentJourneyHeader: React.FC<CurrentJourneyHeaderProps> = ({ jour
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2 flex-wrap">
               <span>{origin.label}</span>
               <span className="text-slate-300 dark:text-slate-600">→</span>
               <span>{destination.label}</span>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Activity, ShieldCheck, RefreshCw, AlertTriangle } from 'lucide-react';
 import type { Journey, ImpactResult, Part4RecoveryPlan } from '../types';
 import { getJourneyStatus } from '../utils/impactUtils';
 
@@ -52,32 +52,35 @@ export const DisruptionImpactCard: React.FC<DisruptionImpactCardProps> = ({
   let subReason = activeDisruption.reason || activeDisruption.description || '';
 
   return (
-    <div className="bg-white dark:bg-slate-900 border-2 border-rose-500/20 dark:border-rose-900/50 rounded-3xl overflow-hidden shadow-lg shadow-rose-500/5">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-md">
       {/* Top Banner */}
-      <div className="bg-rose-50 dark:bg-rose-950/40 px-5 py-4 border-b border-rose-100 dark:border-rose-900/60">
-        <h2 className="text-rose-700 dark:text-rose-300 font-extrabold text-lg sm:text-xl flex items-center gap-2">
-          {headline}
-        </h2>
-        {detectedTimeStr && (
-          <p className="text-slate-500 dark:text-slate-400 text-xs font-semibold mt-1">
-            Detected at {detectedTimeStr}
-          </p>
-        )}
-        {subReason && (
-          <p className="text-slate-700 dark:text-slate-300 text-sm font-medium mt-2">
-            {subReason}
-          </p>
-        )}
+      <div className="bg-rose-50 dark:bg-rose-950/40 px-6 py-5 border-b border-rose-100 dark:border-rose-900/60 flex items-center justify-between">
+        <div>
+          <h2 className="text-rose-700 dark:text-rose-300 font-extrabold text-xl sm:text-2xl flex items-center gap-3">
+            <AlertTriangle className="h-6 w-6 text-rose-600 dark:text-rose-400" />
+            {headline}
+          </h2>
+          {detectedTimeStr && (
+            <p className="text-slate-600 dark:text-slate-400 text-sm font-semibold mt-1">
+              Detected at {detectedTimeStr}
+            </p>
+          )}
+          {subReason && (
+            <p className="text-slate-700 dark:text-slate-300 text-base font-medium mt-2">
+              Reason: {subReason}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Impacted Items List */}
-      <div className="px-5 py-4 bg-slate-50/50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
-        <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Activity className="w-4 h-4" />
+      <div className="px-6 py-5 bg-slate-50/50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+        <h3 className="text-sm font-extrabold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <Activity className="w-5 h-5" />
           {impactedNodes.length} Impacted Journey Segment{impactedNodes.length !== 1 ? 's' : ''}
         </h3>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {impactedNodes.map(nodeImpact => {
             const node = journey.nodes.find(n => n.id === nodeImpact.node_id || String(n.backendId) === String(nodeImpact.item_id));
             if (!node) return null;
@@ -96,18 +99,25 @@ export const DisruptionImpactCard: React.FC<DisruptionImpactCardProps> = ({
               statusText = 'AT RISK';
             }
 
+            const isPrimary = nodeImpact.impact_sources?.some((s: any) => s.kind === 'DIRECT') || String(nodeImpact.node_id) === String(scopedImpactResult.root_node_ids?.[0]) || String(nodeImpact.item_id) === String(scopedImpactResult.root_node_ids?.[0]);
+            const impactLabel = isPrimary ? "PRIMARY DISRUPTION" : "RIPPLE IMPACT";
+            const impactColor = isPrimary ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400";
+
             return (
-              <div key={node.id} className="flex flex-col p-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shadow-slate-200/20">
-                <div className="text-sm font-extrabold text-slate-900 dark:text-white mb-1 truncate">
+              <div key={node.id} className="flex flex-col p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+                <div className={`text-[10px] font-extrabold uppercase tracking-wider mb-2 ${impactColor}`}>
+                  {impactLabel}
+                </div>
+                <div className="text-base font-extrabold text-slate-900 dark:text-white mb-1 truncate">
                   {node.title}
                 </div>
                 {nodeImpact.reason && (
-                  <div className="text-[11px] font-semibold text-slate-500 mb-2 truncate">
+                  <div className="text-xs font-semibold text-slate-500 mb-3 line-clamp-2">
                     {nodeImpact.reason}
                   </div>
                 )}
                 <div className="mt-auto flex justify-start">
-                  <div className={`px-2 py-0.5 rounded-md ${bgBadge} ${statusColor} text-[10px] font-extrabold tracking-wider uppercase`}>
+                  <div className={`px-2.5 py-1 rounded-md ${bgBadge} ${statusColor} text-[11px] font-extrabold tracking-wider uppercase`}>
                     {statusText}
                   </div>
                 </div>

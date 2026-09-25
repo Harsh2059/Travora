@@ -181,7 +181,7 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <h3 className="font-bold text-[15px] sm:text-base text-slate-900 dark:text-white">
+                  <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">
                     {capitalizeWords(node.title)}
                   </h3>
                   {badgeText && (
@@ -192,8 +192,8 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
                 </div>
                 
                 {(node.origin || node.destination) && (
-                  <p className="text-[13px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    {capitalizeWords(node.origin || 'Origin')} <ChevronRight className="w-3.5 h-3.5 text-slate-400" /> {capitalizeWords(node.destination || 'Destination')}
+                  <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                    {capitalizeWords(node.origin || 'Origin')} <ChevronRight className="w-4 h-4 text-slate-400" /> {capitalizeWords(node.destination || 'Destination')}
                   </p>
                 )}
                 {node.location && !(node.origin || node.destination) && (
@@ -204,8 +204,8 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
               </div>
               
               <div className="text-left sm:text-right shrink-0">
-                <div className="font-bold text-sm text-slate-900 dark:text-white">{timeBadge(node)}</div>
-                <div className="text-[11px] font-semibold text-slate-500 mt-0.5 uppercase tracking-wide">
+                <div className="font-extrabold text-base text-slate-900 dark:text-white">{timeBadge(node)}</div>
+                <div className="text-xs font-bold text-slate-500 mt-0.5 uppercase tracking-wide">
                   {node.startDate ? fmtDate(node.startDate) : fmtDate(node.startTime)}
                 </div>
               </div>

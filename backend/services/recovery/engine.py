@@ -59,9 +59,11 @@ def analyze_part4_recovery(
     node_impact_map = {str(n.get("node_id")): n for n in impact_nodes}
     nodes = journey.get("nodes") or journey.get("items") or []
     
-    # Identify affected vs intact nodes
+    # Identify affected vs intact nodes (only direct disruptions are recovery targets)
     affected_nodes = []
     intact_nodes = []
+    
+    root_node_ids = impact_result.get("root_node_ids", []) if impact_result else []
     
     for node in nodes:
         node_id_str = str(node.get("id"))
@@ -71,7 +73,16 @@ def analyze_part4_recovery(
         imp = node_impact_map.get(node_id_str) or node_impact_map.get(backend_id_str)
         status = imp.get("status") if imp else "INTACT"
         
-        if status in ["BROKEN", "NEEDS_CHANGE"]:
+        # Check if it's a primary disruption (direct impact source or in root_node_ids)
+        is_primary = False
+        if node_id_str in root_node_ids or backend_id_str in root_node_ids:
+            is_primary = True
+        elif imp:
+            sources = imp.get("impact_sources", [])
+            if any(s.get("kind") == "DIRECT" for s in sources):
+                is_primary = True
+                
+        if status in ["BROKEN", "NEEDS_CHANGE"] and is_primary:
             affected_nodes.append((node, status, imp.get("reason", "Disruption detected") if imp else "Disrupted"))
         else:
             intact_nodes.append(node)

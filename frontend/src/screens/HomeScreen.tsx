@@ -639,6 +639,8 @@ export default function HomeScreen() {
                 {activeDisruption ? (
                   <RecoveryOptionsPanel
                     tripId={journey.id!}
+                    journey={journey}
+                    impactResult={impactResult}
                     currentDisruptionFingerprint={currentDisruptionFingerprint}
                     selectedRecoveryPlan={selectedRecoveryPlan}
                     onPlanSelected={(plan) => {

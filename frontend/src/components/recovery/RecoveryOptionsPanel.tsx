@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { ShieldCheck, AlertTriangle } from 'lucide-react';
-import type { Part4RecoveryPlan, Part4RecoveryResult } from '../../types';
+import type { Part4RecoveryPlan, Part4RecoveryResult, Journey } from '../../types';
 import { analyzePart4Recovery } from '../../services/recoveryApi';
 import { saveSelectedRecoveryPlan } from '../../store/journeyStore';
 
 interface RecoveryOptionsPanelProps {
   tripId: number | string;
+  journey: Journey;
+  impactResult: any;
   currentDisruptionFingerprint?: string;
   onPlanSelected?: (plan: Part4RecoveryPlan) => void;
   selectedRecoveryPlan: Part4RecoveryPlan | null;
@@ -15,6 +17,8 @@ export type PreferenceType = 'RECOMMENDED' | 'LOWEST_COST' | 'EARLIEST_ARRIVAL';
 
 export const RecoveryOptionsPanel: React.FC<RecoveryOptionsPanelProps> = ({
   tripId,
+  journey,
+  impactResult,
   currentDisruptionFingerprint = '',
   onPlanSelected,
   selectedRecoveryPlan
@@ -65,8 +69,18 @@ export const RecoveryOptionsPanel: React.FC<RecoveryOptionsPanelProps> = ({
     // Keep backend default sorting
   }
 
+  // Find primary node
+  const rootNodeId = impactResult?.root_node_ids?.[0];
+  const primaryNode = journey?.nodes?.find((n: any) => String(n.id) === String(rootNodeId) || String(n.backendId) === String(rootNodeId));
+
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm flex flex-col h-full">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-md flex flex-col h-full">
+      {primaryNode && (
+        <div className="bg-slate-900 text-white px-5 py-3">
+          <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">RECOVERING</div>
+          <div className="text-sm font-bold truncate">{primaryNode.title}</div>
+        </div>
+      )}
       {/* Tabs */}
       <div className="flex items-center border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
         <button
