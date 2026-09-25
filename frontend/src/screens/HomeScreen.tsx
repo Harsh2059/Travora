@@ -36,6 +36,7 @@ import { Part1JourneyView } from '../components/Part1JourneyView';
 import { CurrentJourneyHeader } from '../components/CurrentJourneyHeader';
 import { DisruptionImpactCard } from '../components/DisruptionImpactCard';
 import { RecoveryOptionsPanel } from '../components/recovery/RecoveryOptionsPanel';
+import { UpdatedItineraryPreview } from '../components/recovery/UpdatedItineraryPreview';
 import { UpcomingTripDetails } from '../components/UpcomingTripDetails';
 import { RecoveryPlanView } from '../components/recovery/RecoveryPlanView';
 import { SelectedRecoveryPlanReview } from '../components/recovery/SelectedRecoveryPlanReview';
@@ -667,21 +668,53 @@ export default function HomeScreen() {
                   }}
                 />
               </div>
-              <div className="lg:col-span-5 xl:col-span-5 w-full">
+              <div className="lg:col-span-5 xl:col-span-5 w-full space-y-6">
                 {activeDisruption ? (
-                  <RecoveryOptionsPanel
-                    tripId={journey.id!}
-                    journey={journey}
-                    impactResult={impactResult}
-                    currentDisruptionFingerprint={currentDisruptionFingerprint}
-                    selectedRecoveryPlan={selectedRecoveryPlan}
-                    onPlanSelected={(plan) => {
-                      saveSelectedRecoveryPlan(journey.id as number, plan, currentDisruptionFingerprint || "", false);
-                      setSelectedRecoveryPlanState(plan);
-                      setIsSelectedPlanUpdated(false);
-                      setShowSelectedPlanReviewModal(true);
-                    }}
-                  />
+                  <>
+                    <RecoveryOptionsPanel
+                      tripId={journey.id!}
+                      journey={journey}
+                      impactResult={impactResult}
+                      currentDisruptionFingerprint={currentDisruptionFingerprint}
+                      selectedRecoveryPlan={selectedRecoveryPlan}
+                      onPlanSelected={(plan) => {
+                        saveSelectedRecoveryPlan(journey.id as number, plan, currentDisruptionFingerprint || "", false);
+                        setSelectedRecoveryPlanState(plan);
+                        setIsSelectedPlanUpdated(false);
+                      }}
+                    />
+
+                    {selectedRecoveryPlan && (
+                      <UpdatedItineraryPreview
+                        journey={journey}
+                        plan={selectedRecoveryPlan}
+                        impactResult={impactResult}
+                        disruptionFingerprint={currentDisruptionFingerprint}
+                        onConfirmSuccess={async () => {
+                          setToastNotification('🟢 Journey Updated: Your recovery plan has been applied.');
+                          setTimeout(() => setToastNotification(null), 5000);
+                          setSelectedRecoveryPlanState(null);
+                          setIsSelectedPlanUpdated(false);
+                          setShowSelectedPlanReviewModal(false);
+                          setShowPart5HandoffModal(false);
+                          setShowRecoveryModal(false);
+                          if (journey.id) {
+                            notifyViewModeChanged(journey.id, 'RECOVERED');
+                          }
+                          await refresh();
+                          if (journey.id) {
+                            const exec = await getLatestExecution(journey.id);
+                            setLatestExecution(exec);
+                          }
+                        }}
+                        onChangeOption={() => {
+                          clearSelectedRecoveryPlan(journey.id as number);
+                          setSelectedRecoveryPlanState(null);
+                          setIsSelectedPlanUpdated(false);
+                        }}
+                      />
+                    )}
+                  </>
                 ) : (
                   <UpcomingTripDetails journey={journey} />
                 )}
