@@ -1296,6 +1296,9 @@ def analyze_part4_recovery_endpoint(
 
 
     res_dump = recovery_res.model_dump()
+    if fp and "plans" in res_dump:
+        for p in res_dump["plans"]:
+            p["disruption_fingerprint"] = fp
     LATEST_PART4_RECOVERY[trip_id] = res_dump
     return res_dump
 
@@ -1322,12 +1325,18 @@ def get_recovery_options_endpoint(
 def _resolve_all_whatsapp_plans(trip_id: int, db: Session = None) -> List[Dict[str, Any]]:
     cached = LATEST_PART4_RECOVERY.get(trip_id) or {}
     plans = cached.get("plans") or []
+    fp = cached.get("disruption_fingerprint")
     if not plans and db is not None:
         try:
             res = analyze_part4_recovery_endpoint(trip_id=trip_id, payload={}, db=db)
             plans = res.get("plans") or []
+            fp = res.get("disruption_fingerprint")
         except Exception:
             pass
+    if plans and fp:
+        for p in plans:
+            if "disruption_fingerprint" not in p:
+                p["disruption_fingerprint"] = fp
     return plans
 
 
@@ -1353,12 +1362,21 @@ def send_whatsapp_recovery_notification(
     plan = payload.get("plan") or (plans[0] if plans else None)
     if not plan and not plans:
         raise HTTPException(status_code=404, detail="Recovery plan not found")
+    active_disruptions = db.query(models.DisruptionEvent).filter(
+        models.DisruptionEvent.trip_id == trip_id,
+        models.DisruptionEvent.status == "ACTIVE"
+    ).all()
+    disruption_id = (
+        payload.get("disruption_id")
+        or ((plan or plans[0]).get("disruption_ids") or [None])[0]
+        or (active_disruptions[-1].id if active_disruptions else None)
+    )
     result = NotificationService().send_recovery_notification(
         db=db,
         channel=NotificationChannel.WHATSAPP,
         trip_id=trip_id,
         plan=plan or plans[0],
-        disruption_id=((plan or plans[0]).get("disruption_ids") or [None])[0],
+        disruption_id=disruption_id,
         plans=plans,
     )
     return {
