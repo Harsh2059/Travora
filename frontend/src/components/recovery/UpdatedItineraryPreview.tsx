@@ -2,16 +2,9 @@ import React, { useState } from 'react';
 import {
   CheckCircle2,
   AlertTriangle,
-  ArrowRight,
   ShieldCheck,
   RotateCcw,
-  Plane,
-  Car,
-  Hotel,
-  Ticket,
-  Clock,
-  RefreshCw,
-  Info
+  RefreshCw
 } from 'lucide-react';
 import type { Journey, Part4RecoveryPlan, ImpactResult } from '../../types';
 import { executePart5Recovery } from '../../services/recoveryApi';
@@ -20,7 +13,7 @@ import { clearSelectedRecoveryPlan } from '../../store/journeyStore';
 interface UpdatedItineraryPreviewProps {
   journey: Journey;
   plan: Part4RecoveryPlan;
-  impactResult: ImpactResult | null;
+  impactResult?: ImpactResult | null;
   disruptionFingerprint: string;
   onConfirmSuccess: () => Promise<void>;
   onChangeOption: () => void;
@@ -37,21 +30,10 @@ function fmtTime(isoStr?: string | null): string {
   }
 }
 
-function fmtDate(isoStr?: string | null): string {
-  if (!isoStr) return '';
-  try {
-    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
-    if (isNaN(d.getTime())) return isoStr;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return isoStr || '';
-  }
-}
-
 export const UpdatedItineraryPreview: React.FC<UpdatedItineraryPreviewProps> = ({
   journey,
   plan,
-  impactResult,
+  impactResult: _impactResult,
   disruptionFingerprint,
   onConfirmSuccess,
   onChangeOption
@@ -62,8 +44,6 @@ export const UpdatedItineraryPreview: React.FC<UpdatedItineraryPreviewProps> = (
   const replacementChanges = plan.changes?.filter(
     (c) => c.action === 'REPLACE' || c.action === 'MODIFY'
   ) || [];
-
-  const keptChanges = plan.changes?.filter((c) => c.action === 'KEEP') || [];
 
   const handleConfirmRecovery = async () => {
     if (!journey.id) return;
