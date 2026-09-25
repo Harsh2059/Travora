@@ -193,7 +193,17 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
                 
                 {(node.origin || node.destination) && (
                   <p className="text-[13px] font-medium text-slate-600 flex items-center gap-1.5 mt-1">
-                    {capitalizeWords(node.origin || 'Origin')} <span className="text-slate-400">→</span> {capitalizeWords(node.destination || 'Destination')}
+                    {['cab', 'taxi', 'transfer'].includes((node.type || '').toLowerCase()) ? (
+                      <>
+                        <span className="text-slate-400">Pickup:</span> {capitalizeWords(node.origin || 'Not set')} 
+                        <span className="text-slate-300 mx-1">|</span> 
+                        <span className="text-slate-400">Dropoff:</span> {capitalizeWords(node.destination || 'Not set')}
+                      </>
+                    ) : (
+                      <>
+                        {capitalizeWords(node.origin || 'Origin')} <span className="text-slate-400">→</span> {capitalizeWords(node.destination || 'Destination')}
+                      </>
+                    )}
                   </p>
                 )}
                 {node.location && !(node.origin || node.destination) && (
