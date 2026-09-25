@@ -145,3 +145,36 @@ class SmsStatusUpdate(BaseModel):
     status: str
     error_message: Optional[str] = None
     gateway_device_id: Optional[str] = None
+
+class TicketBase(BaseModel):
+    ticket_id: str
+    trip_id: int
+    recovery_plan_id: str
+    execution_id: str
+    passenger_name: str
+    user_id: int
+    transport_mode: str
+    provider: str
+    transport_identifier: Optional[str] = None
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    terminal: Optional[str] = None
+    platform: Optional[str] = None
+    departure_time: Optional[datetime] = None
+    arrival_time: Optional[datetime] = None
+    pnr: Optional[str] = None
+    booking_reference: Optional[str] = None
+    seat: Optional[str] = None
+    coach: Optional[str] = None
+    berth: Optional[str] = None
+    baggage_info: Optional[str] = None
+    meal_info: Optional[str] = None
+    fare: Optional[float] = None
+    currency: str = "INR"
+    booking_status: str = "CONFIRMED"
+    ticket_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class TicketResponse(TicketBase):
+    id: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

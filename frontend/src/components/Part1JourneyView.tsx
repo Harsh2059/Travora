@@ -30,9 +30,6 @@ interface Part1JourneyViewProps {
   onAddNextStop?: () => void;
   onResetJourney?: () => void;
   onEditDraft?: () => void;
-  hasRestoreAvailable?: boolean;
-  onRestoreOriginalJourney?: () => void;
-  onToggleBackToRecovered?: () => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
   /** Full ImpactResult — drives journey-level status badge and summary strip */
   impactResult?: ImpactResult | null;
@@ -480,9 +477,6 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   onAddNextStop,
   onResetJourney,
   onEditDraft,
-  hasRestoreAvailable,
-  onRestoreOriginalJourney,
-  onToggleBackToRecovered,
   impactNodeMap,
   impactResult,
   selectedRecoveryPlan,
