@@ -18,6 +18,15 @@ import axios from 'axios';
 import type { Journey, JourneyNode } from '../types';
 import { notifyTripUpdated, subscribeToTripUpdates } from './tripSync';
 
+// Attach JWT bearer token to all outgoing axios requests if available
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('travora_token');
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 /** Fixed demo user ID for Part 1. Replace with auth when authentication is added. */
@@ -218,9 +227,18 @@ export async function persistJourneyToBackend(
   title: string,
   nodes: JourneyNode[]
 ): Promise<Journey> {
-  // 1. Create trip — use DEMO_USER_ID as the single source for user identity
+  // 1. Create trip — use authenticated user if logged in, fallback to DEMO_USER_ID
+  let currentUserId = DEMO_USER_ID;
+  try {
+    const rawUser = localStorage.getItem('travora_user');
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser);
+      if (parsed?.id) currentUserId = parsed.id;
+    }
+  } catch {}
+
   const tripRes = await axios.post(
-    `${API_BASE_URL}/users/${DEMO_USER_ID}/trips`,
+    `${API_BASE_URL}/users/${currentUserId}/trips`,
     { title }
   );
   const tripId: number = tripRes.data.id;
@@ -353,8 +371,20 @@ export async function fetchTripById(tripId: number): Promise<Journey | null> {
   } as Journey & { originalNodes?: JourneyNode[] };
 }
 
-export async function fetchUserTrips(userId = DEMO_USER_ID): Promise<Array<{ id: number; title: string; version: number }>> {
-  const res = await axios.get(`${API_BASE_URL}/users/${userId}/trips`);
+export async function fetchUserTrips(userId?: number): Promise<Array<{ id: number; title: string; version: number }>> {
+  let effectiveUserId = userId;
+  if (!effectiveUserId) {
+    try {
+      const rawUser = localStorage.getItem('travora_user');
+      if (rawUser) {
+        const parsed = JSON.parse(rawUser);
+        if (parsed?.id) effectiveUserId = parsed.id;
+      }
+    } catch {}
+  }
+  if (!effectiveUserId) effectiveUserId = DEMO_USER_ID;
+
+  const res = await axios.get(`${API_BASE_URL}/users/${effectiveUserId}/trips`);
   return res.data ?? [];
 }
 

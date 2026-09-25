@@ -37,15 +37,12 @@ class WhatsAppWebhookHandler:
 
     def handle(self, db: Session, sender: str, text: str, message_id: Optional[str] = None) -> Dict[str, Any]:
         clean_sender = clean_phone_number(sender)
-        user = db.query(models.User).filter(
-            (models.User.whatsapp_phone == sender) |
-            (models.User.whatsapp_phone == clean_sender) |
-            (models.User.whatsapp_phone == f"+{clean_sender}")
-        ).first()
+        from auth import find_user_by_phone
+        user = find_user_by_phone(db, sender)
 
         if not user:
             demo_clean = clean_phone_number(DEMO_WHATSAPP_NUMBER)
-            if clean_sender == demo_clean:
+            if clean_sender == demo_clean or (len(clean_sender) >= 10 and len(demo_clean) >= 10 and clean_sender[-10:] == demo_clean[-10:]):
                 user = db.query(models.User).order_by(models.User.id.desc()).first()
             if not user:
                 return self._reply(sender, "We could not find a traveler linked to this WhatsApp number.", "MISSING_TRAVELER")
