@@ -145,7 +145,16 @@ class WhatsAppService:
 
         trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
         user_phone = (trip.user.whatsapp_phone or trip.user.phone_number) if (trip and trip.user) else None
-        recipient = user_phone if user_phone else DEMO_WHATSAPP_NUMBER
+        
+        if not user_phone:
+            return NotificationResult(
+                success=False,
+                channel=NotificationChannel.WHATSAPP,
+                recipient="",
+                status="FAILED",
+                error="Traveler has no WhatsApp phone number configured.",
+            )
+        recipient = user_phone
 
         masked_recipient = (recipient[:3] + "..." + recipient[-4:]) if (recipient and len(recipient) >= 7) else "<masked>"
         print(f"[WHATSAPP] recipient={masked_recipient}", flush=True)

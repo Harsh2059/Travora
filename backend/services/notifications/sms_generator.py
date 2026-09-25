@@ -19,9 +19,9 @@ class DynamicSmsGenerator:
         phone = (user_phone or "").strip()
         if phone:
             return phone
-        env_recipient = os.getenv("DEMO_SMS_RECIPIENT", "").strip()
-        if env_recipient:
-            return env_recipient
+        env_recipient = os.environ.get("DEMO_SMS_RECIPIENT")
+        if env_recipient is not None:
+            return env_recipient.strip()
         return "+917350571349"  # Fallback for custom trips without phone number
 
     @staticmethod

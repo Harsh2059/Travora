@@ -174,6 +174,17 @@ class ProfileScreen extends StatelessWidget {
                       trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                       onTap: () => context.push('/privacy'),
                     ),
+                    const Divider(height: 1),
+                    Consumer<AuthProvider>(
+                      builder: (context, auth, _) => ListTile(
+                        contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                        title: Text('Log Out', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.red)),
+                        trailing: Icon(Icons.logout, size: 16, color: Colors.red),
+                        onTap: () {
+                          auth.logout();
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
