@@ -1,6 +1,6 @@
 import React from 'react';
 import { Plane, Train, Car, Hotel, Ticket, MapPin, AlertTriangle, Pencil, Trash2, TrainFront, CheckCircle2, Info } from 'lucide-react';
-import type { Journey, JourneyNode, TravelerPriority, ImpactNodeStatus, ImpactResult, Part4RecoveryPlan } from '../types';
+import type { Journey, JourneyNode, ImpactNodeStatus, ImpactResult, Part4RecoveryPlan } from '../types';
 import { buildJourneyRoute, routeStats } from '../utils/routeBuilder';
 import { getNodeImpactDisplay, getJourneyStatus, getImpactSummaryBuckets } from '../utils/impactUtils';
 
