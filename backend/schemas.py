@@ -111,9 +111,38 @@ class RecoveryHistory(RecoveryHistoryBase):
 class UserBase(BaseModel):
     name: str
     email: str
+    phone_number: Optional[str] = None
+    whatsapp_phone: Optional[str] = None
 
 class UserCreate(UserBase):
     pass
+
+class UserRegister(BaseModel):
+    name: str
+    email: str
+    password: str
+    phone_number: Optional[str] = None
+    whatsapp_phone: Optional[str] = None
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class UserProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    whatsapp_phone: Optional[str] = None
+
+class UserResponse(UserBase):
+    id: int
+    created_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
 
 class User(UserBase):
     id: int

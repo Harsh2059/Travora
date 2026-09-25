@@ -18,9 +18,14 @@ import {
   ShieldCheck,
   Activity,
   AlertCircle,
+  User,
 } from 'lucide-react';
 import { useJourney, fetchTripDisruptions, fetchTripImpact, updateItemOnBackend, saveLocalJourney, getSelectedRecoveryPlanWithMeta, clearSelectedRecoveryPlan, saveSelectedRecoveryPlan } from '../store/journeyStore';
 import { analyzePart4Recovery, getLatestExecution } from '../services/recoveryApi';
+import { getStoredUser } from '../services/auth';
+import type { UserProfile } from '../services/auth';
+import { AuthModal } from '../components/AuthModal';
+import { ProfileModal } from '../components/ProfileModal';
 import {
   notifyViewModeChanged,
   getPersistedViewMode,
@@ -169,6 +174,17 @@ export default function HomeScreen() {
 
   const [selectedRecoveryPlan, setSelectedRecoveryPlanState] = useState<Part4RecoveryPlan | null>(null);
   const [isSelectedPlanUpdated, setIsSelectedPlanUpdated] = useState<boolean>(false);
+
+  // Auth & Profile state
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(getStoredUser());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleAuthChange = () => setCurrentUser(getStoredUser());
+    window.addEventListener('travora_auth_change', handleAuthChange);
+    return () => window.removeEventListener('travora_auth_change', handleAuthChange);
+  }, []);
 
   // Ref to track the active disruption fingerprint for in-flight async requests
   const activeFetchFpRef = useRef<string>('');
@@ -568,15 +584,31 @@ export default function HomeScreen() {
               <span className="hidden sm:inline">New Journey</span>
             </button>
             
-            <div className="hidden sm:flex items-center gap-3 border-l border-slate-200 pl-6 group">
-              <div className="text-right">
-                <p className="text-[13px] font-bold text-slate-900">Marcus Vance</p>
-                <p className="text-[11px] text-slate-500 font-semibold">Platinum Member</p>
+            {currentUser ? (
+              <div
+                onClick={() => setIsProfileModalOpen(true)}
+                className="hidden sm:flex items-center gap-3 border-l border-slate-200 pl-6 group cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                <div className="text-right">
+                  <p className="text-[13px] font-bold text-slate-900">{currentUser.name || 'Traveler'}</p>
+                  <p className="text-[11px] text-emerald-600 font-semibold flex items-center justify-end gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    {currentUser.whatsapp_phone || currentUser.email}
+                  </p>
+                </div>
+                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-sm ring-2 ring-white ring-offset-1">
+                  <span className="text-sm font-bold">{(currentUser.name || 'T')[0].toUpperCase()}</span>
+                </div>
               </div>
-              <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-sm ring-2 ring-white ring-offset-1">
-                <span className="text-sm font-bold">M</span>
-              </div>
-            </div>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="hidden sm:flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm"
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -905,6 +937,18 @@ export default function HomeScreen() {
           }}
         />
       )}
+
+      {/* MULTI-USER AUTH & PROFILE MODALS */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={() => setCurrentUser(getStoredUser())}
+      />
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onProfileUpdated={(u) => setCurrentUser(u)}
+      />
     </div>
   );
 }

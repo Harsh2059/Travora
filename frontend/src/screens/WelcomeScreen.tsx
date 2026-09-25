@@ -8,8 +8,14 @@ import {
   Plane,
   Clock,
   Layout,
+  User,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useJourney } from '../store/journeyStore';
+import { getStoredUser } from '../services/auth';
+import type { UserProfile } from '../services/auth';
+import { AuthModal } from '../components/AuthModal';
+import { ProfileModal } from '../components/ProfileModal';
 
 // --- Keyframes injected once ---
 const KEYFRAMES = `
@@ -242,6 +248,16 @@ export default function WelcomeScreen() {
   const navigate = useNavigate();
   const { journey, loading, clearActive } = useJourney();
 
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(getStoredUser());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleAuthChange = () => setCurrentUser(getStoredUser());
+    window.addEventListener('travora_auth_change', handleAuthChange);
+    return () => window.removeEventListener('travora_auth_change', handleAuthChange);
+  }, []);
+
   return (
     <>
       <style>{KEYFRAMES}</style>
@@ -259,13 +275,35 @@ export default function WelcomeScreen() {
                 Travora
               </span>
             </div>
-            <button
-              onClick={() => navigate('/app')}
-              className="text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-sky-300 dark:hover:border-sky-700 transition-colors flex items-center gap-1.5"
-            >
-              <Layout className="h-3.5 w-3.5" />
-              <span>Disruption Demo</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate('/app')}
+                className="text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-sky-300 dark:hover:border-sky-700 transition-colors flex items-center gap-1.5"
+              >
+                <Layout className="h-3.5 w-3.5" />
+                <span>Disruption Demo</span>
+              </button>
+
+              {currentUser ? (
+                <button
+                  onClick={() => setIsProfileModalOpen(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition-colors text-xs font-bold"
+                >
+                  <div className="w-5 h-5 rounded-full bg-sky-600 text-white flex items-center justify-center text-[10px]">
+                    {(currentUser.name || 'T')[0].toUpperCase()}
+                  </div>
+                  <span>{currentUser.name || 'Profile'}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors text-xs font-bold shadow-sm"
+                >
+                  <User className="h-3.5 w-3.5" />
+                  <span>Sign In</span>
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -399,10 +437,22 @@ export default function WelcomeScreen() {
             className="py-5 px-6 text-center text-xs text-slate-400 border-t border-slate-200/40 bg-white/50 backdrop-blur-sm"
             style={{ position: 'relative', zIndex: 10 }}
           >
-            Travora Journey Builder — Part 1 Architecture
+            Travora Journey Builder — Multi-User Travel Intelligence
           </footer>
         </section>
       </div>
+
+      {/* Auth & Profile Modals */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={() => setCurrentUser(getStoredUser())}
+      />
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onProfileUpdated={(u) => setCurrentUser(u)}
+      />
     </>
   );
 }

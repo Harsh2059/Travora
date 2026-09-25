@@ -64,7 +64,26 @@ with engine.connect() as conn:
         conn.commit()
     except Exception:
         pass
+    try:
+        from sqlalchemy import text
+        conn.execute(text("ALTER TABLE users ADD COLUMN hashed_password VARCHAR"))
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import text
+        conn.execute(text("ALTER TABLE users ADD COLUMN phone_number VARCHAR"))
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import text
+        conn.execute(text("ALTER TABLE users ADD COLUMN created_at TIMESTAMP"))
+        conn.commit()
+    except Exception:
+        pass
 
+import auth
 app = FastAPI(title="Travel Recovery Engine API")
 
 @app.on_event("startup")
@@ -153,13 +172,116 @@ def clear_trip_simulations(trip_id: int, db: Session = Depends(get_db)):
         "title": trip.title,
     }
 
+# ============================================================================
+# MULTI-USER AUTHENTICATION & PROFILE ENDPOINTS
+# ============================================================================
+
+@app.post("/api/auth/register", response_model=schemas.TokenResponse)
+def register(payload: schemas.UserRegister, db: Session = Depends(get_db)):
+    """Register a new user with password hashing and return JWT token."""
+    email = payload.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+    if not payload.password or len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    existing = crud.get_user_by_email(db, email)
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    norm_phone = auth.normalize_phone(payload.phone_number)
+    norm_wa = auth.normalize_phone(payload.whatsapp_phone) or norm_phone
+
+    if norm_wa:
+        existing_wa = db.query(models.User).filter(models.User.whatsapp_phone == norm_wa).first()
+        if existing_wa:
+            raise HTTPException(status_code=400, detail="WhatsApp number already registered")
+
+    user = models.User(
+        name=payload.name.strip(),
+        email=email,
+        hashed_password=auth.hash_password(payload.password),
+        phone_number=norm_phone,
+        whatsapp_phone=norm_wa,
+        created_at=datetime.utcnow()
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = auth.create_access_token({"sub": str(user.id), "email": user.email})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+@app.post("/api/auth/login", response_model=schemas.TokenResponse)
+def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
+    """Authenticate user with email and password, return JWT token."""
+    email = payload.email.strip().lower()
+    user = crud.get_user_by_email(db, email)
+    if not user or not auth.verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = auth.create_access_token({"sub": str(user.id), "email": user.email})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+@app.get("/api/auth/me", response_model=schemas.UserResponse)
+def get_auth_me(current_user: models.User = Depends(auth.get_current_user)):
+    """Get current authenticated user info. Protected route."""
+    return current_user
+
+@app.put("/api/users/me", response_model=schemas.UserResponse)
+def update_profile(
+    payload: schemas.UserProfileUpdate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update profile and persist phone number / WhatsApp number in normalized form."""
+    if payload.name is not None and payload.name.strip():
+        current_user.name = payload.name.strip()
+
+    if payload.email is not None and payload.email.strip():
+        new_email = payload.email.strip().lower()
+        if new_email != current_user.email:
+            existing = crud.get_user_by_email(db, new_email)
+            if existing and existing.id != current_user.id:
+                raise HTTPException(status_code=400, detail="Email already in use")
+            current_user.email = new_email
+
+    if payload.phone_number is not None:
+        current_user.phone_number = auth.normalize_phone(payload.phone_number)
+
+    if payload.whatsapp_phone is not None:
+        norm_wa = auth.normalize_phone(payload.whatsapp_phone)
+        if norm_wa and norm_wa != current_user.whatsapp_phone:
+            existing_wa = db.query(models.User).filter(models.User.whatsapp_phone == norm_wa).first()
+            if existing_wa and existing_wa.id != current_user.id:
+                raise HTTPException(status_code=400, detail="WhatsApp number already in use")
+        current_user.whatsapp_phone = norm_wa
+
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
 @app.get("/api/users", response_model=List[schemas.User])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     users = crud.get_users(db, skip=skip, limit=limit)
     return users
 
 @app.get("/api/users/{user_id}/trips", response_model=List[schemas.Trip])
-def read_user_trips(user_id: int, db: Session = Depends(get_db)):
+def read_user_trips(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+):
+    if isinstance(current_user, models.User) and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="You do not have access to another user's trips")
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -170,24 +292,39 @@ def read_user_trips(user_id: int, db: Session = Depends(get_db)):
 # ============================================================================
 
 @app.post("/api/users/{user_id}/trips")
-def create_trip(user_id: int, payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+def create_trip(
+    user_id: int,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+):
     """Create a new trip for a user (journey builder flow)."""
-    db_user = crud.get_user(db, user_id=user_id)
+    effective_user_id = current_user.id if isinstance(current_user, models.User) else user_id
+    if isinstance(current_user, models.User) and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Cannot create trip for another user")
+    db_user = crud.get_user(db, user_id=effective_user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     title = payload.get("title", "My Journey")
-    trip = models.Trip(title=title, version=1, user_id=user_id)
+    trip = models.Trip(title=title, version=1, user_id=effective_user_id)
     db.add(trip)
     db.commit()
     db.refresh(trip)
     return {"id": trip.id, "title": trip.title, "version": trip.version, "user_id": trip.user_id, "items": []}
 
 @app.post("/api/trips/{trip_id}/items")
-def add_trip_item(trip_id: int, payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+def add_trip_item(
+    trip_id: int,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+):
     """Add a single itinerary item to an existing trip."""
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
+    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this trip")
 
     def parse_dt(val: Optional[str]) -> Optional[datetime]:
         if not val:
@@ -237,8 +374,20 @@ def add_trip_item(trip_id: int, payload: Dict[str, Any] = Body(...), db: Session
     }
 
 @app.put("/api/trips/{trip_id}/items/{item_id}")
-def update_trip_item(trip_id: int, item_id: int, payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+def update_trip_item(
+    trip_id: int,
+    item_id: int,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+):
     """Update an existing itinerary item."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this trip")
+
     item = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.id == item_id,
         models.ItineraryItem.trip_id == trip_id
@@ -283,8 +432,19 @@ def update_trip_item(trip_id: int, item_id: int, payload: Dict[str, Any] = Body(
     }
 
 @app.delete("/api/trips/{trip_id}/items/{item_id}")
-def delete_trip_item(trip_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_trip_item(
+    trip_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+):
     """Delete an itinerary item from a trip."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this trip")
+
     item = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.id == item_id,
         models.ItineraryItem.trip_id == trip_id
@@ -297,10 +457,16 @@ def delete_trip_item(trip_id: int, item_id: int, db: Session = Depends(get_db)):
     return {"status": "deleted", "item_id": item_id}
 
 @app.get("/api/trips/{trip_id}")
-def get_trip_details(trip_id: int, db: Session = Depends(get_db)):
+def get_trip_details(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+):
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
+    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this trip")
 
     active_items = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.trip_id == trip_id,
@@ -537,11 +703,14 @@ def get_trip_graph(trip_id: int, db: Session = Depends(get_db)):
 def trigger_disruption(
     trip_id: int,
     event_payload: Dict[str, Any] = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
 ):
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
+    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this trip")
 
     event_type = event_payload.get("event_type") or event_payload.get("disruption_type") or event_payload.get("type") or "FLIGHT_CANCELLED"
     entity_id = event_payload.get("entity_id") or event_payload.get("item_id") or event_payload.get("affected_node_id")
@@ -1254,12 +1423,19 @@ def revalidate_recovery_endpoint(
 def execute_recovery_endpoint(
     trip_id: int,
     payload: Dict[str, Any] = Body(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
 ):
     """
     Executes booking replacements through provider abstraction after explicit user confirmation.
     Enforces idempotency and stale plan protection. Updates itinerary DB upon success.
     """
+    trip_rec = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip_rec:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if isinstance(current_user, models.User) and trip_rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this trip")
+
     selected_plan = payload.get("selectedPlan") or payload.get("plan") or payload.get("option") or {}
     disruption_fp = payload.get("disruption_fingerprint") or payload.get("fingerprint") or ""
     execution_id = payload.get("execution_id")
