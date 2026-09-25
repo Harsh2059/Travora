@@ -13,6 +13,8 @@ IS_TESTING = "pytest" in sys.modules or os.getenv("TESTING") == "true"
 if DATABASE_URL and not IS_TESTING:
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
