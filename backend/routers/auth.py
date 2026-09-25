@@ -23,6 +23,7 @@ class Token(BaseModel):
     token_type: str
     user_id: int
     role: str
+    user: Optional[dict] = None
 
 class TokenData(BaseModel):
     id: Optional[str] = None
@@ -41,6 +42,8 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     phone: Optional[str] = None
+    phone_number: Optional[str] = None
+    whatsapp_phone: Optional[str] = None
 
 def verify_password(plain_password, hashed_password):
     if not hashed_password: return False
@@ -74,6 +77,20 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         raise credentials_exception
     return user
 
+async def get_optional_user(token: Optional[str] = Depends(OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)), db: Session = Depends(get_db)):
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+        token_data = TokenData(id=user_id, role=payload.get("role"))
+    except JWTError:
+        return None
+    user = db.query(User).filter(User.id == int(token_data.id)).first()
+    return user
+
 @router.post("/register", response_model=Token)
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email).first()
@@ -84,7 +101,8 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     new_user = User(
         name=request.name,
         email=request.email,
-        whatsapp_phone=request.phone,
+        whatsapp_phone=request.whatsapp_phone or request.phone,
+        phone_number=request.phone_number or request.phone,
         hashed_password=hashed_password,
         role="traveler",
         auth_provider="local"
@@ -97,7 +115,19 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
         data={"sub": str(new_user.id), "role": new_user.role},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    return {"access_token": access_token, "token_type": "bearer", "user_id": new_user.id, "role": new_user.role}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer", 
+        "user_id": new_user.id, 
+        "role": new_user.role,
+        "user": {
+            "id": new_user.id,
+            "email": new_user.email,
+            "name": new_user.name,
+            "whatsapp_phone": new_user.whatsapp_phone,
+            "phone_number": new_user.phone_number
+        }
+    }
 
 @router.post("/login", response_model=Token)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
@@ -105,7 +135,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         if request.email and request.password:
             user = db.query(User).filter(User.email == request.email).first()
             if not user or not verify_password(request.password, user.hashed_password):
-                raise HTTPException(status_code=401, detail="Incorrect email or password")
+                raise HTTPException(status_code=401, detail="Invalid email or password")
         elif request.phone and request.otp:
             # Simple mock OTP for demo
             if request.otp != "123456":
@@ -143,7 +173,19 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         data={"sub": str(user.id), "role": user.role},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    return {"access_token": access_token, "token_type": "bearer", "user_id": user.id, "role": user.role}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer", 
+        "user_id": user.id, 
+        "role": user.role,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "whatsapp_phone": user.whatsapp_phone,
+            "phone_number": user.phone_number
+        }
+    }
 
 @router.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
@@ -154,3 +196,15 @@ def read_users_me(current_user: User = Depends(get_current_user)):
         "phone": current_user.whatsapp_phone,
         "role": current_user.role
     }
+
+def normalize_phone(phone: str) -> str:
+    """Normalize phone number by stripping spaces, dashes, and ensuring + prefix."""
+    if not phone:
+        return phone
+    cleaned = ''.join(c for c in phone if c.isdigit() or c == '+')
+    if cleaned and not cleaned.startswith('+'):
+        if len(cleaned) == 10:
+            cleaned = '+91' + cleaned
+        else:
+            cleaned = '+' + cleaned
+    return cleaned
