@@ -1,7 +1,5 @@
 import React from 'react';
-import {
-  Plane, Train, Car, Hotel, Ticket, MapPin, AlertTriangle, Pencil, Trash2, TrainFront, CheckCircle2, ChevronRight, Info
-} from 'lucide-react';
+import { Plane, Train, Car, Hotel, Ticket, MapPin, AlertTriangle, Pencil, Trash2, TrainFront, CheckCircle2, Info } from 'lucide-react';
 import type { Journey, JourneyNode, TravelerPriority, ImpactNodeStatus, ImpactResult, Part4RecoveryPlan } from '../types';
 import { buildJourneyRoute, routeStats } from '../utils/routeBuilder';
 import { getNodeImpactDisplay, getJourneyStatus, getImpactSummaryBuckets } from '../utils/impactUtils';
@@ -11,8 +9,6 @@ interface Part1JourneyViewProps {
   viewMode?: 'RECOVERED' | 'ORIGINAL';
   onEditNode?: (node: JourneyNode) => void;
   onDeleteNode?: (nodeId: string) => void;
-  onUpdatePriority?: (nodeId: string, priority: TravelerPriority) => void;
-  onAddNextStop?: () => void;
   onResetJourney?: () => void;
   onEditDraft?: () => void;
   impactNodeMap?: Record<string, { status: ImpactNodeStatus; reason: string }>;
@@ -93,8 +89,6 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   viewMode = 'RECOVERED',
   onEditNode,
   onDeleteNode,
-  onUpdatePriority,
-  onAddNextStop,
   onResetJourney,
   onEditDraft,
   impactNodeMap,
@@ -162,8 +156,6 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
     else if (status === 'BROKEN') badgeText = 'Disrupted';
     else if (status === 'AT_RISK') badgeText = 'At Risk';
     else if (status === 'INTACT') badgeText = 'Confirmed';
-
-    const nextLineColor = lineStatus === 'BROKEN' ? 'bg-rose-500' : lineStatus === 'AT_RISK' ? 'bg-amber-400' : lineStatus === 'INTACT' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700';
 
     return (
       <div key={node.id} className="relative flex items-start gap-4 sm:gap-5 group">
