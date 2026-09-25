@@ -1260,8 +1260,27 @@ def execute_recovery_endpoint(
             trip_rec.view_mode = "RECOVERED"
             db.commit()
 
-        # Send SMS Notification
+        # Send WhatsApp Notification
         try:
+            NotificationService().send_recovery_notification(
+                db=db,
+                channel=NotificationChannel.WHATSAPP,
+                trip_id=trip_id,
+                plan=selected_plan,
+                disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
+            )
+        except Exception as exc:
+            logger.warning(
+                "Recovery WhatsApp alert failed: %s",
+                type(exc).__name__,
+            )
+
+        # Send SMS Notification - fresh session state after WhatsApp path
+        try:
+            try:
+                db.rollback()  # Safety: ensure clean session state before SMS commit
+            except Exception:
+                pass
             NotificationService().send_recovery_notification(
                 db=db,
                 channel=NotificationChannel.SMS,
