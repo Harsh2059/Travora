@@ -128,6 +128,7 @@ export default function TripBuilderScreen() {
   const [timeStatus, setTimeStatus] = useState<TimeStatus>('FIXED');
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Load active trip from backend if in edit mode
   useEffect(() => {
@@ -214,91 +215,100 @@ export default function TripBuilderScreen() {
 
   const handleSaveLeg = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSubmitting) return;
+    
     setFormError(null);
 
     if (!title.trim()) {
       setFormError('Please enter a title or provider name');
       return;
     }
+    
+    setIsSubmitting(true);
 
-    let finalStartTime: string | undefined = undefined;
-    let finalEndTime: string | undefined = undefined;
-    let finalStartDate: string | undefined = startDate || undefined;
-    let finalEndDate: string | undefined = endDate || undefined;
+    try {
+      let finalStartTime: string | undefined = undefined;
+      let finalEndTime: string | undefined = undefined;
+      let finalStartDate: string | undefined = startDate || undefined;
+      let finalEndDate: string | undefined = endDate || undefined;
 
-    if (selectedType === 'flight' || selectedType === 'train') {
-      if (!startDate || !startTime) {
-        setFormError(`Please specify departure date and time for ${selectedType}`);
-        return;
-      }
-      finalStartTime = `${startDate}T${startTime}`;
-      if (endTime) {
-        finalEndTime = `${endDate || startDate}T${endTime}`;
-      }
-      finalStartDate = startDate;
-      finalEndDate = endDate || startDate;
-    } else if (selectedType === 'hotel') {
-      if (!startDate || !endDate) {
-        setFormError('Please specify check-in and check-out dates');
-        return;
-      }
-      if (startTime) finalStartTime = `${startDate}T${startTime}`;
-      if (endTime) finalEndTime = `${endDate}T${endTime}`;
-    } else {
-      // Cab / Activity
-      if (!startDate) {
-        setFormError(`Please select a date for this ${selectedType}`);
-        return;
-      }
-      if (startTime) finalStartTime = `${startDate}T${startTime}`;
-      if (endTime) finalEndTime = `${startDate}T${endTime}`;
-    }
-
-    const targetNode: JourneyNode = {
-      id: editingNodeId || `draft_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      type: selectedType,
-      title: title.trim(),
-      origin: selectedType !== 'hotel' && selectedType !== 'activity' ? (origin.trim() || initialStartPlace) : undefined,
-      destination: selectedType !== 'hotel' && selectedType !== 'activity' ? destination.trim() : undefined,
-      location: selectedType === 'hotel' || selectedType === 'activity' ? locationName.trim() : undefined,
-      startTime: finalStartTime,
-      endTime: finalEndTime,
-      startDate: finalStartDate,
-      endDate: finalEndDate,
-      timeStatus: selectedType === 'flight' || selectedType === 'train' ? 'FIXED' : timeStatus,
-      isTimeFlexible: timeStatus !== 'FIXED',
-      bookingRef: bookingRef.trim() || undefined,
-      metadata: {},
-    };
-
-    let resolvedNode = targetNode;
-
-    // In Edit mode (or when activeTripId exists), persist item change immediately to backend
-    if (activeTripId) {
-      try {
-        const existingNode = editingNodeId ? nodes.find((n) => n.id === editingNodeId) : null;
-        if (existingNode && existingNode.backendId) {
-          resolvedNode = await updateItemOnBackend(activeTripId, existingNode.backendId, targetNode);
-          setToastMsg('Changes saved to itinerary');
-        } else {
-          resolvedNode = await addItemToExistingTrip(activeTripId, targetNode);
-          setToastMsg('Item added to itinerary');
+      if (selectedType === 'flight' || selectedType === 'train') {
+        if (!startDate || !startTime) {
+          setFormError(`Please specify departure date and time for ${selectedType}`);
+          return;
         }
-      } catch (err) {
-        console.error('Failed to persist item to backend:', err);
-        setFormError('Failed to save item to backend. Please check network connection.');
-        return;
+        finalStartTime = `${startDate}T${startTime}`;
+        if (endTime) {
+          finalEndTime = `${endDate || startDate}T${endTime}`;
+        }
+        finalStartDate = startDate;
+        finalEndDate = endDate || startDate;
+      } else if (selectedType === 'hotel') {
+        if (!startDate || !endDate) {
+          setFormError('Please specify check-in and check-out dates');
+          return;
+        }
+        if (startTime) finalStartTime = `${startDate}T${startTime}`;
+        if (endTime) finalEndTime = `${endDate}T${endTime}`;
+      } else {
+        // Cab / Activity
+        if (!startDate) {
+          setFormError(`Please select a date for this ${selectedType}`);
+          return;
+        }
+        if (startTime) finalStartTime = `${startDate}T${startTime}`;
+        if (endTime) finalEndTime = `${startDate}T${endTime}`;
       }
-    }
 
-    if (editingNodeId) {
-      setNodes((prev) => prev.map((n) => (n.id === editingNodeId ? resolvedNode : n)));
-    } else {
-      setNodes((prev) => [...prev, resolvedNode]);
-    }
+      const targetNode: JourneyNode = {
+        id: editingNodeId || `draft_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        type: selectedType,
+        title: title.trim(),
+        origin: selectedType !== 'hotel' && selectedType !== 'activity' ? (origin.trim() || initialStartPlace) : undefined,
+        destination: selectedType !== 'hotel' && selectedType !== 'activity' ? destination.trim() : undefined,
+        location: selectedType === 'hotel' || selectedType === 'activity' ? locationName.trim() : undefined,
+        startTime: finalStartTime,
+        endTime: finalEndTime,
+        startDate: finalStartDate,
+        endDate: finalEndDate,
+        timeStatus: selectedType === 'flight' || selectedType === 'train' ? 'FIXED' : timeStatus,
+        isTimeFlexible: timeStatus !== 'FIXED',
+        bookingRef: bookingRef.trim() || undefined,
+        metadata: {},
+      };
 
-    setIsFormDirty(false);
-    setIsModalOpen(false);
+      let resolvedNode = targetNode;
+
+      // In Edit mode (or when activeTripId exists), persist item change immediately to backend
+      if (activeTripId) {
+        try {
+          const existingNode = editingNodeId ? nodes.find((n) => n.id === editingNodeId) : null;
+          if (existingNode && existingNode.backendId) {
+            resolvedNode = await updateItemOnBackend(activeTripId, existingNode.backendId, targetNode);
+            setToastMsg('Changes saved to itinerary');
+          } else {
+            resolvedNode = await addItemToExistingTrip(activeTripId, targetNode);
+            setToastMsg('Item added to itinerary');
+          }
+        } catch (err) {
+          console.error('Failed to persist item to backend:', err);
+          setFormError('Failed to save item to backend. Please check network connection.');
+          return;
+        }
+      }
+
+      if (editingNodeId) {
+        setNodes((prev) => prev.map((n) => (n.id === editingNodeId ? resolvedNode : n)));
+      } else {
+        setNodes((prev) => [...prev, resolvedNode]);
+      }
+
+      setIsFormDirty(false);
+      setIsModalOpen(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteNode = async (id: string) => {
