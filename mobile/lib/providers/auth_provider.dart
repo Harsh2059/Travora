@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../core/config/app_config.dart';
 
 enum AuthState {
   checkingSession,
@@ -32,6 +33,7 @@ class AuthProvider extends ChangeNotifier {
     final result = await _authService.verifySession();
     if (result['valid'] == true) {
       _userId = result['user']['id'].toString();
+      if (_userId != null) AppConfig.currentUserId = int.parse(_userId!);
       _state = AuthState.authenticated;
     } else {
       _state = AuthState.unauthenticated;
@@ -48,6 +50,7 @@ class AuthProvider extends ChangeNotifier {
     
     if (result['success'] == true) {
       _userId = result['userId'];
+      if (_userId != null) AppConfig.currentUserId = int.parse(_userId!);
       _state = AuthState.authenticated;
       notifyListeners();
       return true;
@@ -73,6 +76,7 @@ class AuthProvider extends ChangeNotifier {
         return true; 
       }
       _userId = result['userId'];
+      if (_userId != null) AppConfig.currentUserId = int.parse(_userId!);
       _state = AuthState.authenticated;
       notifyListeners();
       return true;
