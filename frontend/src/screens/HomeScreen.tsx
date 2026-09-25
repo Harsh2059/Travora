@@ -4,7 +4,6 @@ import {
   Compass,
   PlusCircle,
   RefreshCw,
-  Layout,
   Plane,
   Sparkles,
   Zap,
@@ -14,7 +13,6 @@ import {
   ShieldCheck,
   Activity,
   AlertCircle,
-  History,
 } from 'lucide-react';
 import { useJourney, fetchTripDisruptions, fetchTripImpact, updateItemOnBackend, saveLocalJourney, getSelectedRecoveryPlanWithMeta, clearSelectedRecoveryPlan, saveSelectedRecoveryPlan } from '../store/journeyStore';
 import { analyzePart4Recovery, getLatestExecution } from '../services/recoveryApi';
@@ -571,15 +569,6 @@ export default function HomeScreen() {
               <span>Admin Console</span>
             </Link>
 
-            <Link
-              to="/app"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              <Layout className="h-3.5 w-3.5 text-sky-500" />
-              <span>Phase 2 Demo</span>
-            </Link>
 
             <button
               onClick={() => {
@@ -663,8 +652,8 @@ export default function HomeScreen() {
               </span>
             </div>
 
-            {/* PERSISTENT DISRUPTION ALERT CARD — hidden when recovery was already executed */}
-            {activeDisruption && !(latestExecution && (latestExecution.status === 'COMPLETED' || latestExecution.status === 'PARTIALLY_COMPLETED')) && (() => {
+            {/* PERSISTENT DISRUPTION ALERT CARD */}
+            {activeDisruption && (() => {
               const journeyStatus = getJourneyStatus(scopedImpactResult);
               const jDisplay = getJourneyStatusDisplay(journeyStatus);
               const buckets = getImpactSummaryBuckets(scopedImpactResult);
@@ -795,37 +784,6 @@ export default function HomeScreen() {
               );
             })()}
 
-            {/* RECOVERY EXECUTED SUCCESS CARD — shown when recovery is completed but disruption still active on backend */}
-            {activeDisruption && latestExecution && (latestExecution.status === 'COMPLETED' || latestExecution.status === 'PARTIALLY_COMPLETED') && (
-              <div className="bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-3xl p-5 shadow-lg shadow-emerald-500/5 transition-all animate-in fade-in duration-200">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3.5">
-                    <div className="h-10 w-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20 mt-0.5">
-                      <CheckCircle2 className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                        <span>✅ RECOVERY EXECUTED</span>
-                        {latestExecution.status === 'PARTIALLY_COMPLETED' && (
-                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">PARTIAL</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-700 dark:text-slate-200 mt-1 leading-relaxed font-medium">
-                        Your recovery plan has been applied. Your updated itinerary is shown below.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowRestoreModal(true)}
-                    className="px-4 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 shrink-0"
-                  >
-                    <History className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Recover Original Plan</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* RECOVERED JOURNEY BANNER CARD */}
             {!activeDisruption && impactResult?.journey_status === 'RECOVERED' && (
               <div className="bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-3xl p-5 shadow-lg shadow-emerald-500/5 transition-all animate-in fade-in duration-200">
@@ -843,13 +801,7 @@ export default function HomeScreen() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setShowRestoreModal(true)}
-                    className="px-4 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 shrink-0"
-                  >
-                    <History className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Recover Original Plan</span>
-                  </button>
+
                 </div>
               </div>
             )}
@@ -928,10 +880,7 @@ export default function HomeScreen() {
             )}
 
             {/* STATE D: NO FEASIBLE RECOVERY CARD (Requirement 8 & 9D) */}
-            {/* Hidden when recovery was already executed — latestExecution takes priority */}
-            {activeDisruption && !selectedRecoveryPlan &&
-              !(latestExecution && (latestExecution.status === 'COMPLETED' || latestExecution.status === 'PARTIALLY_COMPLETED')) &&
-              (recoveryAnalysisResult?.status === 'NO_FEASIBLE_RECOVERY' || (impactResult && impactResult.nodes && impactResult.nodes.some(n => n.status === 'BROKEN' && n.priority === 'MUST_PRESERVE') && recoveryAnalysisResult?.plans?.length === 0)) && (
+            {activeDisruption && !selectedRecoveryPlan && (recoveryAnalysisResult?.status === 'NO_FEASIBLE_RECOVERY' || (impactResult && impactResult.nodes && impactResult.nodes.some(n => n.status === 'BROKEN' && n.priority === 'MUST_PRESERVE') && recoveryAnalysisResult?.plans?.length === 0)) && (
               <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-3xl p-5 shadow-lg space-y-3 animate-in fade-in duration-200">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div className="flex items-start gap-3.5 flex-1 min-w-0">
@@ -971,7 +920,6 @@ export default function HomeScreen() {
               impactNodeMap={impactNodeMap}
               impactResult={impactResult}
               selectedRecoveryPlan={selectedRecoveryPlan}
-              isRecoveryExecuted={Boolean(latestExecution && (latestExecution.status === 'COMPLETED' || latestExecution.status === 'PARTIALLY_COMPLETED'))}
               hasRestoreAvailable={Boolean(
                 (latestExecution && (latestExecution.status === 'COMPLETED' || latestExecution.status === 'PARTIALLY_COMPLETED')) ||
                 journey?.nodes.some((n) => n.status === 'REPLACED') ||

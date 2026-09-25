@@ -9,13 +9,11 @@ import {
   AlertTriangle,
   Pencil,
   Trash2,
-  Sparkles,
   X,
   Clock,
   TrainFront,
   AlertCircle,
   CheckCircle2,
-  History,
 } from 'lucide-react';
 import type { Journey, JourneyNode, TravelerPriority, ImpactNodeStatus, ImpactResult, Part4RecoveryPlan } from '../types';
 import { buildJourneyRoute, routeStats, LocationResolver, type JourneyRoute } from '../utils/routeBuilder';
@@ -40,8 +38,6 @@ interface Part1JourneyViewProps {
   impactResult?: ImpactResult | null;
   /** Selected Part 4 Recovery Plan proposal */
   selectedRecoveryPlan?: Part4RecoveryPlan | null;
-  /** True when a recovery plan has already been executed — overrides DISRUPTED badge to RECOVERED */
-  isRecoveryExecuted?: boolean;
 }
 
 // Icon map
@@ -490,7 +486,6 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   impactNodeMap,
   impactResult,
   selectedRecoveryPlan,
-  isRecoveryExecuted = false,
 }) => {
   const isLocal = journey.syncStatus === 'local';
 
@@ -546,8 +541,7 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   const journeyStatus = getJourneyStatus(scopedImpactResult);
   const buckets = getImpactSummaryBuckets(scopedImpactResult);
   const hasImpact = !!scopedImpactResult && buckets.total > 0;
-  // When recovery has been executed, suppress DISRUPTED and treat journey as recovered
-  const isDisrupted = journeyStatus === 'DISRUPTED' && !isRecoveryExecuted;
+  const isDisrupted = journeyStatus === 'DISRUPTED';
 
   // Route summary text
   const summaryText =
@@ -582,16 +576,7 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                viewMode === 'ORIGINAL'
-                  ? 'bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
-                  : 'bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300'
-              }`}>
-                <Sparkles className="h-3.5 w-3.5 text-sky-500" />
-                {hasRestoreAvailable
-                  ? (viewMode === 'ORIGINAL' ? 'ORIGINAL PLAN' : 'RECOVERED PLAN')
-                  : 'YOUR JOURNEY'}
-              </span>
+
               {journey.id && (
                 <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2.5 py-0.5 rounded-full font-mono text-[10px]">
                   #{journey.id}
@@ -600,15 +585,13 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
               {/* Journey-level status badge — only shown when ImpactResult exists */}
               {hasImpact && (
                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${
-                  isRecoveryExecuted
-                    ? 'bg-emerald-100 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-                    : isDisrupted
+                  isDisrupted
                     ? 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
                     : buckets.at_risk > 0
                     ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
                     : 'bg-emerald-100 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
                 }`}>
-                  {isRecoveryExecuted ? '✅ RECOVERED' : isDisrupted ? '🔴 DISRUPTED' : buckets.at_risk > 0 ? '🟡 AT RISK' : '🟢 ON TRACK'}
+                  {isDisrupted ? '🔴 DISRUPTED' : buckets.at_risk > 0 ? '🟡 AT RISK' : '🟢 ON TRACK'}
                 </span>
               )}
               {selectedRecoveryPlan && isDisrupted && (
@@ -660,35 +643,7 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {viewMode === 'ORIGINAL' ? (
-              <button
-                onClick={onToggleBackToRecovered}
-                className="text-xs font-bold text-sky-800 dark:text-sky-200 bg-sky-50 dark:bg-sky-950/70 hover:bg-sky-100 dark:hover:bg-sky-900/70 border border-sky-300 dark:border-sky-700 px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-              >
-                <History className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
-                <span>Back to Recovered Journey</span>
-              </button>
-            ) : onRestoreOriginalJourney && (
-              hasRestoreAvailable ? (
-                <button
-                  onClick={onRestoreOriginalJourney}
-                  className="text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/70 border border-amber-300 dark:border-amber-700 px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <History className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>Recover Original Plan</span>
-                </button>
-              ) : (
-                <button
-                  disabled
-                  title="Original plan is currently active"
-                  className="text-xs font-semibold text-slate-400 dark:text-slate-500 bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-75"
-                >
-                  <History className="h-3.5 w-3.5 text-slate-400" />
-                  <span>Recover Original Plan</span>
-                </button>
-              )
-            )}
+
             {onEditDraft && (
               <button onClick={onEditDraft}
                 className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-3.5 py-2 rounded-xl transition-colors">
