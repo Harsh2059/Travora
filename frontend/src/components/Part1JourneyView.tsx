@@ -40,6 +40,8 @@ interface Part1JourneyViewProps {
   impactResult?: ImpactResult | null;
   /** Selected Part 4 Recovery Plan proposal */
   selectedRecoveryPlan?: Part4RecoveryPlan | null;
+  /** True when a recovery plan has already been executed — overrides DISRUPTED badge to RECOVERED */
+  isRecoveryExecuted?: boolean;
 }
 
 // Icon map
@@ -488,6 +490,7 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   impactNodeMap,
   impactResult,
   selectedRecoveryPlan,
+  isRecoveryExecuted = false,
 }) => {
   const isLocal = journey.syncStatus === 'local';
 
@@ -543,7 +546,8 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   const journeyStatus = getJourneyStatus(scopedImpactResult);
   const buckets = getImpactSummaryBuckets(scopedImpactResult);
   const hasImpact = !!scopedImpactResult && buckets.total > 0;
-  const isDisrupted = journeyStatus === 'DISRUPTED';
+  // When recovery has been executed, suppress DISRUPTED and treat journey as recovered
+  const isDisrupted = journeyStatus === 'DISRUPTED' && !isRecoveryExecuted;
 
   // Route summary text
   const summaryText =
@@ -596,13 +600,15 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
               {/* Journey-level status badge — only shown when ImpactResult exists */}
               {hasImpact && (
                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${
-                  isDisrupted
+                  isRecoveryExecuted
+                    ? 'bg-emerald-100 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                    : isDisrupted
                     ? 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
                     : buckets.at_risk > 0
                     ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
                     : 'bg-emerald-100 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
                 }`}>
-                  {isDisrupted ? '🔴 DISRUPTED' : buckets.at_risk > 0 ? '🟡 AT RISK' : '🟢 ON TRACK'}
+                  {isRecoveryExecuted ? '✅ RECOVERED' : isDisrupted ? '🔴 DISRUPTED' : buckets.at_risk > 0 ? '🟡 AT RISK' : '🟢 ON TRACK'}
                 </span>
               )}
               {selectedRecoveryPlan && isDisrupted && (

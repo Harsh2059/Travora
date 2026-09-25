@@ -971,6 +971,7 @@ export default function HomeScreen() {
               impactNodeMap={impactNodeMap}
               impactResult={impactResult}
               selectedRecoveryPlan={selectedRecoveryPlan}
+              isRecoveryExecuted={Boolean(latestExecution && (latestExecution.status === 'COMPLETED' || latestExecution.status === 'PARTIALLY_COMPLETED'))}
               hasRestoreAvailable={Boolean(
                 (latestExecution && (latestExecution.status === 'COMPLETED' || latestExecution.status === 'PARTIALLY_COMPLETED')) ||
                 journey?.nodes.some((n) => n.status === 'REPLACED') ||
