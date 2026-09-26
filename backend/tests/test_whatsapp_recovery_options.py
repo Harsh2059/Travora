@@ -204,12 +204,13 @@ def test_1_disruption_creates_whatsapp_options(db_session):
     assert len(client.sent) == 1
     recipient, msg = client.sent[0]
     assert recipient == user.whatsapp_phone
-    assert "🚨 TRAVORA TRAVEL ALERT" in msg
+    assert "🚨 TRAVEL DISRUPTION" in msg
     assert "Mumbai → Delhi" in msg
     assert "Flight: AI123" in msg
-    assert "1️⃣ ✈️ Alternative Flight" in msg
-    assert "2️⃣ 🚆 Train" in msg
-    assert "👉 Reply with:" in msg
+    assert "1️⃣ ✈️ IndiGo 6E456" in msg
+    assert "2️⃣ 🚆 Rajdhani Express (12951)" in msg
+    assert "Reply 1 or 2 to select an option." in msg
+    assert "Reply 0 to cancel." in msg
 
 
 # 2. Two recovery plans produce options 1 and 2
@@ -219,22 +220,19 @@ def test_2_two_recovery_plans_produce_options_1_and_2():
     assert "1️⃣" in msg
     assert "2️⃣" in msg
     assert "3️⃣" not in msg
-    assert "1️⃣ Select Option 1" in msg
-    assert "2️⃣ Select Option 2" in msg
-    assert "3️⃣ Select Option 3" not in msg
+    assert "Reply 1 or 2 to select an option." in msg
+    assert "Reply 0 to cancel." in msg
 
 
 # 3. Three recovery plans produce options 1, 2 and 3
 def test_3_three_recovery_plans_produce_options_1_2_and_3():
     plans = _make_sample_plans()[:3]
     msg = format_whatsapp_recovery_options(1, None, plans)
-    assert "1️⃣ ✈️ Alternative Flight" in msg
-    assert "2️⃣ 🚆 Train" in msg
-    assert "3️⃣ 🚌 Bus" in msg
-    assert "1️⃣ Select Option 1" in msg
-    assert "2️⃣ Select Option 2" in msg
-    assert "3️⃣ Select Option 3" in msg
-    assert "Reply 0️⃣ to cancel." in msg
+    assert "1️⃣ ✈️ IndiGo 6E456" in msg
+    assert "2️⃣ 🚆 Rajdhani Express" in msg
+    assert "3️⃣ 🚌 Volvo AC" in msg
+    assert "Reply 1, 2 or 3 to select an option." in msg
+    assert "Reply 0 to cancel." in msg
 
 
 # 4. No fake options are displayed and no null/None printed
@@ -732,4 +730,372 @@ def test_15_multi_trip_traveler_routes_to_active_recovery_trip(db_session, monke
     assert reply_res["action"] == "SELECT_OPTION"
     assert reply_res["status"] == "SENT"
     assert executed_trips == [10]  # Targeted Trip 10 despite Trip 20 having higher ID
+
+
+# 16. Flight disruption produces flight-specific options
+def test_16_flight_disruption_produces_flight_specific_options():
+    plan = {
+        "id": "plan_flight_1",
+        "category": "PRIORITY_PRESERVING",
+        "is_recommended": True,
+        "total_transfers": 0,
+        "is_direct": True,
+        "estimated_additional_cost": 4850.0,
+        "cost_estimate": {"estimated_additional_cost": 4850.0, "currency": "INR"},
+        "changes": [{
+            "type": "FLIGHT",
+            "provider": "IndiGo",
+            "origin": "Mumbai (BOM)",
+            "destination": "Delhi (DEL)",
+            "new_title": "IndiGo SIM-6E-2041",
+            "new_details": {
+                "airline": "IndiGo",
+                "flight_number": "SIM-6E-2041",
+                "origin": "Mumbai (BOM)",
+                "destination": "Delhi (DEL)",
+                "departure_time": "2026-09-22T20:15:00",
+                "arrival_time": "2026-09-22T22:20:00",
+                "duration_minutes": 125,
+                "is_direct": True,
+                "cost": 4850,
+                "quality_tier": "RECOMMENDED",
+            },
+        }],
+    }
+    disruption = {
+        "event_type": "FLIGHT_CANCELLED",
+        "item": {
+            "type": "FLIGHT",
+            "provider": "Air India",
+            "flight_number": "AI-101",
+            "origin": "Mumbai (BOM)",
+            "destination": "Delhi (DEL)",
+            "start_time": "2026-09-22T18:00:00",
+        },
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [plan])
+
+    assert "🚨 TRAVEL DISRUPTION" in msg
+    assert "✈️ Flight Disrupted" in msg
+    assert "Flight: AI-101 (Air India)" in msg
+    assert "Available flight option:" in msg
+    assert "1️⃣ ✈️ IndiGo SIM-6E-2041" in msg
+    assert "Route: Mumbai (BOM) → Delhi (DEL)" in msg
+    assert "Schedule: 20:15 → 22:20 (2h 5m)" in msg
+    assert "Stops: Non-stop" in msg
+    assert "Price: ₹4,850" in msg
+    assert "Note: Recommended • Priority-Preserving" in msg
+    assert "Reply 1 to select this option." in msg
+    assert "Reply 0 to cancel." in msg
+
+
+# 17. Hotel cancellation produces hotel-specific options
+def test_17_hotel_cancellation_produces_hotel_specific_options():
+    plan = {
+        "id": "plan_hotel_1",
+        "category": "PRIORITY_PRESERVING",
+        "is_recommended": True,
+        "estimated_additional_cost": 14200.0,
+        "cost_estimate": {"estimated_additional_cost": 14200.0, "currency": "INR"},
+        "changes": [{
+            "type": "HOTEL",
+            "provider": "Courtyard Convention Hotel",
+            "new_title": "Courtyard Convention Hotel (Repl. for Hotel)",
+            "new_details": {
+                "hotel_name": "Courtyard Convention Hotel",
+                "provider": "Courtyard Convention Hotel",
+                "location": "Noida",
+                "rating": "4.5",
+                "room_type": "Deluxe Room",
+                "startDate": "2026-09-20",
+                "endDate": "2026-09-22",
+                "number_of_nights": 2,
+                "cost": 14200,
+                "quality_tier": "RECOMMENDED",
+                "distance_from_original": "0.5 km",
+                "explanation": "Business convention stay replacement",
+            },
+        }],
+    }
+    disruption = {
+        "event_type": "HOTEL_BOOKING_CANCELLED",
+        "item": {
+            "type": "HOTEL",
+            "provider": "Radisson Blu Resort",
+            "location": "Noida",
+            "startDate": "2026-09-20",
+            "endDate": "2026-09-22",
+        },
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [plan])
+
+    assert "🚨 TRAVEL DISRUPTION" in msg
+    assert "🏨 Hotel Booking Disrupted" in msg
+    assert "Property: Radisson Blu Resort" in msg
+    assert "Location: Noida" in msg
+    assert "Stay: 2026-09-20 → 2026-09-22" in msg
+    assert "Available hotel option:" in msg
+    assert "1️⃣ 🏨 Courtyard Convention Hotel" in msg
+    assert "Location: Noida" in msg
+    assert "Room: Deluxe Room" in msg
+    assert "Rating: 4.5★" in msg
+    assert "Dates: 2026-09-20 → 2026-09-22 (2 nights)" in msg
+    assert "Total Price: ₹14,200" in msg
+    assert "Note: Recommended • Priority-Preserving • 0.5 km from original" in msg
+    assert "✈️" not in msg
+    assert "flight" not in msg.lower()
+    assert "non-stop" not in msg.lower()
+    assert "airline" not in msg.lower()
+
+
+# 18. Transport disruption produces transport-specific options
+def test_18_transport_disruption_produces_transport_specific_options():
+    plan = {
+        "id": "plan_cab_1",
+        "is_recommended": True,
+        "estimated_additional_cost": 850.0,
+        "cost_estimate": {"estimated_additional_cost": 850.0, "currency": "INR"},
+        "changes": [{
+            "type": "CAB",
+            "provider": "Uber Intercity",
+            "new_title": "Uber Intercity (Repl. for Cab)",
+            "new_details": {
+                "provider": "Uber Intercity",
+                "origin": "Mumbai Airport",
+                "destination": "Pune Central",
+                "pickup_time": "09:00",
+                "arrival_time": "11:30",
+                "duration_minutes": 150,
+                "vehicle_category": "Sedan",
+                "cost": 850,
+                "quality_tier": "PREMIUM",
+            },
+        }],
+    }
+    disruption = {
+        "event_type": "CAB_CANCELLED",
+        "item": {
+            "type": "CAB",
+            "provider": "Ola Outstation",
+            "origin": "Mumbai Airport",
+            "destination": "Pune Central",
+            "start_time": "08:30",
+        },
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [plan])
+
+    assert "🚨 TRAVEL DISRUPTION" in msg
+    assert "🚕 Transport Disrupted" in msg
+    assert "Provider: Ola Outstation" in msg
+    assert "Available transport option:" in msg
+    assert "1️⃣ 🚕 Uber Intercity" in msg
+    assert "Route: Mumbai Airport → Pune Central" in msg
+    assert "Time: 09:00 → 11:30" in msg
+    assert "Est. Duration: 2h 30m" in msg
+    assert "Vehicle: Sedan" in msg
+    assert "Price: ₹850" in msg
+    assert "Note: Recommended" in msg
+    assert "✈️" not in msg
+    assert "🏨" not in msg
+    assert "flight" not in msg.lower()
+    assert "hotel" not in msg.lower()
+
+
+# 19. Train disruption produces train-specific options
+def test_19_train_disruption_produces_train_specific_options():
+    plan = {
+        "id": "plan_train_1",
+        "is_recommended": True,
+        "estimated_additional_cost": 1650.0,
+        "cost_estimate": {"estimated_additional_cost": 1650.0, "currency": "INR"},
+        "changes": [{
+            "type": "TRAIN",
+            "provider": "Vande Bharat Express",
+            "new_title": "Vande Bharat Express (Repl. for Train)",
+            "new_details": {
+                "train_name": "Vande Bharat Express",
+                "train_number": "VB-20977",
+                "origin": "Delhi (NDLS)",
+                "destination": "Jaipur (JP)",
+                "departure_time": "06:10",
+                "arrival_time": "10:20",
+                "duration_minutes": 250,
+                "class": "AC Chair Car",
+                "cost": 1650,
+                "quality_tier": "RECOMMENDED",
+            },
+        }],
+    }
+    disruption = {
+        "event_type": "TRAIN_DELAYED",
+        "item": {
+            "type": "TRAIN",
+            "provider": "Shatabdi Express",
+            "train_number": "SHT-12015",
+            "origin": "Delhi (NDLS)",
+            "destination": "Jaipur (JP)",
+            "start_time": "06:00",
+        },
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [plan])
+
+    assert "🚨 TRAVEL DISRUPTION" in msg
+    assert "🚆 Train Disrupted" in msg
+    assert "Train: Shatabdi Express (SHT-12015)" in msg
+    assert "Available train option:" in msg
+    assert "1️⃣ 🚆 Vande Bharat Express (VB-20977)" in msg
+    assert "Route: Delhi (NDLS) → Jaipur (JP)" in msg
+    assert "Schedule: 06:10 → 10:20 (4h 10m)" in msg
+    assert "Class: AC Chair Car" in msg
+    assert "Price: ₹1,650" in msg
+    assert "Note: Recommended" in msg
+    assert "✈️" not in msg
+    assert "flight" not in msg.lower()
+
+
+# 20. No mode incorrectly falls back to flight
+def test_20_no_mode_incorrectly_falls_back_to_flight():
+    # 20a: Hotel disruption with untyped plan change inherits HOTEL
+    hotel_plan = {
+        "id": "htl_untyped",
+        "changes": [{
+            "provider": "Ginger Hotel",
+            "new_title": "Ginger Hotel",
+            "new_details": {"location": "Goa", "cost": 3200},
+        }],
+    }
+    htl_msg = format_whatsapp_recovery_options(
+        1,
+        {"event_type": "HOTEL_BOOKING_CANCELLED", "item": {"type": "HOTEL", "provider": "Marriott"}},
+        [hotel_plan],
+    )
+    assert "✈️" not in htl_msg
+    assert "flight" not in htl_msg.lower()
+    assert "🏨" in htl_msg
+
+    # 20b: Cab disruption with untyped plan change inherits CAB
+    cab_plan = {
+        "id": "cab_untyped",
+        "changes": [{
+            "provider": "BluSmart",
+            "new_title": "BluSmart",
+            "new_details": {"origin": "DEL", "destination": "Gurugram", "cost": 600},
+        }],
+    }
+    cab_msg = format_whatsapp_recovery_options(
+        1,
+        {"event_type": "CAB_CANCELLED", "item": {"type": "CAB", "provider": "Uber"}},
+        [cab_plan],
+    )
+    assert "✈️" not in cab_msg
+    assert "flight" not in cab_msg.lower()
+    assert "🚕" in cab_msg
+
+    # 20c: Unknown mode disruption (e.g. FERRY) uses generic formatter, never flight
+    ferry_plan = {
+        "id": "ferry_untyped",
+        "changes": [{
+            "provider": "Ro-Ro Ferry Express",
+            "new_title": "Ro-Ro Ferry Express",
+            "new_details": {"origin": "Bhaucha Dhakka", "destination": "Mandwa", "cost": 450},
+        }],
+    }
+    ferry_msg = format_whatsapp_recovery_options(
+        1,
+        {"event_type": "FERRY_CANCELLED", "item": {"type": "FERRY", "title": "Mandwa Speedboat"}},
+        [ferry_plan],
+    )
+    assert "✈️" not in ferry_msg
+    assert "flight" not in ferry_msg.lower()
+    assert "Ro-Ro Ferry Express" in ferry_msg
+
+
+# 21. Cross-modal flight recovery explicitly supported
+def test_21_cross_modal_flight_recovery_explicitly_supported():
+    plan = {
+        "id": "cross_modal_fl",
+        "category": "ALTERNATIVE",
+        "changes": [{
+            "type": "FLIGHT",
+            "provider": "IndiGo",
+            "new_title": "IndiGo 6E-2181",
+            "new_details": {
+                "type": "FLIGHT",
+                "airline": "IndiGo",
+                "flight_number": "6E-2181",
+                "origin": "DEL",
+                "destination": "JAI",
+                "departure_time": "08:00",
+                "arrival_time": "09:15",
+                "cost": 4200,
+            },
+        }],
+    }
+    disruption = {
+        "event_type": "TRAIN_CANCELLED",
+        "item": {
+            "type": "TRAIN",
+            "provider": "Indian Railways",
+            "origin": "DEL",
+            "destination": "JAI",
+        },
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [plan])
+    assert "🚆 Train Disrupted" in msg
+    assert "1️⃣ ✈️ IndiGo 6E-2181" in msg
+    assert "Price: ₹4,200" in msg
+
+
+# 22. Missing optional fields do not produce broken or empty lines
+def test_22_missing_optional_fields_no_broken_or_empty_lines():
+    sparse_plan = {
+        "id": "sparse_1",
+        "changes": [{
+            "provider": "Budget Inn",
+            "new_title": "Budget Inn",
+            "new_details": {
+                "provider": "Budget Inn",
+                "cost": 1500,
+                "rating": None,
+                "room_type": None,
+                "distance": None,
+                "departure_time": None,
+                "duration": None,
+                "quality_tier": None,
+            },
+        }],
+    }
+    msg = format_whatsapp_recovery_options(
+        1,
+        {"item": {"type": "HOTEL", "provider": "Old Hotel"}},
+        [sparse_plan],
+    )
+    for line in msg.split("\n"):
+        assert "None" not in line
+        assert "null" not in line
+        assert "undefined" not in line
+        assert line.strip() != ":"
+        if line.startswith("   "):
+            assert not line.strip().endswith(":")
+    assert "\n\n\n" not in msg
+
+
+# 23. Option numbering still maps to correct plan IDs
+def test_23_option_numbering_maps_to_correct_plan_ids(db_session):
+    user, trip, item = _make_traveler_and_trip(db_session)
+    plans = _make_sample_plans(trip.id)
+    ctx = store_recovery_context(
+        db=db_session,
+        sender=user.whatsapp_phone,
+        trip_id=trip.id,
+        disruption_id=999,
+        disruption_fingerprint="999",
+        plans=plans,
+    )
+    assert ctx.options["1"] == plans[0]["id"]
+    assert ctx.options["2"] == plans[1]["id"]
+    assert ctx.options["3"] == plans[2]["id"]
+    assert ctx.get_plan(ctx.options["1"])["id"] == plans[0]["id"]
+    assert ctx.get_plan(ctx.options["2"])["id"] == plans[1]["id"]
+    assert ctx.get_plan(ctx.options["3"])["id"] == plans[2]["id"]
 

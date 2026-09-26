@@ -25,6 +25,7 @@ import {
 } from '../store/journeyStore';
 import { Part1JourneyView } from '../components/Part1JourneyView';
 import type { JourneyNode, TimeStatus, Journey } from '../types';
+import { getTodayDateString, validateDepartureDate, validateReturnDate } from '../utils/dateValidation';
 
 type NodeType = 'flight' | 'hotel' | 'train' | 'activity' | 'taxi';
 
@@ -238,6 +239,18 @@ export default function TripBuilderScreen() {
           setFormError(`Please specify departure date and time for ${selectedType}`);
           return;
         }
+        const startCheck = validateDepartureDate(startDate);
+        if (!startCheck.isValid) {
+          setFormError(startCheck.error);
+          return;
+        }
+        if (endDate) {
+          const endCheck = validateReturnDate(endDate, startDate);
+          if (!endCheck.isValid) {
+            setFormError(endCheck.error);
+            return;
+          }
+        }
         finalStartTime = `${startDate}T${startTime}`;
         if (endTime) {
           finalEndTime = `${endDate || startDate}T${endTime}`;
@@ -249,6 +262,16 @@ export default function TripBuilderScreen() {
           setFormError('Please specify check-in and check-out dates');
           return;
         }
+        const startCheck = validateDepartureDate(startDate);
+        if (!startCheck.isValid) {
+          setFormError(startCheck.error);
+          return;
+        }
+        const endCheck = validateReturnDate(endDate, startDate);
+        if (!endCheck.isValid) {
+          setFormError(endCheck.error);
+          return;
+        }
         if (startTime) finalStartTime = `${startDate}T${startTime}`;
         if (endTime) finalEndTime = `${endDate}T${endTime}`;
       } else {
@@ -256,6 +279,18 @@ export default function TripBuilderScreen() {
         if (!startDate) {
           setFormError(`Please select a date for this ${selectedType}`);
           return;
+        }
+        const startCheck = validateDepartureDate(startDate);
+        if (!startCheck.isValid) {
+          setFormError(startCheck.error);
+          return;
+        }
+        if (endDate) {
+          const endCheck = validateReturnDate(endDate, startDate);
+          if (!endCheck.isValid) {
+            setFormError(endCheck.error);
+            return;
+          }
         }
         if (startTime) finalStartTime = `${startDate}T${startTime}`;
         if (endTime) finalEndTime = `${startDate}T${endTime}`;
@@ -602,10 +637,18 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={getTodayDateString()}
                         value={startDate}
                         onChange={(e) => {
-                          setStartDate(e.target.value);
+                          const val = e.target.value;
+                          setStartDate(val);
                           setIsFormDirty(true);
+                          const check = validateDepartureDate(val);
+                          if (!check.isValid) {
+                            setFormError(check.error);
+                          } else {
+                            setFormError(null);
+                          }
                         }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
                       />
@@ -616,10 +659,18 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={startDate || getTodayDateString()}
                         value={endDate}
                         onChange={(e) => {
-                          setEndDate(e.target.value);
+                          const val = e.target.value;
+                          setEndDate(val);
                           setIsFormDirty(true);
+                          const check = validateReturnDate(val, startDate);
+                          if (!check.isValid) {
+                            setFormError(check.error);
+                          } else {
+                            setFormError(null);
+                          }
                         }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
                       />
@@ -635,10 +686,18 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={getTodayDateString()}
                         value={startDate}
                         onChange={(e) => {
-                          setStartDate(e.target.value);
+                          const val = e.target.value;
+                          setStartDate(val);
                           setIsFormDirty(true);
+                          const check = validateDepartureDate(val);
+                          if (!check.isValid) {
+                            setFormError(check.error);
+                          } else {
+                            setFormError(null);
+                          }
                         }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
                       />

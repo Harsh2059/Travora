@@ -5,10 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "vite --mode local",
+    "dev:prod": "vite --mode prod_api",
     "build": "tsc -b && vite build",
     "vercel-build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:local": "vite --mode localdev",
+    "dev:deployed": "vite --mode deployed"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
