@@ -565,6 +565,8 @@ def execute_plan(
                 "vehicle_category": b_data.get("vehicle_category"),
                 "origin": b_data.get("origin") or change.get("origin"),
                 "destination": b_data.get("destination") or change.get("destination"),
+                "departure_time": b_data.get("departure_time") or change.get("start_time"),
+                "arrival_time": b_data.get("arrival_time") or change.get("end_time"),
                 "final_price": item_cost,
                 "currency": b_data.get("currency", "INR"),
                 "booked_at": datetime.utcnow().isoformat() + "Z"

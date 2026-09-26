@@ -404,29 +404,30 @@ def _format_flight_option(
         or new_details.get("flightNumber")
         or change.get("flight_number")
     )
-    new_title = _clean_str(change.get("new_title") or new_details.get("title"))
 
-    if airline and fl_no:
+    if airline and fl_no and fl_no not in airline:
         header_text = f"{airline} {fl_no}"
     elif fl_no:
         header_text = f"Flight {fl_no}"
     elif airline:
         header_text = airline
-    elif new_title and new_title.lower() not in ("replacement option", "option", "flight"):
-        header_text = new_title
     else:
-        header_text = "Flight Option"
+        new_title = _clean_str(change.get("new_title") or new_details.get("title"))
+        if new_title and new_title.lower() not in ("replacement option", "option", "flight"):
+            header_text = new_title
+        else:
+            header_text = "Flight Option"
 
     lines.append(f"{keycap} ✈️ {header_text}")
 
-    origin = _clean_str(new_details.get("origin") or change.get("origin") or orig_item.get("origin"))
-    dest = _clean_str(new_details.get("destination") or change.get("destination") or orig_item.get("destination"))
+    origin = _clean_str(new_details.get("origin") or change.get("origin"))
+    dest = _clean_str(new_details.get("destination") or change.get("destination"))
     if origin and dest:
         lines.append(f"   Route: {origin} → {dest}")
 
     dep = _format_time_hhmm(new_details.get("departure_time") or new_details.get("start_time") or change.get("start_time"))
     arr = _format_time_hhmm(new_details.get("arrival_time") or new_details.get("end_time") or change.get("end_time"))
-    dur_str = _format_duration(new_details.get("duration") or new_details.get("duration_minutes") or plan.get("total_duration_minutes"))
+    dur_str = _format_duration(new_details.get("duration") or new_details.get("duration_minutes") or change.get("duration"))
 
     if dep and arr:
         sched = f"{dep} → {arr}" + (f" ({dur_str})" if dur_str else "")
@@ -439,10 +440,8 @@ def _format_flight_option(
         lines.append(f"   Duration: {dur_str}")
 
     is_direct = new_details.get("is_direct")
-    if is_direct is None and "is_direct" in plan:
-        is_direct = plan.get("is_direct")
-    if is_direct is None and "total_transfers" in plan:
-        is_direct = (plan.get("total_transfers") == 0)
+    if is_direct is None and "is_direct" in change:
+        is_direct = change.get("is_direct")
 
     if is_direct is True:
         lines.append("   Stops: Non-stop")
@@ -450,9 +449,10 @@ def _format_flight_option(
         transfers = plan.get("total_transfers") or 1
         lines.append(f"   Stops: {transfers} stop{'s' if transfers > 1 else ''}")
 
-    price = _get_plan_cost_string(plan, change, new_details)
-    if price:
-        lines.append(f"   Price: {price}")
+    fare = _clean_str(new_details.get("fare") or new_details.get("price") or new_details.get("cost") or change.get("estimated_cost") or plan.get("estimated_additional_cost"))
+    if fare:
+        currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
+        lines.append(f"   Price: {_format_cost(fare, currency)}")
 
     diff = _get_differentiator(plan, change, new_details, "FLIGHT")
     if diff:
@@ -490,8 +490,6 @@ def _format_hotel_option(
         or change.get("location")
         or new_details.get("destination")
         or change.get("destination")
-        or orig_item.get("location")
-        or orig_item.get("destination")
     )
     if loc:
         lines.append(f"   Location: {loc}")
@@ -510,14 +508,12 @@ def _format_hotel_option(
         or new_details.get("startDate")
         or new_details.get("start_date")
         or change.get("start_time")
-        or orig_item.get("startDate")
     )
     cout = _format_date(
         new_details.get("check_out")
         or new_details.get("endDate")
         or new_details.get("end_date")
         or change.get("end_time")
-        or orig_item.get("endDate")
     )
     nights = new_details.get("number_of_nights") or new_details.get("nights") or _calc_nights(cin, cout)
 
@@ -530,9 +526,10 @@ def _format_hotel_option(
     elif nights:
         lines.append(f"   Duration: {nights} night{'s' if nights > 1 else ''}")
 
-    price = _get_plan_cost_string(plan, change, new_details)
-    if price:
-        lines.append(f"   Total Price: {price}")
+    fare = _clean_str(new_details.get("price") or new_details.get("cost") or change.get("estimated_cost") or plan.get("estimated_additional_cost"))
+    if fare:
+        currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
+        lines.append(f"   Total Price: {_format_cost(fare, currency)}")
 
     diff = _get_differentiator(plan, change, new_details, "HOTEL")
     if diff:
@@ -564,8 +561,8 @@ def _format_cab_option(
 
     lines.append(f"{keycap} 🚕 {provider}")
 
-    pickup = _clean_str(new_details.get("origin") or change.get("origin") or orig_item.get("origin"))
-    dropoff = _clean_str(new_details.get("destination") or change.get("destination") or orig_item.get("destination"))
+    pickup = _clean_str(new_details.get("origin") or change.get("origin"))
+    dropoff = _clean_str(new_details.get("destination") or change.get("destination"))
     if pickup and dropoff:
         lines.append(f"   Route: {pickup} → {dropoff}")
     elif pickup:
@@ -591,7 +588,7 @@ def _format_cab_option(
     dur_str = _format_duration(
         new_details.get("duration")
         or new_details.get("duration_minutes")
-        or plan.get("total_duration_minutes")
+        or change.get("duration")
     )
     if dur_str:
         lines.append(f"   Est. Duration: {dur_str}")
@@ -604,9 +601,10 @@ def _format_cab_option(
     if veh:
         lines.append(f"   Vehicle: {veh}")
 
-    price = _get_plan_cost_string(plan, change, new_details)
-    if price:
-        lines.append(f"   Price: {price}")
+    fare = _clean_str(new_details.get("price") or new_details.get("cost") or change.get("estimated_cost") or plan.get("estimated_additional_cost"))
+    if fare:
+        currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
+        lines.append(f"   Price: {_format_cost(fare, currency)}")
 
     diff = _get_differentiator(plan, change, new_details, "CAB")
     if diff:
@@ -653,14 +651,14 @@ def _format_train_option(
 
     lines.append(f"{keycap} 🚆 {header_text}")
 
-    origin = _clean_str(new_details.get("origin") or change.get("origin") or orig_item.get("origin"))
-    dest = _clean_str(new_details.get("destination") or change.get("destination") or orig_item.get("destination"))
+    origin = _clean_str(new_details.get("origin") or change.get("origin"))
+    dest = _clean_str(new_details.get("destination") or change.get("destination"))
     if origin and dest:
         lines.append(f"   Route: {origin} → {dest}")
 
     dep = _format_time_hhmm(new_details.get("departure_time") or new_details.get("start_time") or change.get("start_time"))
     arr = _format_time_hhmm(new_details.get("arrival_time") or new_details.get("end_time") or change.get("end_time"))
-    dur_str = _format_duration(new_details.get("duration") or new_details.get("duration_minutes") or plan.get("total_duration_minutes"))
+    dur_str = _format_duration(new_details.get("duration") or new_details.get("duration_minutes") or change.get("duration"))
 
     if dep and arr:
         sched = f"{dep} → {arr}" + (f" ({dur_str})" if dur_str else "")
@@ -676,9 +674,10 @@ def _format_train_option(
     if cls:
         lines.append(f"   Class: {cls}")
 
-    price = _get_plan_cost_string(plan, change, new_details)
-    if price:
-        lines.append(f"   Price: {price}")
+    fare = _clean_str(new_details.get("price") or new_details.get("cost") or new_details.get("fare") or change.get("estimated_cost") or plan.get("estimated_additional_cost"))
+    if fare:
+        currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
+        lines.append(f"   Price: {_format_cost(fare, currency)}")
 
     diff = _get_differentiator(plan, change, new_details, "TRAIN")
     if diff:
@@ -728,7 +727,7 @@ def _format_generic_option(
 
     dep = _format_time_hhmm(new_details.get("start_time") or change.get("start_time"))
     arr = _format_time_hhmm(new_details.get("end_time") or change.get("end_time"))
-    dur_str = _format_duration(new_details.get("duration") or new_details.get("duration_minutes") or plan.get("total_duration_minutes"))
+    dur_str = _format_duration(new_details.get("duration") or new_details.get("duration_minutes") or change.get("duration"))
 
     if dep and arr:
         sched = f"{dep} → {arr}" + (f" ({dur_str})" if dur_str else "")
@@ -738,9 +737,10 @@ def _format_generic_option(
     elif dur_str:
         lines.append(f"   Duration: {dur_str}")
 
-    price = _get_plan_cost_string(plan, change, new_details)
-    if price:
-        lines.append(f"   Price: {price}")
+    fare = _clean_str(new_details.get("price") or new_details.get("cost") or change.get("estimated_cost") or plan.get("estimated_additional_cost"))
+    if fare:
+        currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
+        lines.append(f"   Price: {_format_cost(fare, currency)}")
 
     diff = _get_differentiator(plan, change, new_details, "GENERIC")
     if diff:
@@ -854,7 +854,7 @@ def format_recovery_confirmation(
     lines = [
         "✅ RECOVERY CONFIRMED",
         "",
-        "Your recovery option has been selected successfully.",
+        "Your itinerary has been updated.",
     ]
 
     confirmed = (execution_result or {}).get("confirmed_bookings") or []
@@ -862,47 +862,107 @@ def format_recovery_confirmation(
     changes = plan.get("changes") or []
     change = changes[0] if changes else {}
     new_details = change.get("new_details") or {}
+    orig_details = change.get("original_details") or {}
 
     raw_mode = booking.get("type") or change.get("type") or new_details.get("type")
     mode = _classify_mode(raw_mode)
     icon = _mode_icon(mode)
-    lines.extend(["", f"{icon} New Journey"])
 
-    title = _clean_str(
-        booking.get("replacement_title")
-        or change.get("new_title")
-        or booking.get("provider")
-        or change.get("provider")
-        or new_details.get("title")
+    # Provider and Service number
+    provider = _clean_str(booking.get("provider") or new_details.get("provider"))
+    service_no = _clean_str(
+        booking.get("flight_number") or booking.get("train_number") or new_details.get("flight_number") or new_details.get("train_number") or new_details.get("booking_id")
     )
-    if title and title.lower() not in ("replacement option", "option"):
-        lines.append(title)
+    
+    header = f"{icon}"
+    if provider and service_no and service_no not in provider:
+        header += f" {provider} {service_no}"
+    elif provider:
+        header += f" {provider}"
+    elif service_no:
+        header += f" {service_no}"
+    else:
+        title = _clean_str(booking.get("replacement_title") or change.get("new_title") or new_details.get("title"))
+        if title and title.lower() not in ("replacement option", "option"):
+            header += f" {title}"
+        else:
+            header += " New Booking"
 
-    origin = _clean_str(booking.get("origin") or change.get("origin") or new_details.get("origin"))
-    destination = _clean_str(booking.get("destination") or change.get("destination") or new_details.get("destination"))
+    lines.extend(["", header])
+
+    origin = _clean_str(booking.get("origin") or new_details.get("origin"))
+    destination = _clean_str(booking.get("destination") or new_details.get("destination"))
     if origin and destination:
-        lines.extend(["", f"{origin} → {destination}"])
+        lines.append(f"{origin} → {destination}")
     elif origin:
-        lines.extend(["", f"From: {origin}"])
+        lines.append(f"From: {origin}")
     elif destination:
-        lines.extend(["", f"To: {destination}"])
+        lines.append(f"To: {destination}")
 
-    dep = _format_time_hhmm(booking.get("departure_time") or change.get("start_time") or new_details.get("departure_time"))
-    arr = _format_time_hhmm(booking.get("arrival_time") or change.get("end_time") or new_details.get("arrival_time"))
-    timing_block = []
+    dep = _format_time_hhmm(booking.get("departure_time") or new_details.get("departure_time") or new_details.get("start_time") or change.get("start_time"))
+    arr = _format_time_hhmm(booking.get("arrival_time") or new_details.get("arrival_time") or new_details.get("end_time") or change.get("end_time"))
+    
     if dep:
-        timing_block.append(f"Departure: {dep}")
+        lines.append(f"🕐 Departure: {dep}")
     if arr:
-        timing_block.append(f"Arrival: {arr}")
-    if timing_block:
-        lines.append("")
-        lines.extend(timing_block)
+        lines.append(f"🕐 Arrival: {arr}")
+        
+    dur_str = _format_duration(new_details.get("duration") or new_details.get("duration_minutes") or change.get("duration"))
+    if dur_str:
+        lines.append(f"⏱️ Duration: {dur_str}")
 
-    pnr = _clean_str(booking.get("pnr") or booking.get("booking_reference") or new_details.get("pnr"))
-    if pnr and pnr not in ("N/A", "None", ""):
-        lines.extend(["", f"PNR: {pnr}"])
+    cls = _clean_str(booking.get("cabin_class") or booking.get("room_type") or booking.get("vehicle_category") or new_details.get("class") or new_details.get("cabin_class") or new_details.get("room_type"))
+    if cls:
+        lines.append(f"💺 Class/service type: {cls}")
 
-    lines.extend(["", "Your itinerary has been updated."])
+    fare = _clean_str(booking.get("final_price") or new_details.get("price") or new_details.get("fare") or new_details.get("cost"))
+    if fare:
+        currency = _clean_str(booking.get("currency") or new_details.get("currency")) or "INR"
+        lines.append(f"💰 Fare: {_format_cost(fare, currency)}")
+
+    pnr = _clean_str(booking.get("pnr") or booking.get("booking_reference") or booking.get("ticket_number") or new_details.get("pnr"))
+    if pnr and pnr.lower() not in ("n/a", "none", "null", ""):
+        lines.append(f"🎫 PNR/Booking ID: {pnr}")
+
+    # Before vs After
+    lines.append("")
+    lines.append("Previous itinerary:")
+    
+    old_provider = _clean_str(booking.get("original_provider") or orig_details.get("provider") or change.get("original_provider"))
+    old_title = _clean_str(booking.get("original_title") or orig_details.get("title"))
+    old_header = old_provider or old_title or "Old Booking"
+    
+    old_service_no = _clean_str(orig_details.get("flight_number") or orig_details.get("train_number"))
+    if old_service_no and old_provider and old_service_no not in old_provider:
+        old_header = f"{old_provider} {old_service_no}"
+        
+    lines.append(old_header)
+    
+    old_origin = _clean_str(orig_details.get("origin") or change.get("origin"))
+    old_dest = _clean_str(orig_details.get("destination") or change.get("destination"))
+    if old_origin and old_dest:
+        lines.append(f"{old_origin} → {old_dest}")
+        
+    old_dep = _format_time_hhmm(orig_details.get("start_time") or orig_details.get("departure_time"))
+    if old_dep:
+        lines.append(f"Departure: {old_dep}")
+        
+    old_fare = _clean_str(orig_details.get("cost") or orig_details.get("price") or orig_details.get("fare"))
+    if old_fare:
+        old_curr = _clean_str(orig_details.get("currency")) or "INR"
+        lines.append(f"Fare: {_format_cost(old_fare, old_curr)}")
+
+    lines.append("")
+    lines.append("Updated itinerary:")
+    lines.append(header.replace(icon + " ", ""))
+    if origin and destination:
+        lines.append(f"{origin} → {destination}")
+    if dep:
+        lines.append(f"Departure: {dep}")
+    if fare:
+        currency = _clean_str(booking.get("currency") or new_details.get("currency")) or "INR"
+        lines.append(f"Fare: {_format_cost(fare, currency)}")
+
     return "\n".join(lines)
 
 
