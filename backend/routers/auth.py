@@ -10,7 +10,7 @@ from passlib.context import CryptContext
 from database import get_db
 from models import User
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "travora_super_secret_key_123")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY") or os.getenv("JWT_SECRET", "travora_super_secret_key_123")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
