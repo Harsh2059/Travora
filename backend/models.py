@@ -3,9 +3,11 @@ from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
 
+import uuid
+
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String, nullable=True)
@@ -35,7 +37,7 @@ class Trip(Base):
     title = Column(String, index=True)
     version = Column(Integer, default=1)
     view_mode = Column(String, default="ORIGINAL")  # ORIGINAL | RECOVERED
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(String, ForeignKey("users.id"))
     user = relationship("User", back_populates="trips")
     items = relationship("ItineraryItem", back_populates="trip")
 

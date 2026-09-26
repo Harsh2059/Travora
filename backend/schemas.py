@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 
 class ItineraryItemBase(BaseModel):
@@ -83,7 +83,7 @@ class TripCreate(TripBase):
 
 class Trip(TripBase):
     id: int
-    user_id: int
+    user_id: Union[int, str]
     items: List[ItineraryItem] = []
     
     model_config = ConfigDict(from_attributes=True)
@@ -135,7 +135,7 @@ class UserProfileUpdate(BaseModel):
     whatsapp_phone: Optional[str] = None
 
 class UserResponse(UserBase):
-    id: int
+    id: Union[int, str]
     created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -145,7 +145,7 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 class User(UserBase):
-    id: int
+    id: Union[int, str]
     trips: List[Trip] = []
     model_config = ConfigDict(from_attributes=True)
 

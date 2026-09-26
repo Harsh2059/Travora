@@ -280,11 +280,11 @@ def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 
 @app.get("/api/users/{user_id}/trips", response_model=List[schemas.Trip])
 def read_user_trips(
-    user_id: int,
+    user_id: str,
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_optional_user)
 ):
-    if isinstance(current_user, models.User) and current_user.id != user_id:
+    if isinstance(current_user, models.User) and str(current_user.id) != str(user_id):
         raise HTTPException(status_code=403, detail="You do not have access to another user's trips")
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
@@ -297,14 +297,14 @@ def read_user_trips(
 
 @app.post("/api/users/{user_id}/trips")
 def create_trip(
-    user_id: int,
+    user_id: str,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_optional_user)
 ):
     """Create a new trip for a user (journey builder flow)."""
     effective_user_id = current_user.id if isinstance(current_user, models.User) else user_id
-    if isinstance(current_user, models.User) and current_user.id != user_id:
+    if isinstance(current_user, models.User) and str(current_user.id) != str(user_id):
         raise HTTPException(status_code=403, detail="Cannot create trip for another user")
     db_user = crud.get_user(db, user_id=effective_user_id)
     if db_user is None:
