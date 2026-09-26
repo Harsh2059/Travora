@@ -293,7 +293,7 @@ def test_5_option_1_resolves_to_correct_actual_plan(db_session, monkeypatch):
     # Check confirmation message sent
     assert "✅ RECOVERY CONFIRMED" in client.sent[0][1]
     assert "IndiGo 6E456" in client.sent[0][1]
-    assert "PNR: IND123" in client.sent[0][1]
+    assert "PNR/Booking ID: IND123" in client.sent[0][1]
 
 
 # 6. Option 2 resolves to the correct actual plan
@@ -340,7 +340,8 @@ def test_6_option_2_resolves_to_correct_actual_plan(db_session, monkeypatch):
     assert len(executed_plans) == 1
     assert executed_plans[0]["id"] == plans[1]["id"]
     assert "Rajdhani" in executed_plans[0]["title"]
-    assert "Rajdhani Express" in client.sent[0][1]
+    assert "Indian Railways 12951" in client.sent[0][1]
+    assert "PNR/Booking ID: PNR-TRAIN-456" in client.sent[0][1]
 
 
 # 7. Invalid option does not execute anything
@@ -525,7 +526,8 @@ def test_12_dynamic_confirmation_format_clean():
     }
     msg = format_recovery_confirmation(plan, result)
     assert "✅ RECOVERY CONFIRMED" in msg
-    assert "🚕 New Journey" in msg
+    assert "🚕 Uber Premier" in msg
+    assert "Airport → Hotel" in msg
     assert "Uber Premier" in msg
     assert "Airport → Hotel" in msg
     assert "PNR:" not in msg
