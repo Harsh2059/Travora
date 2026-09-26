@@ -32,6 +32,7 @@ import {
 import { SkyWayNavbar } from '../components/SkyWayNavbar';
 import { SkyWaySupportModal } from '../components/SkyWaySupportModal';
 import { useJourney, fetchTripDisruptions, setActiveTripId } from '../store/journeyStore';
+import { getTodayDateString, getFutureDateString, validateDepartureDate, validateReturnDate } from '../utils/dateValidation';
 
 export default function SkyWayHomeScreen() {
   const navigate = useNavigate();
@@ -43,8 +44,8 @@ export default function SkyWayHomeScreen() {
   const [tripType, setTripType] = useState<'one-way' | 'round-trip' | 'multi-city'>('round-trip');
   const [origin, setOrigin] = useState('Mumbai (BOM)');
   const [destination, setDestination] = useState('London (LHR)');
-  const [departureDate, setDepartureDate] = useState('12 Jun, 2025');
-  const [returnDate, setReturnDate] = useState('20 Jun, 2025');
+  const [departureDate, setDepartureDate] = useState(() => getTodayDateString());
+  const [returnDate, setReturnDate] = useState(() => getFutureDateString(7));
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(1);
   const [isTravellerPickerOpen, setIsTravellerPickerOpen] = useState(false);
@@ -52,8 +53,8 @@ export default function SkyWayHomeScreen() {
   // Hotels state
   const [hotelStayType, setHotelStayType] = useState<'hotels' | 'apartments' | 'villas' | 'luxury'>('hotels');
   const [hotelDestination, setHotelDestination] = useState('London, United Kingdom');
-  const [hotelCheckIn, setHotelCheckIn] = useState('12 Jun, 2025');
-  const [hotelCheckOut, setHotelCheckOut] = useState('18 Jun, 2025');
+  const [hotelCheckIn, setHotelCheckIn] = useState(() => getTodayDateString());
+  const [hotelCheckOut, setHotelCheckOut] = useState(() => getFutureDateString(3));
   const [hotelGuests, setHotelGuests] = useState(2);
   const [hotelRooms, setHotelRooms] = useState(1);
   const [isHotelPickerOpen, setIsHotelPickerOpen] = useState(false);
@@ -69,14 +70,14 @@ export default function SkyWayHomeScreen() {
   const [carService, setCarService] = useState<'airport' | 'city' | 'self' | 'chauffeur'>('airport');
   const [carPickup, setCarPickup] = useState('Heathrow Airport (LHR)');
   const [carDropoff, setCarDropoff] = useState('Central London (Hotel)');
-  const [carDateTime, setCarDateTime] = useState('12 Jun, 2025 • 10:30 AM');
+  const [carDateTime, setCarDateTime] = useState(() => getTodayDateString());
   const [carType, setCarType] = useState('Executive Sedan');
 
   // Experiences state
   const [expCategory, setExpCategory] = useState<'all' | 'tours' | 'water' | 'food'>('all');
   const [expLocation, setExpLocation] = useState('London, United Kingdom');
   const [expActivity, setExpActivity] = useState('Thames Cruise & Tower of London');
-  const [expDate, setExpDate] = useState('14 Jun, 2025');
+  const [expDate, setExpDate] = useState(() => getTodayDateString());
   const [expGuests, setExpGuests] = useState(2);
 
   // Interactive search state & feedback
@@ -114,21 +115,75 @@ export default function SkyWayHomeScreen() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     if (activeTab === 'flights') {
+      const depCheck = validateDepartureDate(departureDate);
+      if (!depCheck.isValid) {
+        setToastMessage(depCheck.error);
+        return;
+      }
+      if (tripType === 'round-trip') {
+        const retCheck = validateReturnDate(returnDate, departureDate);
+        if (!retCheck.isValid) {
+          setToastMessage(retCheck.error);
+          return;
+        }
+      }
       if (journey?.id) {
         setActiveTripId(journey.id);
       }
       navigate('/my-trips');
+    } else if (activeTab === 'hotels') {
+      const checkInVal = validateDepartureDate(hotelCheckIn);
+      if (!checkInVal.isValid) {
+        setToastMessage(checkInVal.error);
+        return;
+      }
+      const checkOutVal = validateReturnDate(hotelCheckOut, hotelCheckIn);
+      if (!checkOutVal.isValid) {
+        setToastMessage(checkOutVal.error);
+        return;
+      }
+      setIsSearching(true);
+      setTimeout(() => {
+        setIsSearching(false);
+        setSearchedTab(activeTab);
+        const el = document.getElementById('search-results-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 350);
+    } else if (activeTab === 'cars') {
+      const carCheck = validateDepartureDate(carDateTime);
+      if (!carCheck.isValid) {
+        setToastMessage(carCheck.error);
+        return;
+      }
+      setIsSearching(true);
+      setTimeout(() => {
+        setIsSearching(false);
+        setSearchedTab(activeTab);
+        const el = document.getElementById('search-results-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 350);
+    } else if (activeTab === 'experiences') {
+      const expCheck = validateDepartureDate(expDate);
+      if (!expCheck.isValid) {
+        setToastMessage(expCheck.error);
+        return;
+      }
+      setIsSearching(true);
+      setTimeout(() => {
+        setIsSearching(false);
+        setSearchedTab(activeTab);
+        const el = document.getElementById('search-results-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 350);
     } else {
       setIsSearching(true);
       setTimeout(() => {
         setIsSearching(false);
         setSearchedTab(activeTab);
-        // Smoothly scroll down to results section
         const el = document.getElementById('search-results-section');
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth' });
-        }
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
       }, 350);
     }
   };
@@ -809,10 +864,18 @@ export default function SkyWayHomeScreen() {
                           <span>Departure</span>
                         </label>
                         <input
-                          type="text"
+                          type="date"
+                          min={getTodayDateString()}
                           value={departureDate}
-                          onChange={(e) => setDepartureDate(e.target.value)}
-                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setDepartureDate(val);
+                            const check = validateDepartureDate(val);
+                            if (!check.isValid) {
+                              setToastMessage(check.error);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5 cursor-pointer"
                         />
                       </div>
 
@@ -826,11 +889,19 @@ export default function SkyWayHomeScreen() {
                           <span>Return</span>
                         </label>
                         <input
-                          type="text"
+                          type="date"
+                          min={departureDate || getTodayDateString()}
                           value={returnDate}
-                          onChange={(e) => setReturnDate(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setReturnDate(val);
+                            const check = validateReturnDate(val, departureDate);
+                            if (!check.isValid) {
+                              setToastMessage(check.error);
+                            }
+                          }}
                           disabled={tripType === 'one-way'}
-                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5"
+                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5 cursor-pointer"
                         />
                       </div>
 
@@ -936,10 +1007,18 @@ export default function SkyWayHomeScreen() {
                           <span>Check-In</span>
                         </label>
                         <input
-                          type="text"
+                          type="date"
+                          min={getTodayDateString()}
                           value={hotelCheckIn}
-                          onChange={(e) => setHotelCheckIn(e.target.value)}
-                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHotelCheckIn(val);
+                            const check = validateDepartureDate(val);
+                            if (!check.isValid) {
+                              setToastMessage(check.error);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5 cursor-pointer"
                         />
                       </div>
 
@@ -949,10 +1028,18 @@ export default function SkyWayHomeScreen() {
                           <span>Check-Out</span>
                         </label>
                         <input
-                          type="text"
+                          type="date"
+                          min={hotelCheckIn || getTodayDateString()}
                           value={hotelCheckOut}
-                          onChange={(e) => setHotelCheckOut(e.target.value)}
-                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHotelCheckOut(val);
+                            const check = validateReturnDate(val, hotelCheckIn);
+                            if (!check.isValid) {
+                              setToastMessage(check.error);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5 cursor-pointer"
                         />
                       </div>
 
@@ -1137,10 +1224,18 @@ export default function SkyWayHomeScreen() {
                           <span>Pick-Up Date & Time</span>
                         </label>
                         <input
-                          type="text"
+                          type="date"
+                          min={getTodayDateString()}
                           value={carDateTime}
-                          onChange={(e) => setCarDateTime(e.target.value)}
-                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCarDateTime(val);
+                            const check = validateDepartureDate(val);
+                            if (!check.isValid) {
+                              setToastMessage(check.error);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5 cursor-pointer"
                         />
                       </div>
 
@@ -1204,10 +1299,18 @@ export default function SkyWayHomeScreen() {
                           <span>Experience Date</span>
                         </label>
                         <input
-                          type="text"
+                          type="date"
+                          min={getTodayDateString()}
                           value={expDate}
-                          onChange={(e) => setExpDate(e.target.value)}
-                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setExpDate(val);
+                            const check = validateDepartureDate(val);
+                            if (!check.isValid) {
+                              setToastMessage(check.error);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none mt-0.5 cursor-pointer"
                         />
                       </div>
 
