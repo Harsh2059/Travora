@@ -10,6 +10,9 @@ import auth
 from services.whatsapp.client import MetaWhatsAppClient
 from services.whatsapp.handler import WhatsAppWebhookHandler
 from services.whatsapp.context import store_recovery_context
+from services.whatsapp.service import WhatsAppService
+from services.notifications.service import NotificationService
+from services.notifications.contracts import NotificationChannel
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test_auth.db"
 
@@ -225,6 +228,55 @@ def test_profile_phone_persistence(client):
     user_db = db.query(models.User).filter(models.User.email == "profile@example.com").first()
     assert user_db.whatsapp_phone == "+917710989533"
     assert user_db.phone_number == "+917710989533"
+
+    # A shared contact number must remain synchronized when the user edits
+    # only their mobile number; future SMS and WhatsApp dispatches read these
+    # current persisted fields without a new login/browser session.
+    update_res = client.put("/api/users/me", json={
+        "phone_number": "8812345678"
+    }, headers=headers)
+    assert update_res.status_code == 200
+    data = update_res.json()
+    assert data["phone_number"] == "+918812345678"
+    assert data["whatsapp_phone"] == "+918812345678"
+
+
+def test_profile_phone_update_is_used_by_sms_and_whatsapp_without_relogin(client):
+    """Both notification channels must resolve the just-persisted contact number."""
+    reg = client.post("/api/auth/register", json={
+        "name": "Notification User", "email": "notification-profile@example.com",
+        "password": "passuser123", "phone_number": "7710989533",
+    }).json()
+    headers = {"Authorization": f"Bearer {reg['access_token']}"}
+    update_res = client.put("/api/users/me", json={"phone_number": "8812345678"}, headers=headers)
+    assert update_res.status_code == 200
+
+    db = TestingSessionLocal()
+    user = db.query(models.User).filter(models.User.email == "notification-profile@example.com").first()
+    trip = models.Trip(title="Current Contact Trip", user_id=user.id)
+    db.add(trip)
+    db.commit()
+    db.refresh(trip)
+
+    class FakeWhatsAppClient:
+        def __init__(self):
+            self.recipients = []
+
+        def send_text(self, recipient, text):
+            self.recipients.append(recipient)
+            return {"messages": [{"id": "wamid-current-contact"}]}
+
+    client_stub = FakeWhatsAppClient()
+    service = NotificationService(WhatsAppService(client_stub))
+    disruption = {"id": 9876, "event_type": "FLIGHT_DELAYED", "event_metadata": {"delay_minutes": 30}}
+
+    sms = service.send_disruption_notification(db, NotificationChannel.SMS, trip.id, disruption)
+    whatsapp = service.send_disruption_notification(db, NotificationChannel.WHATSAPP, trip.id, disruption)
+
+    assert sms.recipient == "+918812345678"
+    assert whatsapp.recipient == "+918812345678"
+    assert client_stub.recipients == ["+918812345678"]
+    db.close()
     db.close()
 
 

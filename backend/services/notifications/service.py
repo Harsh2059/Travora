@@ -50,7 +50,12 @@ class NotificationService:
                 if not trip or not trip.user or not trip.user.sms_enabled:
                     return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="SMS notifications disabled")
                 
-                user_phone = trip.user.whatsapp_phone or trip.user.phone_number
+                # Do not reuse a relationship object that may have been loaded
+                # before a profile update in this session.
+                user = db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
+                # SMS must use the current SMS/mobile field. WhatsApp is only a
+                # fallback for legacy profiles that have not set one yet.
+                user_phone = (user.phone_number or user.whatsapp_phone) if user else None
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:
@@ -166,7 +171,12 @@ class NotificationService:
                 if not trip or not trip.user or not trip.user.sms_enabled:
                     return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="SMS notifications disabled")
                     
-                user_phone = trip.user.whatsapp_phone or trip.user.phone_number
+                # Resolve the user afresh so this notification observes a phone
+                # number updated immediately before the disruption request.
+                user = db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
+                # SMS must use the current SMS/mobile field. WhatsApp is only a
+                # fallback for legacy profiles that have not set one yet.
+                user_phone = (user.phone_number or user.whatsapp_phone) if user else None
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:

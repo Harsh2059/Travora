@@ -65,7 +65,10 @@ class WhatsAppService:
                 error="Traveler has no WhatsApp phone number configured.",
             )
         else:
-            recipient = trip.user.whatsapp_phone or trip.user.phone_number
+            # Resolve the profile row at notification time. This avoids using a
+            # relationship object retained before a successful phone update.
+            user = db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
+            recipient = (user.whatsapp_phone or user.phone_number) if user else None
             if not recipient:
                 return NotificationResult(
                     success=False,
@@ -151,7 +154,13 @@ class WhatsAppService:
             )
 
         trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-        user_phone = (trip.user.whatsapp_phone or trip.user.phone_number) if (trip and trip.user) else None
+        # Resolve the profile row at dispatch time so WhatsApp always targets
+        # the latest persisted contact number.
+        user = (
+            db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
+            if trip else None
+        )
+        user_phone = (user.whatsapp_phone or user.phone_number) if user else None
         
         if not user_phone:
             print("[WHATSAPP] recipient resolution failed: traveler has no phone", flush=True)

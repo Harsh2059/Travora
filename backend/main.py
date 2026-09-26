@@ -267,10 +267,22 @@ def update_profile(
                 raise HTTPException(status_code=400, detail="Email already in use")
             current_user.email = new_email
 
+    synchronize_whatsapp_phone = False
     if payload.phone_number is not None:
-        current_user.phone_number = auth.normalize_phone(payload.phone_number)
+        previous_phone = current_user.phone_number
+        next_phone = auth.normalize_phone(payload.phone_number)
+        current_user.phone_number = next_phone
+        # Most profiles use one number for both channels. Keep that linked value
+        # current when only the primary phone is edited, while preserving an
+        # intentionally distinct WhatsApp number.
+        synchronize_whatsapp_phone = (
+            payload.whatsapp_phone is None
+            or auth.normalize_phone(payload.whatsapp_phone) == previous_phone
+        )
+        if synchronize_whatsapp_phone:
+            current_user.whatsapp_phone = next_phone
 
-    if payload.whatsapp_phone is not None:
+    if payload.whatsapp_phone is not None and not synchronize_whatsapp_phone:
         norm_wa = auth.normalize_phone(payload.whatsapp_phone)
         if norm_wa and norm_wa != current_user.whatsapp_phone:
             existing_wa = db.query(models.User).filter(models.User.whatsapp_phone == norm_wa).first()
@@ -314,6 +326,13 @@ def update_user_profile(
         raise HTTPException(status_code=404, detail="User not found")
     
     update_data = profile.model_dump(exclude_unset=True)
+    previous_phone = db_user.phone_number
+    if "phone_number" in update_data:
+        db_user.phone_number = auth.normalize_phone(update_data.pop("phone_number"))
+        if "whatsapp_phone" not in update_data and db_user.whatsapp_phone == previous_phone:
+            db_user.whatsapp_phone = db_user.phone_number
+    if "whatsapp_phone" in update_data:
+        update_data["whatsapp_phone"] = auth.normalize_phone(update_data["whatsapp_phone"])
     for key, value in update_data.items():
         setattr(db_user, key, value)
     
