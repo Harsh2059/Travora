@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 import crud, models, schemas, seed
+import crypto as phone_crypto
 import hashlib
 import hmac
 from database import engine, get_db, SessionLocal
@@ -214,13 +215,15 @@ def register(payload: schemas.UserRegister, db: Session = Depends(get_db)):
         name=payload.name.strip(),
         email=email,
         hashed_password=auth.hash_password(payload.password),
-        phone_number=norm_phone,
+        phone_number=phone_crypto.encrypt_phone(norm_phone),
         whatsapp_phone=norm_wa,
         created_at=datetime.utcnow()
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    # Decrypt for the API response — the caller always sees plaintext
+    user.phone_number = phone_crypto.decrypt_phone(user.phone_number)
 
     token = auth.create_access_token({"sub": str(user.id), "email": user.email})
     return {
@@ -238,6 +241,7 @@ def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = auth.create_access_token({"sub": str(user.id), "email": user.email})
+    user.phone_number = phone_crypto.decrypt_phone(user.phone_number)
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -247,6 +251,7 @@ def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
 @app.get("/api/auth/me", response_model=schemas.UserResponse)
 def get_auth_me(current_user: models.User = Depends(auth.get_current_user)):
     """Get current authenticated user info. Protected route."""
+    current_user.phone_number = phone_crypto.decrypt_phone(current_user.phone_number)
     return current_user
 
 @app.put("/api/users/me", response_model=schemas.UserResponse)
@@ -267,22 +272,15 @@ def update_profile(
                 raise HTTPException(status_code=400, detail="Email already in use")
             current_user.email = new_email
 
-    synchronize_whatsapp_phone = False
     if payload.phone_number is not None:
-        previous_phone = current_user.phone_number
         next_phone = auth.normalize_phone(payload.phone_number)
-        current_user.phone_number = next_phone
-        # Most profiles use one number for both channels. Keep that linked value
-        # current when only the primary phone is edited, while preserving an
-        # intentionally distinct WhatsApp number.
-        synchronize_whatsapp_phone = (
-            payload.whatsapp_phone is None
-            or auth.normalize_phone(payload.whatsapp_phone) == previous_phone
-        )
-        if synchronize_whatsapp_phone:
+        current_user.phone_number = phone_crypto.encrypt_phone(next_phone)
+        # A mobile-only update keeps the shared WhatsApp contact current. An
+        # explicit WhatsApp value remains an intentional per-channel choice.
+        if payload.whatsapp_phone is None:
             current_user.whatsapp_phone = next_phone
 
-    if payload.whatsapp_phone is not None and not synchronize_whatsapp_phone:
+    if payload.whatsapp_phone is not None:
         norm_wa = auth.normalize_phone(payload.whatsapp_phone)
         if norm_wa and norm_wa != current_user.whatsapp_phone:
             existing_wa = db.query(models.User).filter(models.User.whatsapp_phone == norm_wa).first()
@@ -292,6 +290,8 @@ def update_profile(
 
     db.commit()
     db.refresh(current_user)
+    # Decrypt for the API response — the caller always sees plaintext
+    current_user.phone_number = phone_crypto.decrypt_phone(current_user.phone_number)
     return current_user
 
 @app.get("/api/users", response_model=List[schemas.User])
@@ -310,6 +310,7 @@ def read_user_profile(
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    db_user.phone_number = phone_crypto.decrypt_phone(db_user.phone_number)
     return db_user
 
 @app.put("/api/users/{user_id}/profile", response_model=schemas.User)
@@ -326,11 +327,11 @@ def update_user_profile(
         raise HTTPException(status_code=404, detail="User not found")
     
     update_data = profile.model_dump(exclude_unset=True)
-    previous_phone = db_user.phone_number
     if "phone_number" in update_data:
-        db_user.phone_number = auth.normalize_phone(update_data.pop("phone_number"))
-        if "whatsapp_phone" not in update_data and db_user.whatsapp_phone == previous_phone:
-            db_user.whatsapp_phone = db_user.phone_number
+        next_phone = auth.normalize_phone(update_data.pop("phone_number"))
+        db_user.phone_number = phone_crypto.encrypt_phone(next_phone)
+        if "whatsapp_phone" not in update_data:
+            db_user.whatsapp_phone = next_phone
     if "whatsapp_phone" in update_data:
         update_data["whatsapp_phone"] = auth.normalize_phone(update_data["whatsapp_phone"])
     for key, value in update_data.items():
@@ -338,6 +339,7 @@ def update_user_profile(
     
     db.commit()
     db.refresh(db_user)
+    db_user.phone_number = phone_crypto.decrypt_phone(db_user.phone_number)
     return db_user
 
 @app.get("/api/users/{user_id}/trips", response_model=List[schemas.Trip])

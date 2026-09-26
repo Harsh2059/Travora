@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 import models
+import crypto as phone_crypto
 from services.notifications.contracts import NotificationChannel, NotificationRequest, NotificationResult
 from .client import MetaWhatsAppClient
 from .config import DEMO_WHATSAPP_NUMBER
@@ -68,7 +69,7 @@ class WhatsAppService:
             # Resolve the profile row at notification time. This avoids using a
             # relationship object retained before a successful phone update.
             user = db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
-            recipient = (user.whatsapp_phone or user.phone_number) if user else None
+            recipient = (user.whatsapp_phone or phone_crypto.decrypt_phone(user.phone_number)) if user else None
             if not recipient:
                 return NotificationResult(
                     success=False,
@@ -160,7 +161,7 @@ class WhatsAppService:
             db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
             if trip else None
         )
-        user_phone = (user.whatsapp_phone or user.phone_number) if user else None
+        user_phone = (user.whatsapp_phone or phone_crypto.decrypt_phone(user.phone_number)) if user else None
         
         if not user_phone:
             print("[WHATSAPP] recipient resolution failed: traveler has no phone", flush=True)

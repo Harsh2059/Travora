@@ -10,6 +10,7 @@ from jose import JWTError, jwt
 from database import get_db
 from models import User
 import schemas
+import crypto as phone_crypto
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 try:
@@ -118,7 +119,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
             id=token_data.id,
             email=token_data.email or payload.get("email", ""),
             name=user_meta.get("name", "Traveler"),
-            phone_number=user_meta.get("phone_number"),
+            phone_number=phone_crypto.encrypt_phone(user_meta.get("phone_number")),
             whatsapp_phone=user_meta.get("whatsapp_phone"),
             role=token_data.role or "traveler",
             auth_provider="supabase"
@@ -156,7 +157,7 @@ async def get_optional_user(token: Optional[str] = Depends(OAuth2PasswordBearer(
             id=token_data.id,
             email=token_data.email or payload.get("email", ""),
             name=user_meta.get("name", "Traveler"),
-            phone_number=user_meta.get("phone_number"),
+            phone_number=phone_crypto.encrypt_phone(user_meta.get("phone_number")),
             whatsapp_phone=user_meta.get("whatsapp_phone"),
             role=token_data.role or "traveler",
             auth_provider="supabase"
@@ -168,6 +169,8 @@ async def get_optional_user(token: Optional[str] = Depends(OAuth2PasswordBearer(
 
 @router.get("/me", response_model=schemas.UserResponse)
 def read_users_me(current_user: User = Depends(get_current_user)):
+    # Decrypt phone_number for the API response — caller always sees plaintext
+    current_user.phone_number = phone_crypto.decrypt_phone(current_user.phone_number)
     return current_user
 
 def normalize_phone(phone: str) -> str:
