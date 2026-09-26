@@ -19,7 +19,7 @@ import { analyzePart4Recovery, executePart5Recovery } from '../services/recovery
 
 export default function SkyWayDisruptionScreen() {
   const navigate = useNavigate();
-  const { journey } = useJourney();
+  const { journey, refresh } = useJourney();
 
   const [selectedOptionId, setSelectedOptionId] = useState<string>('opt_2');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -126,19 +126,22 @@ export default function SkyWayDisruptionScreen() {
       selected_at: new Date().toISOString(),
     };
 
-    saveSelectedRecoveryPlan(tripId, planPayload, 'fingerprint_delay_6h30m', false);
-
     try {
-      // If backend is connected, notify execution engine
-      await executePart5Recovery(tripId, planPayload, 'fingerprint_delay_6h30m').catch(() => null);
-    } catch {
-      // offline fallback
-    }
+      const result = await executePart5Recovery(tripId, planPayload, 'fingerprint_delay_6h30m');
+      if (result.status !== 'COMPLETED' && result.status !== 'PARTIALLY_COMPLETED') {
+        throw new Error(result.message || 'Recovery booking did not complete.');
+      }
 
-    setTimeout(() => {
+      // The booking endpoint is authoritative. Refresh its exact trip before
+      // navigating so every consumer receives the newly persisted itinerary.
+      await refresh();
+      saveSelectedRecoveryPlan(tripId, planPayload, 'fingerprint_delay_6h30m', false);
       setIsProcessing(false);
       navigate('/itinerary');
-    }, 400);
+    } catch (err) {
+      console.error('Failed to apply recovery:', err);
+      setIsProcessing(false);
+    }
   };
 
   return (

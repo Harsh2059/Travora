@@ -23,6 +23,15 @@ export default function SkyWayItineraryScreen() {
 
   const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
   const [copyToast, setCopyToast] = useState(false);
+  const itineraryNodes = journey?.nodes ?? [];
+
+  const formatDateTime = (value?: string) => {
+    if (!value) return 'Time pending';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? value
+      : date.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  };
 
   useEffect(() => {
     if (journey?.id) {
@@ -34,7 +43,12 @@ export default function SkyWayItineraryScreen() {
   }, [journey?.id]);
 
   const handleDownload = () => {
-    const content = `SkyWay Updated Itinerary Confirmation\nTrip: ${journey?.title || 'Trip to London'}\nBooking Reference: SW12345678\nStatus: Confirmed - Recovery Applied\nNew Outbound: AI-645 (BOM -> AMD) -> AI-207 (AMD -> DEL)\nSeats: 12A, 12B, 12C Confirmed\nBaggage: 25 kg Checked baggage transferred`;
+    const content = [
+      'Travora Updated Itinerary',
+      `Trip: ${journey?.title || 'Your journey'}`,
+      'Status: Recovery applied',
+      ...itineraryNodes.map((node) => `${node.transportMode || node.type}: ${node.title} | ${node.origin || node.location || '—'} -> ${node.destination || '—'} | ${formatDateTime(node.startTime)}`),
+    ].join('\n');
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -157,7 +171,7 @@ export default function SkyWayItineraryScreen() {
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-900">
-                    {selectedPlan?.replacement_flight?.carrier || 'Air India'} {selectedPlan?.replacement_flight?.flightNumber || 'AI-645'}
+                    {itineraryNodes[0]?.title || selectedPlan?.replacement_flight?.carrier || 'Updated journey'}
                   </p>
                   <p className="text-[11px] text-slate-600 font-medium">
                     {selectedPlan?.replacement_flight?.route || 'Mumbai → Ahmedabad'} • {selectedPlan?.replacement_flight?.date || '12 Jun 2025'}
@@ -166,9 +180,9 @@ export default function SkyWayItineraryScreen() {
               </div>
 
               <div className="flex items-center justify-between text-xs font-bold text-slate-800 pt-1">
-                <span>{selectedPlan?.replacement_flight?.departure || '11:45'}</span>
+                <span>{formatDateTime(itineraryNodes[0]?.startTime)}</span>
                 <span className="text-sky-400">➜</span>
-                <span>{selectedPlan?.replacement_flight?.arrival || '13:45'}</span>
+                <span>{formatDateTime(itineraryNodes[0]?.endTime)}</span>
               </div>
             </div>
           </div>

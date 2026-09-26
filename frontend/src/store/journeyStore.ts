@@ -13,7 +13,7 @@
  * engine until synced. A 'local' journey is surfaced with a clear warning.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import type { Journey, JourneyNode } from '../types';
 import { notifyTripUpdated, subscribeToTripUpdates } from './tripSync';
@@ -599,8 +599,11 @@ export function useJourney(): JourneyState {
   const [journey, setJourney] = useState<Journey | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // A slow earlier request must never overwrite a newer recovery refresh.
+  const latestRequestRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     setError(null);
 
@@ -619,6 +622,7 @@ export function useJourney(): JourneyState {
 
         const j = await fetchTripById(targetId);
         if (j && j.nodes && j.nodes.length > 0) {
+          if (requestId !== latestRequestRef.current) return;
           clearLocalJourney(); // Clear unsynced local cache when backend trip exists
           setJourney(j);
           return;
@@ -631,39 +635,53 @@ export function useJourney(): JourneyState {
     // 2. Check local unsynced journey
     const local = getLocalJourney();
     if (local && local.nodes && local.nodes.length > 0) {
+      if (requestId !== latestRequestRef.current) return;
       setJourney(local);
       return;
     }
 
     // 3. If no backend trip or local draft exists, set journey to null (empty state)
-    setJourney(null);
+    if (requestId === latestRequestRef.current) setJourney(null);
   }, []);
 
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  // Subscribe to external trip updates to trigger a refresh automatically
-  useEffect(() => {
-    if (journey?.id) {
-      const unsubscribe = subscribeToTripUpdates(journey.id, () => {
-        refresh();
-      });
-      return unsubscribe;
+  const refresh = useCallback(async () => {
+    const tripId = journey?.id ?? getActiveTripId();
+    if (!tripId) {
+      setJourney(null);
+      setLoading(false);
+      return;
+    }
+
+    const requestId = ++latestRequestRef.current;
+    setLoading(true);
+    try {
+      // Refresh the exact trip being displayed, rather than whichever trip happens
+      // to be stored as active when the recovery response arrives.
+      const j = await fetchTripById(tripId);
+      if (requestId === latestRequestRef.current) {
+        setJourney(j);
+        setError(null);
+      }
+    } catch {
+      if (requestId === latestRequestRef.current) setError('fetch_failed');
+    } finally {
+      if (requestId === latestRequestRef.current) setLoading(false);
     }
   }, [journey?.id]);
 
-  const refresh = useCallback(async () => {
-    try {
-      const j = await fetchActiveJourney();
-      setJourney(j);
-      setError(null);
-    } catch {
-      setError('fetch_failed');
-    } finally {
-      setLoading(false);
+  // Subscribe to canonical trip mutations (including a completed recovery).
+  useEffect(() => {
+    if (journey?.id) {
+      const unsubscribe = subscribeToTripUpdates(journey.id, () => {
+        void refresh();
+      });
+      return unsubscribe;
     }
-  }, []);
+  }, [journey?.id, refresh]);
 
   const clearActive = useCallback(() => {
     clearActiveTripId();
