@@ -12,8 +12,12 @@ from models import User
 import schemas
 
 # ── Password helpers ──────────────────────────────────────────────────────────
-# We use passlib with bcrypt for local-auth users. Import lazily so that the
-# app doesn't crash at startup when passlib isn't available (Supabase-only mode).
+try:
+    import bcrypt
+    _BCRYPT_AVAILABLE = True
+except ImportError:
+    _BCRYPT_AVAILABLE = False
+
 try:
     from passlib.context import CryptContext
     _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -25,19 +29,30 @@ except Exception:
 
 def hash_password(plain: str) -> str:
     """Hash a plaintext password using bcrypt."""
-    if not _PASSLIB_AVAILABLE or _pwd_context is None:
-        raise RuntimeError("passlib[bcrypt] is not installed — cannot hash passwords.")
-    return _pwd_context.hash(plain)
+    pw_bytes = plain.encode('utf-8')[:72]
+    if _BCRYPT_AVAILABLE:
+        return bcrypt.hashpw(pw_bytes, bcrypt.gensalt()).decode('utf-8')
+    if _PASSLIB_AVAILABLE and _pwd_context is not None:
+        return _pwd_context.hash(plain[:72])
+    raise RuntimeError("bcrypt or passlib[bcrypt] is not installed — cannot hash passwords.")
 
 
 def verify_password(plain: str, hashed: Optional[str]) -> bool:
     """Return True if *plain* matches the stored *hashed* password."""
-    if not _PASSLIB_AVAILABLE or _pwd_context is None or not hashed:
+    if not hashed:
         return False
-    try:
-        return _pwd_context.verify(plain, hashed)
-    except Exception:
-        return False
+    pw_bytes = plain.encode('utf-8')[:72]
+    if _BCRYPT_AVAILABLE:
+        try:
+            return bcrypt.checkpw(pw_bytes, hashed.encode('utf-8'))
+        except Exception:
+            pass
+    if _PASSLIB_AVAILABLE and _pwd_context is not None:
+        try:
+            return _pwd_context.verify(plain[:72], hashed)
+        except Exception:
+            return False
+    return False
 
 
 # ── JWT helpers ───────────────────────────────────────────────────────────────

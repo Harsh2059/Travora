@@ -1587,7 +1587,7 @@ def execute_recovery_endpoint(
 
 
         # Fetch complete updated journey details to return complete state payload
-        trip_details = get_trip_details(trip_id, db)
+        trip_details = get_trip_details(trip_id=trip_id, admin=True, db=db, current_user=None)
         exec_res["originalJourney"] = {
             "id": trip_id,
             "title": trip_details.get("title"),
