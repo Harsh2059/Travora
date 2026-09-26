@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 import crud, models, schemas, seed
+import crypto as phone_crypto
 import hashlib
 import hmac
 from database import engine, get_db, SessionLocal
@@ -214,13 +215,15 @@ def register(payload: schemas.UserRegister, db: Session = Depends(get_db)):
         name=payload.name.strip(),
         email=email,
         hashed_password=auth.hash_password(payload.password),
-        phone_number=norm_phone,
+        phone_number=phone_crypto.encrypt_phone(norm_phone),
         whatsapp_phone=norm_wa,
         created_at=datetime.utcnow()
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    # Decrypt for the API response — the caller always sees plaintext
+    user.phone_number = phone_crypto.decrypt_phone(user.phone_number)
 
     token = auth.create_access_token({"sub": str(user.id), "email": user.email})
     return {
@@ -268,7 +271,9 @@ def update_profile(
             current_user.email = new_email
 
     if payload.phone_number is not None:
-        current_user.phone_number = auth.normalize_phone(payload.phone_number)
+        current_user.phone_number = phone_crypto.encrypt_phone(
+            auth.normalize_phone(payload.phone_number)
+        )
 
     if payload.whatsapp_phone is not None:
         norm_wa = auth.normalize_phone(payload.whatsapp_phone)
@@ -280,6 +285,8 @@ def update_profile(
 
     db.commit()
     db.refresh(current_user)
+    # Decrypt for the API response — the caller always sees plaintext
+    current_user.phone_number = phone_crypto.decrypt_phone(current_user.phone_number)
     return current_user
 
 @app.get("/api/users", response_model=List[schemas.User])

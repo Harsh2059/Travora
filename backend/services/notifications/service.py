@@ -8,6 +8,7 @@ from .sms_generator import DynamicSmsGenerator
 from services.whatsapp.service import WhatsAppService
 import models
 from models import SmsJob
+import crypto as phone_crypto
 
 
 class NotificationService:
@@ -50,7 +51,7 @@ class NotificationService:
                 if not trip or not trip.user or not trip.user.sms_enabled:
                     return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="SMS notifications disabled")
                 
-                user_phone = trip.user.whatsapp_phone or trip.user.phone_number
+                user_phone = trip.user.whatsapp_phone or phone_crypto.decrypt_phone(trip.user.phone_number)
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:
@@ -166,7 +167,7 @@ class NotificationService:
                 if not trip or not trip.user or not trip.user.sms_enabled:
                     return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="SMS notifications disabled")
                     
-                user_phone = trip.user.whatsapp_phone or trip.user.phone_number
+                user_phone = trip.user.whatsapp_phone or phone_crypto.decrypt_phone(trip.user.phone_number)
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:
