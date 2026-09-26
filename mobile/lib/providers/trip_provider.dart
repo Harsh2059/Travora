@@ -131,6 +131,14 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
       for (var item in items) {
         await _tripService.addTripItem(newTrip.id, item);
       }
+      // Trigger notifications now that the trip is fully constructed
+      try {
+        await _tripService.notifyTripCreated(newTrip.id);
+      } catch (e) {
+        // Log but don't fail the trip creation
+        debugPrint('Failed to trigger journey creation notification: $e');
+      }
+
       await fetchDashboardData();
       await selectTrip(newTrip.id);
       return true;

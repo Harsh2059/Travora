@@ -1,6 +1,6 @@
 import os
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, date
 
 
 class DynamicSmsGenerator:
@@ -244,3 +244,40 @@ class DynamicSmsGenerator:
             lines.append("\n".join(seg_lines))
 
         return "\n\n".join(lines)
+
+    @staticmethod
+    def generate_welcome_sms(user_name: Optional[str]) -> str:
+        """
+        Generates a welcome SMS for a newly registered user.
+        """
+        name = (user_name or "Traveler").strip()
+        return (
+            f"Travora: Welcome {name}! Your account has been created successfully. "
+            "You'll receive journey updates and disruption recovery options on this number."
+        )
+
+    @staticmethod
+    def generate_journey_created_sms(
+        trip_name: str,
+        origin: Optional[str],
+        destination: Optional[str],
+        travel_date: Optional[str],
+        booking_ref: Optional[str],
+    ) -> str:
+        """
+        Generates a journey-confirmed SMS with real trip data.
+        No hardcoded values — only what is available in the trip.
+        """
+        parts = [f"Travora: Journey confirmed – {trip_name}."]
+        if origin and destination:
+            parts.append(f"{origin} → {destination}.")
+        elif origin:
+            parts.append(f"From {origin}.")
+        elif destination:
+            parts.append(f"To {destination}.")
+        if travel_date:
+            parts.append(f"Date: {travel_date}.")
+        if booking_ref:
+            parts.append(f"Ref: {booking_ref}.")
+        parts.append("Open Travora to view your itinerary. We'll notify you of any changes.")
+        return " ".join(parts)

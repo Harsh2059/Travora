@@ -8,6 +8,7 @@ class ApiEndpoints {
   static String userTrips(String userId) => '/api/users/$userId/trips';
   static String tripDetails(int tripId) => '/api/trips/$tripId';
   static String tripItems(int tripId) => '/api/trips/$tripId/items';
+  static String notifyTripCreated(int tripId) => '/api/trips/$tripId/notify-created';
   
   static String tripDisruptions(int tripId) => '/api/trips/$tripId/disruptions';
   static String tripImpact(int tripId) => '/api/trips/$tripId/impact';

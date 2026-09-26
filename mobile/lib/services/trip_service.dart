@@ -32,4 +32,10 @@ class TripService {
       body: payload,
     );
   }
+
+  Future<void> notifyTripCreated(int tripId) async {
+    await _apiClient.post(
+      ApiEndpoints.notifyTripCreated(tripId),
+    );
+  }
 }

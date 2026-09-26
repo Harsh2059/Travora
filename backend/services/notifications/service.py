@@ -226,3 +226,174 @@ class NotificationService:
             status="FAILED",
             error=f"Notification channel {channel.value} is not configured.",
         )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # NEW: Welcome notification  (signup event)
+    # ──────────────────────────────────────────────────────────────────────────
+    def send_welcome_notification(
+        self,
+        db: Session,
+        channel: NotificationChannel,
+        user,
+    ) -> NotificationResult:
+        """Dispatch welcome notification on the given channel.
+
+        Idempotent per user_id × channel.
+        Must NOT block or raise \u2014 call inside a try/except in the route handler.
+        """
+        if channel == NotificationChannel.WHATSAPP:
+            if not user.whatsapp_enabled:
+                print(f"[NOTIFICATION] welcome WhatsApp SKIPPED \u2014 user {user.id} has whatsapp_enabled=False", flush=True)
+                return NotificationResult(
+                    success=False, channel=channel, recipient="", status="SKIPPED",
+                    error="WhatsApp notifications disabled for this user"
+                )
+            print(f"[NOTIFICATION] sending welcome WhatsApp for user {user.id}", flush=True)
+            return self.whatsapp_service.send_welcome_notification(db=db, user=user)
+
+        elif channel == NotificationChannel.SMS:
+            try:
+                if not user.sms_enabled:
+                    print(f"[NOTIFICATION] welcome SMS SKIPPED \u2014 user {user.id} has sms_enabled=False", flush=True)
+                    return NotificationResult(
+                        success=False, channel=channel, recipient="", status="SKIPPED",
+                        error="SMS notifications disabled for this user"
+                    )
+
+                user_phone = user.whatsapp_phone or user.phone_number
+                recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
+                if not recipient:
+                    return NotificationResult(
+                        success=False, channel=channel, recipient="", status="FAILED",
+                        error="No recipient phone number available."
+                    )
+
+                idemp_key = f"WELCOME_{user.id}"
+                existing_job = db.query(SmsJob).filter(SmsJob.idempotency_key == idemp_key).first()
+                if existing_job:
+                    print(f"[SMS] welcome already queued for user {user.id} \u2014 skipping", flush=True)
+                    return NotificationResult(
+                        success=True, channel=channel, recipient=existing_job.recipient,
+                        status="ALREADY_QUEUED"
+                    )
+
+                message = DynamicSmsGenerator.generate_welcome_sms(user.name)
+                masked = (recipient[:3] + "..." + recipient[-4:]) if len(recipient) >= 7 else "<masked>"
+                print(f"[SMS] queueing welcome for user {user.id} to {masked}", flush=True)
+                job = SmsJob(
+                    id=str(uuid.uuid4()),
+                    recipient=recipient,
+                    message=message,
+                    status="PENDING",
+                    notification_type="WELCOME",
+                    idempotency_key=idemp_key,
+                )
+                db.add(job)
+                db.commit()
+                return NotificationResult(
+                    success=True, channel=channel, recipient=recipient, status="QUEUED"
+                )
+            except Exception as e:
+                db.rollback()
+                return NotificationResult(
+                    success=False, channel=channel, recipient="", status="FAILED", error=str(e)
+                )
+
+        return NotificationResult(
+            success=False, channel=channel, recipient="", status="FAILED",
+            error=f"Notification channel {channel.value} is not configured."
+        )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # NEW: Journey-created notification  (trip creation event)
+    # ──────────────────────────────────────────────────────────────────────────
+    def send_journey_created_notification(
+        self,
+        db: Session,
+        channel: NotificationChannel,
+        trip,
+    ) -> NotificationResult:
+        """Dispatch journey-confirmed notification on the given channel.
+
+        Idempotent per trip_id \u00d7 channel.
+        Must NOT block or raise \u2014 call inside a try/except in the route handler.
+        """
+        if channel == NotificationChannel.WHATSAPP:
+            if not trip.user or not trip.user.whatsapp_enabled:
+                print(f"[NOTIFICATION] journey WhatsApp SKIPPED \u2014 trip {trip.id} owner disabled", flush=True)
+                return NotificationResult(
+                    success=False, channel=channel, recipient="", status="SKIPPED",
+                    error="WhatsApp notifications disabled"
+                )
+            print(f"[NOTIFICATION] sending journey_created WhatsApp for trip {trip.id}", flush=True)
+            return self.whatsapp_service.send_journey_created_notification(db=db, trip=trip)
+
+        elif channel == NotificationChannel.SMS:
+            try:
+                if not trip.user or not trip.user.sms_enabled:
+                    print(f"[NOTIFICATION] journey SMS SKIPPED \u2014 trip {trip.id} owner disabled", flush=True)
+                    return NotificationResult(
+                        success=False, channel=channel, recipient="", status="SKIPPED",
+                        error="SMS notifications disabled"
+                    )
+
+                user_phone = trip.user.whatsapp_phone or trip.user.phone_number
+                recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
+                if not recipient:
+                    return NotificationResult(
+                        success=False, channel=channel, recipient="", status="FAILED",
+                        error="No recipient phone number available."
+                    )
+
+                idemp_key = f"JOURNEY_{trip.id}"
+                existing_job = db.query(SmsJob).filter(SmsJob.idempotency_key == idemp_key).first()
+                if existing_job:
+                    print(f"[SMS] journey_created already queued for trip {trip.id} \u2014 skipping", flush=True)
+                    return NotificationResult(
+                        success=True, channel=channel, recipient=existing_job.recipient,
+                        status="ALREADY_QUEUED"
+                    )
+
+                # Extract trip details for SMS (actual data, no hardcoding)
+                items = sorted(
+                    [i for i in (trip.items or []) if i.start_time is not None],
+                    key=lambda x: x.start_time,
+                )
+                origin = items[0].origin if items and items[0].origin else None
+                destination = items[-1].destination if items and items[-1].destination else None
+                travel_date = items[0].start_time.strftime("%d %b %Y") if items else None
+                booking_ref = f"TRV{str(trip.id).zfill(6)}"
+
+                message = DynamicSmsGenerator.generate_journey_created_sms(
+                    trip_name=trip.title,
+                    origin=origin,
+                    destination=destination,
+                    travel_date=travel_date,
+                    booking_ref=booking_ref,
+                )
+                masked = (recipient[:3] + "..." + recipient[-4:]) if len(recipient) >= 7 else "<masked>"
+                print(f"[SMS] queueing journey_created for trip {trip.id} to {masked}", flush=True)
+                job = SmsJob(
+                    id=str(uuid.uuid4()),
+                    recipient=recipient,
+                    message=message,
+                    status="PENDING",
+                    trip_id=trip.id,
+                    notification_type="JOURNEY_CREATED",
+                    idempotency_key=idemp_key,
+                )
+                db.add(job)
+                db.commit()
+                return NotificationResult(
+                    success=True, channel=channel, recipient=recipient, status="QUEUED"
+                )
+            except Exception as e:
+                db.rollback()
+                return NotificationResult(
+                    success=False, channel=channel, recipient="", status="FAILED", error=str(e)
+                )
+
+        return NotificationResult(
+            success=False, channel=channel, recipient="", status="FAILED",
+            error=f"Notification channel {channel.value} is not configured."
+        )

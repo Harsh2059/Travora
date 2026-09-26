@@ -222,6 +222,32 @@ def register(payload: schemas.UserRegister, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
+    print(f"[AUTH] user created id={user.id} email={email}", flush=True)
+    logger.info("[AUTH] user created id=%s email=%s", user.id, email)
+
+    # ── Welcome notifications (non-critical — failures must NOT abort registration) ──
+    try:
+        NotificationService().send_welcome_notification(
+            db=db,
+            channel=NotificationChannel.WHATSAPP,
+            user=user,
+        )
+    except Exception as exc:
+        logger.warning("[AUTH] Welcome WhatsApp failed: %s", type(exc).__name__)
+
+    try:
+        try:
+            db.rollback()   # clean session state before the SMS commit
+        except Exception:
+            pass
+        NotificationService().send_welcome_notification(
+            db=db,
+            channel=NotificationChannel.SMS,
+            user=user,
+        )
+    except Exception as exc:
+        logger.warning("[AUTH] Welcome SMS queueing failed: %s", type(exc).__name__)
+
     token = auth.create_access_token({"sub": str(user.id), "email": user.email})
     return {
         "access_token": token,
@@ -409,15 +435,48 @@ def add_trip_item(
     db.add(item)
     db.commit()
     db.refresh(item)
-    return {
-        "id": item.id, "trip_id": item.trip_id, "type": item.type, "provider": item.provider,
-        "origin": item.origin, "destination": item.destination, "location": item.location,
-        "start_time": item.start_time.isoformat() if item.start_time else None,
-        "end_time": item.end_time.isoformat() if item.end_time else None,
-        "cost": item.cost, "currency": item.currency, "priority": item.priority,
-        "flexibility": item.flexibility, "status": item.status, "booking_id": item.booking_id,
         "item_metadata": item.item_metadata or {}
     }
+
+
+@app.post("/api/trips/{trip_id}/notify-created")
+def notify_trip_created(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+):
+    """Trigger the 'journey confirmed' notifications after all items are added."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this trip")
+
+    # ── Journey Created notifications (non-critical) ──
+    try:
+        NotificationService().send_journey_created_notification(
+            db=db,
+            channel=NotificationChannel.WHATSAPP,
+            trip=trip,
+        )
+    except Exception as exc:
+        logger.warning("[TRIP] Journey-created WhatsApp failed: %s", type(exc).__name__)
+
+    try:
+        try:
+            db.rollback()   # clean session state before the SMS commit
+        except Exception:
+            pass
+        NotificationService().send_journey_created_notification(
+            db=db,
+            channel=NotificationChannel.SMS,
+            trip=trip,
+        )
+    except Exception as exc:
+        logger.warning("[TRIP] Journey-created SMS queueing failed: %s", type(exc).__name__)
+
+    return {"status": "success", "message": "Notifications dispatched"}
+
 
 @app.put("/api/trips/{trip_id}/items/{item_id}")
 def update_trip_item(
