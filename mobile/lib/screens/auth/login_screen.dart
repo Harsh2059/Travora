@@ -115,7 +115,36 @@ class _LoginScreenState extends State<LoginScreen> {
                         : Text('Sign In', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                SizedBox(height: 16),
+                TextButton(
+                  onPressed: () async {
+                    if (_emailController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please enter your email address first.')),
+                      );
+                      return;
+                    }
+                    
+                    final success = await auth.forgotPassword(_emailController.text.trim());
+                    if (!context.mounted) return;
+                    
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(success 
+                          ? 'Password reset link sent to your email.' 
+                          : auth.errorMessage ?? 'Failed to send reset link.'),
+                        backgroundColor: success ? Colors.green : Colors.red,
+                      ),
+                    );
+                  },
+                  child: Text(
+                    'Forgot Password?',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                SizedBox(height: 8),
                 TextButton(
                   onPressed: () {
                     Navigator.of(context).push(

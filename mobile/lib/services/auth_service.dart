@@ -50,6 +50,37 @@ class AuthService {
     }
   }
 
+  Future<Map<String, dynamic>> loginProvider(String provider, String email) async {
+    try {
+      final body = {
+        'provider': provider,
+        if (provider == 'phone') 'phone': 'mock_phone',
+        if (provider == 'phone') 'otp': '123456',
+        if (provider != 'phone') 'email': email,
+      };
+      
+      final response = await http.post(
+        Uri.parse('${ApiEndpoints.baseUrl}/api/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final token = data['access_token'];
+        final userId = data['user_id'].toString();
+        
+        await _saveSession(token, userId);
+        return {'success': true, 'userId': userId};
+      } else {
+        final error = json.decode(response.body);
+        return {'success': false, 'message': error['detail'] ?? 'Provider login failed.'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Unable to connect. Please check your internet connection.'};
+    }
+  }
+
   Future<Map<String, dynamic>> register(String name, String email, String password, String phone, String whatsappPhone) async {
     try {
       final response = await http.post(
@@ -108,6 +139,26 @@ class AuthService {
       // If network fails but we have a token, we could potentially allow offline access, 
       // but for strict auth, we assume invalid if we can't verify unless we implement offline caching.
       return {'valid': false, 'offline': true}; 
+    }
+  }
+
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiEndpoints.baseUrl}/api/auth/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'email': email}),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {'success': true, 'message': data['message']};
+      } else {
+        final error = json.decode(response.body);
+        return {'success': false, 'message': error['detail'] ?? 'Failed to send reset link.'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Unable to connect. Please check your internet connection.'};
     }
   }
 }

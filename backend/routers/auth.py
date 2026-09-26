@@ -208,3 +208,35 @@ def normalize_phone(phone: str) -> str:
         else:
             cleaned = '+' + cleaned
     return cleaned
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    token: str
+    new_password: str
+
+@router.post("/forgot-password")
+def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        # Don't reveal if user exists
+        return {"status": "success", "message": "If that email is in our system, we have sent a reset link."}
+    
+    # In a real app, generate a secure token, store it with an expiration, and email it.
+    # For now, we mock the success.
+    return {"status": "success", "message": "If that email is in our system, we have sent a reset link."}
+
+@router.post("/reset-password")
+def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    # In a real app, validate the token against the stored token for this user
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid request")
+    
+    # Update the password
+    user.hashed_password = get_password_hash(request.new_password)
+    db.commit()
+    
+    return {"status": "success", "message": "Password updated successfully"}

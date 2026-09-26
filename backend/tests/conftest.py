@@ -1,10 +1,19 @@
-"""
-conftest.py — adds backend root to sys.path for all test files.
-"""
+import pytest
 import sys
 import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from main import app
+from routers.auth import get_current_user
+from models import User
 
-# Add the backend directory to the Python path
-backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
+def mock_get_current_user():
+    return User(id=1, role="admin", name="Test Admin", email="admin@example.com")
+
+@pytest.fixture(autouse=True)
+def override_auth(request):
+    if "test_auth.py" in request.node.fspath.strpath:
+        yield
+        return
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)

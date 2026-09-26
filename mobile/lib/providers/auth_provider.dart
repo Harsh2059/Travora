@@ -88,21 +88,37 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Provider auth stubs for Phase 7/8/9
   Future<bool> loginWithProvider(String providerName) async {
     _state = AuthState.authenticating;
     _errorMessage = null;
     notifyListeners();
 
     // In a real implementation we would call GoogleSignIn().signIn() here,
-    // get the token, and send it to the backend.
+    // get the token, and send it to the backend. We will mock the provider token here
+    // since the backend has a mock OAuth endpoint configured.
+    final provider = providerName.toLowerCase().split(' ')[0]; // 'google', 'facebook', 'phone'
+    final email = 'mock_$provider@example.com';
     
-    // Simulate backend rejection since it's not configured
-    await Future.delayed(const Duration(seconds: 1));
-    _state = AuthState.authenticationError;
-    _errorMessage = '$providerName authentication endpoints are not yet configured on the backend.';
-    notifyListeners();
-    return false;
+    try {
+      final response = await _authService.loginProvider(provider, email);
+      if (response['success'] == true) {
+        _userId = response['userId'];
+        if (_userId != null) AppConfig.currentUserId = int.parse(_userId!);
+        _state = AuthState.authenticated;
+        notifyListeners();
+        return true;
+      } else {
+        _state = AuthState.authenticationError;
+        _errorMessage = response['message'];
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _state = AuthState.authenticationError;
+      _errorMessage = 'Unable to connect. Please check your internet connection.';
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<void> logout() async {
@@ -110,5 +126,24 @@ class AuthProvider extends ChangeNotifier {
     _userId = null;
     _state = AuthState.unauthenticated;
     notifyListeners();
+  }
+
+  Future<bool> forgotPassword(String email) async {
+    _state = AuthState.authenticating;
+    _errorMessage = null;
+    notifyListeners();
+
+    final result = await _authService.forgotPassword(email);
+    
+    if (result['success'] == true) {
+      _state = AuthState.unauthenticated;
+      notifyListeners();
+      return true;
+    } else {
+      _state = AuthState.authenticationError;
+      _errorMessage = result['message'];
+      notifyListeners();
+      return false;
+    }
   }
 }
