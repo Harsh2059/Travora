@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "vite --mode local",
+    "dev:prod": "vite --mode prod_api",
     "build": "tsc -b && vite build",
     "vercel-build": "tsc -b && vite build",
     "lint": "oxlint",

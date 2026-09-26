@@ -186,7 +186,7 @@ export default function AdminConsoleScreen() {
     setFormError(null);
 
     Promise.all([
-      fetchTripById(selectedTripId),
+      fetchTripById(selectedTripId, true), // admin=true: bypass ownership check
       fetchTripDisruptions(selectedTripId),
     ])
       .then(([j, history]) => {
@@ -325,7 +325,7 @@ export default function AdminConsoleScreen() {
         delay_minutes: isDelayType ? delayMinutes : null,
       };
 
-      await triggerTripDisruption(selectedTripId, payload);
+      await triggerTripDisruption(selectedTripId, payload, true); // admin=true: bypass ownership check
       setToastMsg('Disruption triggered successfully!');
 
       // Refresh disruption history

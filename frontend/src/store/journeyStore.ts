@@ -329,8 +329,11 @@ export async function addItemToExistingTrip(
   };
 }
 
-export async function fetchTripById(tripId: number): Promise<Journey | null> {
-  const res = await axios.get(`${API_BASE_URL}/trips/${tripId}`);
+export async function fetchTripById(tripId: number, adminMode = false): Promise<Journey | null> {
+  const url = adminMode
+    ? `${API_BASE_URL}/trips/${tripId}?admin=true`
+    : `${API_BASE_URL}/trips/${tripId}`;
+  const res = await axios.get(url);
   const data = res.data;
 
   // Active items = active non-replaced, non-cancelled items returned from backend API
@@ -389,14 +392,47 @@ export async function fetchUserTrips(userId?: string): Promise<Array<{ id: numbe
       }
     } catch {}
   }
-  if (!effectiveUserId) return []; // Not logged in — don't call API with no user ID
 
-  const res = await axios.get(`${API_BASE_URL}/users/${effectiveUserId}/trips`);
-  return res.data ?? [];
+  // 1. Try fetching all admin trips first for admin/simulation panel
+  try {
+    const adminRes = await axios.get(`${API_BASE_URL}/admin/trips`);
+    if (Array.isArray(adminRes.data) && adminRes.data.length > 0) {
+      return adminRes.data;
+    }
+  } catch {}
+
+  // 2. Fallback to user trips endpoint
+  let trips: Array<{ id: number; title: string; version: number }> = [];
+  if (effectiveUserId) {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/users/${effectiveUserId}/trips`);
+      if (Array.isArray(res.data)) trips = res.data;
+    } catch {}
+  }
+
+  // 3. Guaranteed fallback: include currently active trip ID if stored in localStorage
+  const activeId = getActiveTripId();
+  if (activeId && !trips.some((t) => t.id === activeId)) {
+    try {
+      const activeTrip = await fetchTripById(activeId);
+      if (activeTrip && activeTrip.id !== undefined) {
+        trips.unshift({
+          id: activeTrip.id,
+          title: `#${activeTrip.id} · ${activeTrip.title}`,
+          version: 1,
+        });
+      }
+    } catch {}
+  }
+
+  return trips;
 }
 
-export async function triggerTripDisruption(tripId: number, payload: Record<string, any>) {
-  const res = await axios.post(`${API_BASE_URL}/trips/${tripId}/disruptions`, payload);
+export async function triggerTripDisruption(tripId: number, payload: Record<string, any>, adminMode = false) {
+  const url = adminMode
+    ? `${API_BASE_URL}/trips/${tripId}/disruptions?admin=true`
+    : `${API_BASE_URL}/trips/${tripId}/disruptions`;
+  const res = await axios.post(url, payload);
   notifyTripUpdated(tripId, 'triggerTripDisruption');
   return res.data;
 }

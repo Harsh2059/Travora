@@ -334,6 +334,22 @@ def read_user_trips(
         raise HTTPException(status_code=404, detail="User not found")
     return db_user.trips
 
+
+@app.get("/api/admin/trips")
+def read_admin_trips(db: Session = Depends(get_db)):
+    """Fetch all trips in the system for admin / simulation console."""
+    trips = db.query(models.Trip).order_by(models.Trip.id.desc()).all()
+    res = []
+    for t in trips:
+        user_name = t.user.name if t.user else "Demo User"
+        res.append({
+            "id": t.id,
+            "title": f"#{t.id} · {t.title} ({user_name})",
+            "version": t.version,
+            "user_id": t.user_id
+        })
+    return res
+
 # ============================================================================
 # JOURNEY BUILDER — CREATE & MANAGE USER TRIPS
 # ============================================================================
@@ -505,13 +521,15 @@ def delete_trip_item(
 @app.get("/api/trips/{trip_id}")
 def get_trip_details(
     trip_id: int,
+    admin: bool = False,
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_optional_user)
 ):
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
-    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+    # Allow admin/simulation console to view any trip
+    if not admin and isinstance(current_user, models.User) and trip.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not have access to this trip")
 
     active_items = db.query(models.ItineraryItem).filter(
@@ -748,6 +766,7 @@ def get_trip_graph(trip_id: int, db: Session = Depends(get_db)):
 @app.post("/api/trips/{trip_id}/disruptions")
 def trigger_disruption(
     trip_id: int,
+    admin: bool = False,
     event_payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_optional_user)
@@ -755,7 +774,8 @@ def trigger_disruption(
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
-    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+    # Allow admin/simulation console to trigger disruptions on any trip
+    if not admin and isinstance(current_user, models.User) and trip.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not have access to this trip")
 
     event_type = event_payload.get("event_type") or event_payload.get("disruption_type") or event_payload.get("type") or "FLIGHT_CANCELLED"
