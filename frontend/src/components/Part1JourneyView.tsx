@@ -55,8 +55,10 @@ function timeBadge(node: JourneyNode) {
   if (isHotel) {
     return `${sT || '14:00'} Check-in`;
   }
-  if (sT && eT) return `${sT} - ${eT}`;
-  if (sT) return sT;
+  const prefix = node.timeStatus === 'APPROXIMATE' ? 'Approx. ' : '';
+  if (sT && eT) return `${prefix}${sT} - ${eT}`;
+  if (sT) return `${prefix}${sT}`;
+  if (node.timeStatus === 'APPROXIMATE') return 'Approx. time pending';
   return 'Time not set';
 }
 
@@ -246,18 +248,21 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
               </div>
             )}
             
-            <div className="hidden">
+            {(onDeleteNode || onEditNode) && (
+            <div className="mt-3 pt-3 border-t border-slate-200/70 flex items-center justify-end gap-1">
               {onDeleteNode && (
-                <button onClick={(e) => { e.stopPropagation(); onDeleteNode(node.id); }} className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors">
+                <button type="button" aria-label={`Delete ${node.title}`} onClick={(e) => { e.stopPropagation(); onDeleteNode(node.id); }} className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
               {onEditNode && (
-                <button onClick={(e) => { e.stopPropagation(); onEditNode(node); }} className="p-1.5 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                <button type="button" aria-label={`Edit ${node.title}`} onClick={(e) => { e.stopPropagation(); onEditNode(node); }} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sky-700 bg-white border border-sky-200 hover:bg-sky-50 rounded-lg text-xs font-bold transition-colors">
                   <Pencil className="h-4 w-4" />
+                  Edit stage
                 </button>
               )}
             </div>
+            )}
           </div>
         </div>
       </div>
