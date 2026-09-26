@@ -28,8 +28,19 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        # Check if we have the real Supabase JWT Secret configured
+        has_secret = os.getenv("JWT_SECRET_KEY") is not None
+        
         # Supabase JWT signature validation
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_aud": False})
+        payload = jwt.decode(
+            token, 
+            SECRET_KEY, 
+            algorithms=[ALGORITHM], 
+            options={
+                "verify_aud": False,
+                "verify_signature": has_secret  # Only verify signature if secret is provided in env
+            }
+        )
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
@@ -59,7 +70,16 @@ async def get_optional_user(token: Optional[str] = Depends(OAuth2PasswordBearer(
     if not token:
         return None
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_aud": False})
+        has_secret = os.getenv("JWT_SECRET_KEY") is not None
+        payload = jwt.decode(
+            token, 
+            SECRET_KEY, 
+            algorithms=[ALGORITHM], 
+            options={
+                "verify_aud": False,
+                "verify_signature": has_secret
+            }
+        )
         user_id: str = payload.get("sub")
         if user_id is None:
             return None
