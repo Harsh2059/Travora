@@ -40,7 +40,6 @@ export const API_BASE_URL = (() => {
   if (import.meta.env.PROD && configured.includes('localhost')) return renderUrl;
   return configured;
 })();
-
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
 const DRAFT_KEY = 'travora_draft';
@@ -182,16 +181,16 @@ function nodeToItemPayload(node: JourneyNode) {
   const startTime = node.startTime
     ? node.startTime
     : node.startDate
-    ? `${node.startDate}T00:00:00`
-    : null;
+      ? `${node.startDate}T00:00:00`
+      : null;
 
   const endTime = node.endTime
     ? node.endTime
     : node.endDate
-    ? `${node.endDate}T23:59:59`
-    : node.startDate
-    ? `${node.startDate}T23:59:59`
-    : null;
+      ? `${node.endDate}T23:59:59`
+      : node.startDate
+        ? `${node.startDate}T23:59:59`
+        : null;
 
   const isMetro = node.type === 'METRO' || node.type === 'metro' || node.transportMode === 'METRO';
   const backendType = isMetro ? 'TRAIN' : node.type;
@@ -266,7 +265,7 @@ export async function persistJourneyToBackend(
   // 3. Record the active trip ID in localStorage
   setActiveTripId(tripId);
   clearDraft();
-  
+
   notifyTripUpdated(tripId, 'persistJourneyToBackend');
 
   return {
@@ -390,7 +389,7 @@ export async function fetchUserTrips(userId?: string): Promise<Array<{ id: numbe
         const parsed = JSON.parse(rawUser);
         if (parsed?.id) effectiveUserId = String(parsed.id);
       }
-    } catch {}
+    } catch { }
   }
 
   // 1. Try fetching all admin trips first for admin/simulation panel
