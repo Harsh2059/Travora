@@ -32,9 +32,7 @@ axios.interceptors.request.use((config) => {
 /** Fixed demo user ID for Part 1. Replace with auth when authentication is added. */
 export const DEMO_USER_ID = 1;
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD ? '/api' : 'https://travora-dqgn.onrender.com/api');
-
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
 const DRAFT_KEY = 'travora_draft';
@@ -176,16 +174,16 @@ function nodeToItemPayload(node: JourneyNode) {
   const startTime = node.startTime
     ? node.startTime
     : node.startDate
-    ? `${node.startDate}T00:00:00`
-    : null;
+      ? `${node.startDate}T00:00:00`
+      : null;
 
   const endTime = node.endTime
     ? node.endTime
     : node.endDate
-    ? `${node.endDate}T23:59:59`
-    : node.startDate
-    ? `${node.startDate}T23:59:59`
-    : null;
+      ? `${node.endDate}T23:59:59`
+      : node.startDate
+        ? `${node.startDate}T23:59:59`
+        : null;
 
   const isMetro = node.type === 'METRO' || node.type === 'metro' || node.transportMode === 'METRO';
   const backendType = isMetro ? 'TRAIN' : node.type;
@@ -235,7 +233,7 @@ export async function persistJourneyToBackend(
       const parsed = JSON.parse(rawUser);
       if (parsed?.id) currentUserId = parsed.id;
     }
-  } catch {}
+  } catch { }
 
   const tripRes = await axios.post(
     `${API_BASE_URL}/users/${currentUserId}/trips`,
@@ -259,7 +257,7 @@ export async function persistJourneyToBackend(
   // 3. Record the active trip ID in localStorage
   setActiveTripId(tripId);
   clearDraft();
-  
+
   notifyTripUpdated(tripId, 'persistJourneyToBackend');
 
   return {
@@ -380,7 +378,7 @@ export async function fetchUserTrips(userId?: number): Promise<Array<{ id: numbe
         const parsed = JSON.parse(rawUser);
         if (parsed?.id) effectiveUserId = parsed.id;
       }
-    } catch {}
+    } catch { }
   }
   if (!effectiveUserId) effectiveUserId = DEMO_USER_ID;
 
