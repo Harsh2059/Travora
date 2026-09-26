@@ -602,6 +602,7 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={new Date().toLocaleDateString('en-CA')}
                         value={startDate}
                         onChange={(e) => {
                           setStartDate(e.target.value);
@@ -616,6 +617,7 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={startDate || new Date().toLocaleDateString('en-CA')}
                         value={endDate}
                         onChange={(e) => {
                           setEndDate(e.target.value);
@@ -635,6 +637,7 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={new Date().toLocaleDateString('en-CA')}
                         value={startDate}
                         onChange={(e) => {
                           setStartDate(e.target.value);

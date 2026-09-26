@@ -332,7 +332,7 @@ export async function fetchTripById(tripId: number, adminMode = false): Promise<
   const url = adminMode
     ? `${API_BASE_URL}/trips/${tripId}?admin=true`
     : `${API_BASE_URL}/trips/${tripId}`;
-  const res = await axios.get(url);
+  const res = await axios.get(url, { headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } });
   const data = res.data;
 
   // Active items = active non-replaced, non-cancelled items returned from backend API
