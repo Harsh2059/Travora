@@ -1,6 +1,6 @@
 class Trip {
   final int id;
-  final int userId;
+  final String userId;
   final String title;
   final int version;
   final List<ItineraryItem> items;
@@ -17,7 +17,7 @@ class Trip {
     var itemsList = json['items'] as List? ?? [];
     return Trip(
       id: json['id'] ?? 0,
-      userId: json['user_id'] ?? 0,
+      userId: json['user_id']?.toString() ?? '',
       title: json['title'] ?? 'Unknown Trip',
       version: json['version'] ?? 1,
       items: itemsList.map((e) => ItineraryItem.fromJson(e)).toList(),
