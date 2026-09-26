@@ -8,6 +8,7 @@ from .sms_generator import DynamicSmsGenerator
 from services.whatsapp.service import WhatsAppService
 import models
 from models import SmsJob
+import crypto as phone_crypto
 
 
 class NotificationService:
@@ -55,7 +56,7 @@ class NotificationService:
                 user = db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
                 # SMS must use the current SMS/mobile field. WhatsApp is only a
                 # fallback for legacy profiles that have not set one yet.
-                user_phone = (user.phone_number or user.whatsapp_phone) if user else None
+                user_phone = (phone_crypto.decrypt_phone(user.phone_number) or user.whatsapp_phone) if user else None
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:
@@ -176,7 +177,7 @@ class NotificationService:
                 user = db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
                 # SMS must use the current SMS/mobile field. WhatsApp is only a
                 # fallback for legacy profiles that have not set one yet.
-                user_phone = (user.phone_number or user.whatsapp_phone) if user else None
+                user_phone = (phone_crypto.decrypt_phone(user.phone_number) or user.whatsapp_phone) if user else None
                 recipient = DynamicSmsGenerator.get_recipient_phone(user_phone)
 
                 if not recipient:
