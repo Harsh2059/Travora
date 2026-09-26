@@ -8,6 +8,8 @@ from database import Base
 import models
 import auth
 import crypto
+import routers.auth as supabase_auth
+from fastapi import HTTPException
 from services.whatsapp.client import MetaWhatsAppClient
 from services.whatsapp.handler import WhatsAppWebhookHandler
 from services.whatsapp.context import store_recovery_context
@@ -60,6 +62,53 @@ def test_phone_normalization_formats():
     assert p4 == "+917710989533"
     assert p5 == "+917710989533"
     assert p1 == p2 == p3 == p4 == p5
+
+
+def test_supabase_provisioning_normalizes_phone_and_rejects_legacy_duplicate():
+    """Supabase metadata must not bypass the unique WhatsApp number rule."""
+    db = TestingSessionLocal()
+    db.add(models.User(
+        id="existing-user",
+        name="Existing User",
+        email="existing@example.com",
+        whatsapp_phone="8668429664",  # Legacy unnormalized value
+    ))
+    db.commit()
+
+    token_data = supabase_auth.TokenData(
+        id="new-supabase-user",
+        email="new@example.com",
+        role="authenticated",
+    )
+    with pytest.raises(HTTPException) as error:
+        supabase_auth.provision_supabase_user(db, token_data, {
+            "email": "new@example.com",
+            "user_metadata": {
+                "name": "New User",
+                "whatsapp_phone": "8668429664",
+            },
+        })
+
+    assert error.value.status_code == 409
+    assert "already exists" in error.value.detail
+    assert db.query(models.User).filter(models.User.id == "new-supabase-user").first() is None
+    db.close()
+
+
+def test_supabase_provisioning_stores_normalized_phone():
+    db = TestingSessionLocal()
+    token_data = supabase_auth.TokenData(
+        id="new-supabase-user",
+        email="new@example.com",
+        role="authenticated",
+    )
+    user = supabase_auth.provision_supabase_user(db, token_data, {
+        "email": "new@example.com",
+        "user_metadata": {"name": "New User", "whatsapp_phone": "8668429664"},
+    })
+
+    assert user.whatsapp_phone == "+918668429664"
+    db.close()
 
 
 # ── 2. Registration Tests ────────────────────────────────────────────────────

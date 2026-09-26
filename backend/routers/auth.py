@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from jose import JWTError, jwt
 from database import get_db
 from models import User
@@ -84,6 +85,69 @@ class TokenData(BaseModel):
     role: Optional[str] = None
     email: Optional[str] = None
 
+
+def _phone_variants(phone: Optional[str]) -> set[str]:
+    """Return equivalent representations for matching legacy phone data."""
+    if not phone:
+        return set()
+
+    digits = "".join(char for char in str(phone) if char.isdigit())
+    if not digits:
+        return set()
+
+    variants = {str(phone).strip(), digits, f"+{digits}"}
+    if len(digits) == 10:
+        variants.update({f"+91{digits}", f"91{digits}"})
+    elif len(digits) == 12 and digits.startswith("91"):
+        variants.update({digits[2:], f"+{digits}"})
+    return variants
+
+
+def provision_supabase_user(db: Session, token_data: TokenData, payload: dict) -> User:
+    """Create a local record for a Supabase identity, rejecting account conflicts cleanly."""
+    user_meta = payload.get("user_metadata") or {}
+    email = (token_data.email or payload.get("email") or "").strip().lower()
+    raw_whatsapp_phone = user_meta.get("whatsapp_phone")
+    normalized_whatsapp_phone = normalize_phone(raw_whatsapp_phone)
+
+    # Older rows may contain a raw local number (for example, 8668429664), so
+    # compare equivalent forms while new records are always normalized.
+    phone_values = _phone_variants(raw_whatsapp_phone)
+    query = db.query(User).filter(User.email == email) if email else db.query(User)
+    if phone_values:
+        query = db.query(User).filter(
+            (User.email == email) | (User.whatsapp_phone.in_(phone_values))
+            if email else User.whatsapp_phone.in_(phone_values)
+        )
+    if query.first():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account already exists with this email or WhatsApp number.",
+        )
+
+    user = User(
+        id=token_data.id,
+        email=email,
+        name=user_meta.get("name", "Traveler"),
+        phone_number=phone_crypto.encrypt_phone(normalize_phone(user_meta.get("phone_number"))),
+        whatsapp_phone=normalized_whatsapp_phone,
+        role=token_data.role or "traveler",
+        auth_provider="supabase",
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent request can pass the lookup above; the database remains
+        # the source of truth, and callers still receive a useful API error.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account already exists with this email or WhatsApp number.",
+        )
+    db.refresh(user)
+    return user
+
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -113,20 +177,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         
     user = db.query(User).filter(User.id == token_data.id).first()
     if user is None:
-        # Auto-create user in Postgres if they authenticated successfully via Supabase
-        user_meta = payload.get("user_metadata", {})
-        user = User(
-            id=token_data.id,
-            email=token_data.email or payload.get("email", ""),
-            name=user_meta.get("name", "Traveler"),
-            phone_number=phone_crypto.encrypt_phone(user_meta.get("phone_number")),
-            whatsapp_phone=user_meta.get("whatsapp_phone"),
-            role=token_data.role or "traveler",
-            auth_provider="supabase"
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        user = provision_supabase_user(db, token_data, payload)
     return user
 
 async def get_optional_user(token: Optional[str] = Depends(OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)), db: Session = Depends(get_db)):
@@ -152,19 +203,7 @@ async def get_optional_user(token: Optional[str] = Depends(OAuth2PasswordBearer(
         
     user = db.query(User).filter(User.id == token_data.id).first()
     if user is None:
-        user_meta = payload.get("user_metadata", {})
-        user = User(
-            id=token_data.id,
-            email=token_data.email or payload.get("email", ""),
-            name=user_meta.get("name", "Traveler"),
-            phone_number=phone_crypto.encrypt_phone(user_meta.get("phone_number")),
-            whatsapp_phone=user_meta.get("whatsapp_phone"),
-            role=token_data.role or "traveler",
-            auth_provider="supabase"
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        user = provision_supabase_user(db, token_data, payload)
     return user
 
 @router.get("/me", response_model=schemas.UserResponse)
