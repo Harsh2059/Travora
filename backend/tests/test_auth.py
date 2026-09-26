@@ -7,6 +7,7 @@ from main import app, get_db
 from database import Base
 import models
 import auth
+import crypto
 from services.whatsapp.client import MetaWhatsAppClient
 from services.whatsapp.handler import WhatsAppWebhookHandler
 from services.whatsapp.context import store_recovery_context
@@ -227,7 +228,10 @@ def test_profile_phone_persistence(client):
     db = TestingSessionLocal()
     user_db = db.query(models.User).filter(models.User.email == "profile@example.com").first()
     assert user_db.whatsapp_phone == "+917710989533"
-    assert user_db.phone_number == "+917710989533"
+    # Phone values are encrypted at rest while API responses remain normalized
+    # plaintext for the authenticated user.
+    assert crypto.is_encrypted(user_db.phone_number)
+    assert crypto.decrypt_phone(user_db.phone_number) == "+917710989533"
 
     # A shared contact number must remain synchronized when the user edits
     # only their mobile number; future SMS and WhatsApp dispatches read these

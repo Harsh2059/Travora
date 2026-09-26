@@ -1,6 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../core/config/app_config.dart';
 
 class AuthService {
   final _supabase = Supabase.instance.client;

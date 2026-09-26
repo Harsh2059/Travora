@@ -473,6 +473,13 @@ def add_trip_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    return {
+        "id": item.id, "trip_id": item.trip_id, "type": item.type, "provider": item.provider,
+        "origin": item.origin, "destination": item.destination, "location": item.location,
+        "start_time": item.start_time.isoformat() if item.start_time else None,
+        "end_time": item.end_time.isoformat() if item.end_time else None,
+        "cost": item.cost, "currency": item.currency, "priority": item.priority,
+        "flexibility": item.flexibility, "status": item.status, "booking_id": item.booking_id,
         "item_metadata": item.item_metadata or {}
     }
 

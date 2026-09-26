@@ -97,7 +97,6 @@ class AuthProvider extends ChangeNotifier {
     // get the token, and send it to the backend. We will mock the provider token here
     // since the backend has a mock OAuth endpoint configured.
     final provider = providerName.toLowerCase().split(' ')[0]; // 'google', 'facebook', 'phone'
-    final email = 'mock_$provider@example.com';
     
     try {
       final response = await _authService.loginProvider(provider);

@@ -46,11 +46,27 @@ const DRAFT_KEY = 'travora_draft';
 const ACTIVE_TRIP_ID_KEY = 'travora_active_trip_id';
 const LOCAL_JOURNEY_KEY = 'travora_local_journey';
 
+function currentUserStorageSuffix(): string | null {
+  try {
+    const rawUser = localStorage.getItem('travora_user');
+    const userId = rawUser ? JSON.parse(rawUser)?.id : null;
+    return userId ? String(userId) : null;
+  } catch {
+    return null;
+  }
+}
+
+function userScopedStorageKey(baseKey: string): string | null {
+  const userId = currentUserStorageSuffix();
+  return userId ? `${baseKey}:${userId}` : null;
+}
+
 // ── Draft helpers (sessionStorage) ───────────────────────────────────────────
 
 export function getDraftNodes(): JourneyNode[] {
   try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
+    const key = userScopedStorageKey(DRAFT_KEY);
+    const raw = key ? sessionStorage.getItem(key) : null;
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -58,35 +74,41 @@ export function getDraftNodes(): JourneyNode[] {
 }
 
 export function saveDraftNodes(nodes: JourneyNode[]): void {
-  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(nodes));
+  const key = userScopedStorageKey(DRAFT_KEY);
+  if (key) sessionStorage.setItem(key, JSON.stringify(nodes));
 }
 
 export function clearDraft(): void {
-  sessionStorage.removeItem(DRAFT_KEY);
+  const key = userScopedStorageKey(DRAFT_KEY);
+  if (key) sessionStorage.removeItem(key);
 }
 
 // ── Active trip ID helpers (localStorage) ────────────────────────────────────
 
 export function getActiveTripId(): number | null {
-  const raw = localStorage.getItem(ACTIVE_TRIP_ID_KEY);
+  const key = userScopedStorageKey(ACTIVE_TRIP_ID_KEY);
+  const raw = key ? localStorage.getItem(key) : null;
   if (!raw) return null;
   const n = parseInt(raw, 10);
   return isNaN(n) ? null : n;
 }
 
 export function setActiveTripId(id: number): void {
-  localStorage.setItem(ACTIVE_TRIP_ID_KEY, String(id));
+  const key = userScopedStorageKey(ACTIVE_TRIP_ID_KEY);
+  if (key) localStorage.setItem(key, String(id));
 }
 
 export function clearActiveTripId(): void {
-  localStorage.removeItem(ACTIVE_TRIP_ID_KEY);
+  const key = userScopedStorageKey(ACTIVE_TRIP_ID_KEY);
+  if (key) localStorage.removeItem(key);
 }
 
 // ── Local (unsynced) journey helpers (localStorage) ──────────────────────────
 
 export function getLocalJourney(): Journey | null {
   try {
-    const raw = localStorage.getItem(LOCAL_JOURNEY_KEY);
+    const key = userScopedStorageKey(LOCAL_JOURNEY_KEY);
+    const raw = key ? localStorage.getItem(key) : null;
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -94,11 +116,13 @@ export function getLocalJourney(): Journey | null {
 }
 
 export function saveLocalJourney(journey: Journey): void {
-  localStorage.setItem(LOCAL_JOURNEY_KEY, JSON.stringify(journey));
+  const key = userScopedStorageKey(LOCAL_JOURNEY_KEY);
+  if (key) localStorage.setItem(key, JSON.stringify(journey));
 }
 
 export function clearLocalJourney(): void {
-  localStorage.removeItem(LOCAL_JOURNEY_KEY);
+  const key = userScopedStorageKey(LOCAL_JOURNEY_KEY);
+  if (key) localStorage.removeItem(key);
 }
 
 // ── Selected Recovery Plan helpers (localStorage) ─────────────────────────────
@@ -380,7 +404,10 @@ export async function fetchTripById(tripId: number, adminMode = false): Promise<
   } as Journey & { originalNodes?: JourneyNode[] };
 }
 
-export async function fetchUserTrips(userId?: string): Promise<Array<{ id: number; title: string; version: number }>> {
+export async function fetchUserTrips(
+  userId?: string,
+  adminMode = false
+): Promise<Array<{ id: number; title: string; version: number }>> {
   let effectiveUserId: string | null = userId ?? null;
   if (!effectiveUserId) {
     try {
@@ -392,13 +419,14 @@ export async function fetchUserTrips(userId?: string): Promise<Array<{ id: numbe
     } catch { }
   }
 
-  // 1. Try fetching all admin trips first for admin/simulation panel
-  try {
-    const adminRes = await axios.get(`${API_BASE_URL}/admin/trips`);
-    if (Array.isArray(adminRes.data) && adminRes.data.length > 0) {
-      return adminRes.data;
-    }
-  } catch {}
+  // Only the admin console may enumerate every account's journeys. Traveler
+  // screens must never use this endpoint as a fallback after an account switch.
+  if (adminMode) {
+    try {
+      const adminRes = await axios.get(`${API_BASE_URL}/admin/trips`);
+      if (Array.isArray(adminRes.data)) return adminRes.data;
+    } catch {}
+  }
 
   // 2. Fallback to user trips endpoint
   let trips: Array<{ id: number; title: string; version: number }> = [];
@@ -409,7 +437,7 @@ export async function fetchUserTrips(userId?: string): Promise<Array<{ id: numbe
     } catch {}
   }
 
-  // 3. Guaranteed fallback: include currently active trip ID if stored in localStorage
+  // 3. Include only the current user's scoped active trip ID.
   const activeId = getActiveTripId();
   if (activeId && !trips.some((t) => t.id === activeId)) {
     try {
@@ -646,6 +674,17 @@ export function useJourney(): JourneyState {
 
   useEffect(() => {
     load().finally(() => setLoading(false));
+  }, [load]);
+
+  // Authentication changes replace the account scope. Clear the prior account's
+  // journey synchronously and load only the new account's trips.
+  useEffect(() => {
+    const handleAuthChange = () => {
+      setJourney(null);
+      void load().finally(() => setLoading(false));
+    };
+    window.addEventListener('travora_auth_change', handleAuthChange);
+    return () => window.removeEventListener('travora_auth_change', handleAuthChange);
   }, [load]);
 
   const refresh = useCallback(async () => {

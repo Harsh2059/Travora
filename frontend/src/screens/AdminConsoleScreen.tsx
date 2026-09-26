@@ -165,7 +165,7 @@ export default function AdminConsoleScreen() {
 
   // 1. Fetch user trips on mount
   useEffect(() => {
-    fetchUserTrips()
+    fetchUserTrips(undefined, true)
       .then((list) => {
         setTripsList(list);
         const activeId = getActiveTripId();
