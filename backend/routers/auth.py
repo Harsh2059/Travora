@@ -1,5 +1,6 @@
 import os
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -9,6 +10,52 @@ from jose import JWTError, jwt
 from database import get_db
 from models import User
 import schemas
+
+# ── Password helpers ──────────────────────────────────────────────────────────
+# We use passlib with bcrypt for local-auth users. Import lazily so that the
+# app doesn't crash at startup when passlib isn't available (Supabase-only mode).
+try:
+    from passlib.context import CryptContext
+    _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    _PASSLIB_AVAILABLE = True
+except Exception:
+    _pwd_context = None
+    _PASSLIB_AVAILABLE = False
+
+
+def hash_password(plain: str) -> str:
+    """Hash a plaintext password using bcrypt."""
+    if not _PASSLIB_AVAILABLE or _pwd_context is None:
+        raise RuntimeError("passlib[bcrypt] is not installed — cannot hash passwords.")
+    return _pwd_context.hash(plain)
+
+
+def verify_password(plain: str, hashed: Optional[str]) -> bool:
+    """Return True if *plain* matches the stored *hashed* password."""
+    if not _PASSLIB_AVAILABLE or _pwd_context is None or not hashed:
+        return False
+    try:
+        return _pwd_context.verify(plain, hashed)
+    except Exception:
+        return False
+
+
+# ── JWT helpers ───────────────────────────────────────────────────────────────
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a signed JWT access token."""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+# ── UUID helper for local user creation ───────────────────────────────────────
+def new_user_id() -> str:
+    """Generate a new UUID string for a locally-registered user."""
+    return str(uuid.uuid4())
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY") or os.getenv("JWT_SECRET", "travora_super_secret_key_123")
 ALGORITHM = "HS256"

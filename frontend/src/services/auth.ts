@@ -2,7 +2,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../store/journeyStore';
 
 export interface UserProfile {
-  id: number;
+  id: string;
   name: string;
   email: string;
   phone_number?: string | null;
@@ -48,7 +48,7 @@ export function clearAuth(): void {
   window.dispatchEvent(new Event('travora_auth_change'));
 }
 
-export function getStoredUserId(): number | null {
+export function getStoredUserId(): string | null {
   const user = getStoredUser();
   return user ? user.id : null;
 }

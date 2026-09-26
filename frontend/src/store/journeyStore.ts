@@ -32,8 +32,14 @@ axios.interceptors.request.use((config) => {
 /** Fixed demo user ID for Part 1. Replace with auth when authentication is added. */
 export const DEMO_USER_ID = 1;
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD ? '/api' : 'https://travora-dqgn.onrender.com/api');
+export const API_BASE_URL = (() => {
+  const configured = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  const renderUrl = 'https://travora-dqgn.onrender.com/api';
+  if (!configured || configured === '') return renderUrl;
+  // In a production build, never redirect to localhost
+  if (import.meta.env.PROD && configured.includes('localhost')) return renderUrl;
+  return configured;
+})();
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
@@ -227,15 +233,16 @@ export async function persistJourneyToBackend(
   title: string,
   nodes: JourneyNode[]
 ): Promise<Journey> {
-  // 1. Create trip — use authenticated user if logged in, fallback to DEMO_USER_ID
-  let currentUserId = DEMO_USER_ID;
+  // 1. Create trip — use authenticated user if logged in, otherwise throw (user must be logged in)
+  let currentUserId: string | null = null;
   try {
     const rawUser = localStorage.getItem('travora_user');
     if (rawUser) {
       const parsed = JSON.parse(rawUser);
-      if (parsed?.id) currentUserId = parsed.id;
+      if (parsed?.id) currentUserId = String(parsed.id);
     }
   } catch {}
+  if (!currentUserId) throw new Error('You must be logged in to create a trip.');
 
   const tripRes = await axios.post(
     `${API_BASE_URL}/users/${currentUserId}/trips`,
@@ -371,18 +378,18 @@ export async function fetchTripById(tripId: number): Promise<Journey | null> {
   } as Journey & { originalNodes?: JourneyNode[] };
 }
 
-export async function fetchUserTrips(userId?: number): Promise<Array<{ id: number; title: string; version: number }>> {
-  let effectiveUserId = userId;
+export async function fetchUserTrips(userId?: string): Promise<Array<{ id: number; title: string; version: number }>> {
+  let effectiveUserId: string | null = userId ?? null;
   if (!effectiveUserId) {
     try {
       const rawUser = localStorage.getItem('travora_user');
       if (rawUser) {
         const parsed = JSON.parse(rawUser);
-        if (parsed?.id) effectiveUserId = parsed.id;
+        if (parsed?.id) effectiveUserId = String(parsed.id);
       }
     } catch {}
   }
-  if (!effectiveUserId) effectiveUserId = DEMO_USER_ID;
+  if (!effectiveUserId) return []; // Not logged in — don't call API with no user ID
 
   const res = await axios.get(`${API_BASE_URL}/users/${effectiveUserId}/trips`);
   return res.data ?? [];
