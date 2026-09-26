@@ -503,7 +503,7 @@ export default function AdminConsoleScreen() {
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                   >
                     {tripsList.length === 0 && (
-                      <option value="">No trips found for demo user</option>
+                      <option value="">No trips found for current user</option>
                     )}
                     {tripsList.map((t) => (
                       <option key={t.id} value={t.id}>

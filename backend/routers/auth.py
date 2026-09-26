@@ -10,7 +10,7 @@ from database import get_db
 from models import User
 import schemas
 
-SECRET_KEY = os.getenv("JWT_SECRET", "travora_super_secret_key_123")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY") or os.getenv("JWT_SECRET", "travora_super_secret_key_123")
 ALGORITHM = "HS256"
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
