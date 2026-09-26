@@ -28,15 +28,22 @@ class NotificationService:
     ) -> NotificationResult:
         if channel == NotificationChannel.WHATSAPP:
             trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-            if not trip or not trip.user or not trip.user.whatsapp_enabled:
+            if trip and trip.user and trip.user.whatsapp_enabled is False:
                 return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="WhatsApp notifications disabled")
-            return self.whatsapp_service.send_recovery_notification(
-                db=db,
-                trip_id=trip_id,
-                plan=plan,
-                disruption_id=disruption_id,
-                plans=plans,
-            )
+            try:
+                print("[NOTIFICATION] about to call WhatsApp service", flush=True)
+                res = self.whatsapp_service.send_recovery_notification(
+                    db=db,
+                    trip_id=trip_id,
+                    plan=plan,
+                    disruption_id=disruption_id,
+                    plans=plans,
+                )
+                print("[NOTIFICATION] WhatsApp service returned", flush=True)
+                return res
+            except Exception as e:
+                print(f"[NOTIFICATION] WhatsApp service exception: {e}", flush=True)
+                raise
         elif channel == NotificationChannel.SMS:
             try:
                 trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
@@ -137,14 +144,21 @@ class NotificationService:
         print(f"[NOTIFICATION] notification service entered channel={channel.value}", flush=True)
         if channel == NotificationChannel.WHATSAPP:
             trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-            if not trip or not trip.user or not trip.user.whatsapp_enabled:
+            if trip and trip.user and trip.user.whatsapp_enabled is False:
                 return NotificationResult(success=False, channel=channel, recipient="", status="SKIPPED", error="WhatsApp notifications disabled")
-            return self.whatsapp_service.send_disruption_notification(
-                db=db,
-                trip_id=trip_id,
-                disruption=disruption,
-                plans=plans,
-            )
+            try:
+                print("[NOTIFICATION] about to call WhatsApp service", flush=True)
+                res = self.whatsapp_service.send_disruption_notification(
+                    db=db,
+                    trip_id=trip_id,
+                    disruption=disruption,
+                    plans=plans,
+                )
+                print("[NOTIFICATION] WhatsApp service returned", flush=True)
+                return res
+            except Exception as e:
+                print(f"[NOTIFICATION] WhatsApp service exception: {e}", flush=True)
+                raise
         elif channel == NotificationChannel.SMS:
             print("[SMS] dispatch attempted", flush=True)
             try:
