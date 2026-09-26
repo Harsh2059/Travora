@@ -32,8 +32,8 @@ class AuthProvider extends ChangeNotifier {
 
     final result = await _authService.verifySession();
     if (result['valid'] == true) {
-      _userId = result['user']['id'].toString();
-      if (_userId != null) AppConfig.currentUserId = int.parse(_userId!);
+      _userId = result['userId'];
+      if (_userId != null) AppConfig.currentUserId = _userId!;
       _state = AuthState.authenticated;
     } else {
       _state = AuthState.unauthenticated;
@@ -50,7 +50,7 @@ class AuthProvider extends ChangeNotifier {
     
     if (result['success'] == true) {
       _userId = result['userId'];
-      if (_userId != null) AppConfig.currentUserId = int.parse(_userId!);
+      if (_userId != null) AppConfig.currentUserId = _userId!;
       _state = AuthState.authenticated;
       notifyListeners();
       return true;
@@ -76,7 +76,7 @@ class AuthProvider extends ChangeNotifier {
         return true; 
       }
       _userId = result['userId'];
-      if (_userId != null) AppConfig.currentUserId = int.parse(_userId!);
+      if (_userId != null) AppConfig.currentUserId = _userId!;
       _state = AuthState.authenticated;
       notifyListeners();
       return true;
@@ -100,10 +100,10 @@ class AuthProvider extends ChangeNotifier {
     final email = 'mock_$provider@example.com';
     
     try {
-      final response = await _authService.loginProvider(provider, email);
+      final response = await _authService.loginProvider(provider);
       if (response['success'] == true) {
         _userId = response['userId'];
-        if (_userId != null) AppConfig.currentUserId = int.parse(_userId!);
+        if (_userId != null) AppConfig.currentUserId = _userId!;
         _state = AuthState.authenticated;
         notifyListeners();
         return true;

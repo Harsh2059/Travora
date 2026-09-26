@@ -1,164 +1,126 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../core/network/api_endpoints.dart';
-// We'll assume TripProvider has this or we need to extract it
+import '../core/config/app_config.dart';
 
 class AuthService {
+  final _supabase = Supabase.instance.client;
   final _storage = const FlutterSecureStorage();
   
-  static const String _tokenKey = 'auth_token';
   static const String _userIdKey = 'user_id';
 
   Future<String?> getToken() async {
-    return await _storage.read(key: _tokenKey);
-  }
-
-  Future<void> _saveSession(String token, String userId) async {
-    await _storage.write(key: _tokenKey, value: token);
-    await _storage.write(key: _userIdKey, value: userId);
+    return _supabase.auth.currentSession?.accessToken;
   }
 
   Future<void> clearSession() async {
-    await _storage.delete(key: _tokenKey);
+    await _supabase.auth.signOut();
     await _storage.delete(key: _userIdKey);
   }
 
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
-      final response = await http.post(
-        Uri.parse('${ApiEndpoints.baseUrl}/api/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'email': email, 'password': password}),
-      ).timeout(const Duration(seconds: 10));
+      final response = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final token = data['access_token'];
-        final userId = data['user_id'].toString();
-        
-        await _saveSession(token, userId);
+      if (response.user != null) {
+        final userId = response.user!.id;
+        await _storage.write(key: _userIdKey, value: userId);
         return {'success': true, 'userId': userId};
-      } else if (response.statusCode == 404) {
-         return {'success': false, 'message': 'Authentication endpoints are not yet configured on the backend.'};
       } else {
-        final error = json.decode(response.body);
-        return {'success': false, 'message': error['detail'] ?? 'Invalid credentials. Please try again.'};
+        return {'success': false, 'message': 'Invalid credentials. Please try again.'};
       }
+    } on AuthException catch (e) {
+      return {'success': false, 'message': e.message};
     } catch (e) {
-      return {'success': false, 'message': 'Unable to connect. Please check your internet connection.'};
+      return {'success': false, 'message': 'An unexpected error occurred.'};
     }
   }
 
-  Future<Map<String, dynamic>> loginProvider(String provider, String email) async {
+  Future<Map<String, dynamic>> loginProvider(String providerName) async {
     try {
-      final body = {
-        'provider': provider,
-        if (provider == 'phone') 'phone': 'mock_phone',
-        if (provider == 'phone') 'otp': '123456',
-        if (provider != 'phone') 'email': email,
-      };
-      
-      final response = await http.post(
-        Uri.parse('${ApiEndpoints.baseUrl}/api/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(body),
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final token = data['access_token'];
-        final userId = data['user_id'].toString();
-        
-        await _saveSession(token, userId);
-        return {'success': true, 'userId': userId};
-      } else {
-        final error = json.decode(response.body);
-        return {'success': false, 'message': error['detail'] ?? 'Provider login failed.'};
+      OAuthProvider provider;
+      switch (providerName.toLowerCase()) {
+        case 'google':
+          provider = OAuthProvider.google;
+          break;
+        case 'facebook':
+          provider = OAuthProvider.facebook;
+          break;
+        default:
+          return {'success': false, 'message': 'Unsupported provider'};
       }
+
+      await _supabase.auth.signInWithOAuth(provider);
+      // OAuth usually redirects, so the actual success handling might depend on deeplinks.
+      return {'success': true}; 
+    } on AuthException catch (e) {
+      return {'success': false, 'message': e.message};
     } catch (e) {
-      return {'success': false, 'message': 'Unable to connect. Please check your internet connection.'};
+      return {'success': false, 'message': 'An unexpected error occurred.'};
     }
   }
 
   Future<Map<String, dynamic>> register(String name, String email, String password, String phone, String whatsappPhone) async {
     try {
-      final response = await http.post(
-        Uri.parse('${ApiEndpoints.baseUrl}/api/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
+      final response = await _supabase.auth.signUp(
+        email: email,
+        password: password,
+        data: {
           'name': name,
-          'email': email,
-          'password': password,
           'phone_number': phone,
           'whatsapp_phone': whatsappPhone,
-        }),
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        // Auto login might happen or backend returns token directly
-        final data = json.decode(response.body);
-        if (data.containsKey('access_token')) {
-          final token = data['access_token'];
-          final userId = data['user_id'].toString();
-          await _saveSession(token, userId);
-          return {'success': true, 'userId': userId};
         }
-        return {'success': true, 'requiresLogin': true};
-      } else if (response.statusCode == 404) {
-         return {'success': false, 'message': 'Authentication endpoints are not yet configured on the backend.'};
-      } else {
-        final error = json.decode(response.body);
-        return {'success': false, 'message': error['detail'] ?? 'Registration failed.'};
+      );
+
+      if (response.user != null) {
+        if (response.session != null) {
+           final userId = response.user!.id;
+           await _storage.write(key: _userIdKey, value: userId);
+           return {'success': true, 'userId': userId};
+        } else {
+           // Email confirmation required
+           return {'success': true, 'requiresLogin': true, 'message': 'Please check your email to confirm your account.'};
+        }
       }
+      return {'success': false, 'message': 'Registration failed.'};
+    } on AuthException catch (e) {
+      return {'success': false, 'message': e.message};
     } catch (e) {
-      return {'success': false, 'message': 'Unable to connect. Please check your internet connection.'};
+      return {'success': false, 'message': 'An unexpected error occurred.'};
     }
   }
 
   Future<Map<String, dynamic>> verifySession() async {
-    final token = await getToken();
-    if (token == null) return {'valid': false};
+    final session = _supabase.auth.currentSession;
+    if (session == null) {
+      return {'valid': false};
+    }
 
     try {
-      final response = await http.get(
-        Uri.parse('${ApiEndpoints.baseUrl}/api/auth/me'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token'
-        },
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        return {'valid': true, 'user': json.decode(response.body)};
-      } else {
-        await clearSession();
-        return {'valid': false};
-      }
+      final user = session.user;
+      return {
+        'valid': true, 
+        'user': {
+          'id': user.id,
+          'email': user.email,
+          'name': user.userMetadata?['name'] ?? 'Traveler',
+        }
+      };
     } catch (e) {
-      // If network fails but we have a token, we could potentially allow offline access, 
-      // but for strict auth, we assume invalid if we can't verify unless we implement offline caching.
-      return {'valid': false, 'offline': true}; 
+      return {'valid': false};
     }
   }
 
   Future<Map<String, dynamic>> forgotPassword(String email) async {
     try {
-      final response = await http.post(
-        Uri.parse('${ApiEndpoints.baseUrl}/api/auth/forgot-password'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'email': email}),
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return {'success': true, 'message': data['message']};
-      } else {
-        final error = json.decode(response.body);
-        return {'success': false, 'message': error['detail'] ?? 'Failed to send reset link.'};
-      }
+      await _supabase.auth.resetPasswordForEmail(email);
+      return {'success': true, 'message': 'Password reset link has been sent to your email.'};
+    } on AuthException catch (e) {
+      return {'success': false, 'message': e.message};
     } catch (e) {
-      return {'success': false, 'message': 'Unable to connect. Please check your internet connection.'};
+      return {'success': false, 'message': 'An unexpected error occurred.'};
     }
   }
 }

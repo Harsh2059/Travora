@@ -5,7 +5,7 @@ from datetime import datetime
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True)
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String, nullable=True)
@@ -39,7 +39,7 @@ class Trip(Base):
     title = Column(String, index=True)
     version = Column(Integer, default=1)
     view_mode = Column(String, default="ORIGINAL")  # ORIGINAL | RECOVERED
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(String, ForeignKey("users.id"))
     user = relationship("User", back_populates="trips")
     items = relationship("ItineraryItem", back_populates="trip")
 
@@ -194,7 +194,7 @@ class Ticket(Base):
     
     # Passenger info
     passenger_name = Column(String)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(String, ForeignKey("users.id"))
     
     # Transport info
     transport_mode = Column(String) # FLIGHT, TRAIN, CAB, BUS, HOTEL

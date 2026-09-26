@@ -5,7 +5,7 @@ class ApiEndpoints {
 
   static const String health = '/api/health';
   static const String users = '/api/users';
-  static String userTrips(int userId) => '/api/users/$userId/trips';
+  static String userTrips(String userId) => '/api/users/$userId/trips';
   static String tripDetails(int tripId) => '/api/trips/$tripId';
   static String tripItems(int tripId) => '/api/trips/$tripId/items';
   

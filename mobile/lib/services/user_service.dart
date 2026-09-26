@@ -4,7 +4,7 @@ import '../core/config/app_config.dart';
 import '../models/user.dart';
 
 class UserService {
-  Future<User> getUserProfile(int userId) async {
+  Future<User> getUserProfile(String userId) async {
     final response = await http.get(Uri.parse('${AppConfig.apiBaseUrl}/api/users/$userId/profile'));
     if (response.statusCode == 200) {
       return User.fromJson(json.decode(response.body));
@@ -13,7 +13,7 @@ class UserService {
     }
   }
 
-  Future<User> updateUserProfile(int userId, Map<String, dynamic> updates) async {
+  Future<User> updateUserProfile(String userId, Map<String, dynamic> updates) async {
     final response = await http.put(
       Uri.parse('${AppConfig.apiBaseUrl}/api/users/$userId/profile'),
       headers: {'Content-Type': 'application/json'},

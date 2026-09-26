@@ -83,7 +83,7 @@ class TripCreate(TripBase):
 
 class Trip(TripBase):
     id: int
-    user_id: int
+    user_id: str
     items: List[ItineraryItem] = []
     
     model_config = ConfigDict(from_attributes=True)
@@ -139,7 +139,7 @@ class UserProfileUpdate(BaseModel):
     whatsapp_enabled: Optional[bool] = None
 
 class UserResponse(UserBase):
-    id: int
+    id: str
     created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -150,7 +150,7 @@ class TokenResponse(BaseModel):
 
 
 class User(UserBase):
-    id: int
+    id: str
     trips: List[Trip] = []
     model_config = ConfigDict(from_attributes=True)
 
@@ -186,7 +186,7 @@ class TicketBase(BaseModel):
     recovery_plan_id: str
     execution_id: str
     passenger_name: str
-    user_id: int
+    user_id: str
     transport_mode: str
     provider: str
     transport_identifier: Optional[str] = None
