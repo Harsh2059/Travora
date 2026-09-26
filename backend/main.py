@@ -289,7 +289,7 @@ def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 
 @app.get("/api/users/{user_id}/profile", response_model=schemas.User)
 def read_user_profile(
-    user_id: int, 
+    user_id: str, 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
@@ -302,7 +302,7 @@ def read_user_profile(
 
 @app.put("/api/users/{user_id}/profile", response_model=schemas.User)
 def update_user_profile(
-    user_id: int, 
+    user_id: str, 
     profile: schemas.UserProfileUpdate, 
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
@@ -323,7 +323,7 @@ def update_user_profile(
 
 @app.get("/api/users/{user_id}/trips", response_model=List[schemas.Trip])
 def read_user_trips(
-    user_id: int,
+    user_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
@@ -340,7 +340,7 @@ def read_user_trips(
 
 @app.post("/api/users/{user_id}/trips")
 def create_trip(
-    user_id: int,
+    user_id: str,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
