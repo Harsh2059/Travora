@@ -350,7 +350,7 @@ class HomeScreen extends StatelessWidget {
             SizedBox(height: 24),
             Text('Something went wrong', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             SizedBox(height: 12),
-            Text('We couldn\'t load your journey right now.', textAlign: TextAlign.center, style: TextStyle(color: (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : const Color(0xFF64748B)), fontSize: 16)),
+            Text(provider.errorMessage ?? 'We couldn\'t load your journey right now.', textAlign: TextAlign.center, style: TextStyle(color: (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : const Color(0xFF64748B)), fontSize: 16)),
             SizedBox(height: 32),
             ElevatedButton(
               onPressed: () => provider.fetchDashboardData(),
