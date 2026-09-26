@@ -25,7 +25,7 @@ class WhatsAppService:
 
     def send(self, request: NotificationRequest) -> NotificationResult:
         try:
-            print("[WHATSAPP] calling Meta client", flush=True)
+            print("[WHATSAPP] about to call Meta client", flush=True)
             logger.info("[WHATSAPP] calling Meta client")
             response = self.client.send_text(request.recipient, request.text)
             messages = response.get("messages") or []
@@ -131,10 +131,8 @@ class WhatsAppService:
         plans: Optional[List[Dict[str, Any]]] = None,
     ) -> NotificationResult:
         print("[WHATSAPP] dispatch entered", flush=True)
-        logger.info("[WHATSAPP] dispatch entered")
-        plans_cnt = len(plans) if plans else 0
-        print(f"[WHATSAPP] plans count={plans_cnt}", flush=True)
-        logger.info("[WHATSAPP] plans count=%d", plans_cnt)
+        print(f"[WHATSAPP] trip_id={trip_id}", flush=True)
+        logger.info("[WHATSAPP] dispatch entered trip_id=%s", trip_id)
 
         disruption_id = disruption.get("id") or disruption.get("event_id")
         existing = db.query(models.NotificationRecord).filter(
@@ -156,6 +154,7 @@ class WhatsAppService:
         user_phone = (trip.user.whatsapp_phone or trip.user.phone_number) if (trip and trip.user) else None
         
         if not user_phone:
+            print("[WHATSAPP] recipient resolution failed: traveler has no phone", flush=True)
             return NotificationResult(
                 success=False,
                 channel=NotificationChannel.WHATSAPP,
@@ -168,6 +167,10 @@ class WhatsAppService:
         masked_recipient = (recipient[:3] + "..." + recipient[-4:]) if (recipient and len(recipient) >= 7) else "<masked>"
         print(f"[WHATSAPP] recipient={masked_recipient}", flush=True)
         logger.info("[WHATSAPP] recipient=%s", masked_recipient)
+
+        plans_cnt = len(plans) if plans else 0
+        print(f"[WHATSAPP] plans count={plans_cnt}", flush=True)
+        logger.info("[WHATSAPP] plans count=%d", plans_cnt)
 
         # If plans are available, format recovery options dynamically and register context
         if plans and len(plans) > 0:

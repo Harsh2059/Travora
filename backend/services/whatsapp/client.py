@@ -46,7 +46,7 @@ class MetaWhatsAppClient:
                 messages = result.get("messages") or []
                 msg_id = messages[0].get("id") if messages else "N/A"
                 logger.info("WhatsApp message sent: status=%s, msg_id=%s", response.status, msg_id)
-                print(f"[WHATSAPP] Meta response/message ID: {msg_id}", flush=True)
+                print(f"[WHATSAPP] Meta response/message ID={msg_id}", flush=True)
                 return result
         except HTTPError as exc:
             try:
