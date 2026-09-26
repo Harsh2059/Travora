@@ -203,87 +203,115 @@ class WhatsAppService:
         """Send a journey-confirmed WhatsApp message after all items are added.
 
         Idempotent: skips if a SENT record already exists for trip_id + JOURNEY_CREATED.
+        Never raises - always returns a NotificationResult.
         """
-        user = trip.user
-        recipient = (user.whatsapp_phone or user.phone_number) if user else None
-        if not recipient:
+        try:
+            user = trip.user
+            if not user:
+                return NotificationResult(
+                    success=False,
+                    channel=NotificationChannel.WHATSAPP,
+                    recipient="",
+                    status="FAILED",
+                    error="Trip has no associated user.",
+                )
+
+            recipient = user.whatsapp_phone or user.phone_number
+            if not recipient:
+                return NotificationResult(
+                    success=False,
+                    channel=NotificationChannel.WHATSAPP,
+                    recipient="",
+                    status="FAILED",
+                    error="Traveler has no WhatsApp phone number configured.",
+                )
+
+            # Idempotency check
+            existing = db.query(models.NotificationRecord).filter(
+                models.NotificationRecord.message_type == "JOURNEY_CREATED",
+                models.NotificationRecord.trip_id == trip.id,
+                models.NotificationRecord.channel == "WHATSAPP",
+                models.NotificationRecord.status == "SENT",
+            ).first()
+            if existing:
+                print(f"[WHATSAPP] journey_created already sent for trip {trip.id} — skipping", flush=True)
+                return NotificationResult(
+                    success=True,
+                    channel=NotificationChannel.WHATSAPP,
+                    recipient=recipient,
+                    status="ALREADY_SENT",
+                    provider_message_id=existing.provider_message_id,
+                )
+
+            name = (user.name or "Traveler").strip() if user else "Traveler"
+
+            # Build journey summary from actual trip items (no hardcoding)
+            items = sorted(
+                [i for i in (trip.items or []) if i.start_time is not None],
+                key=lambda x: x.start_time,
+            )
+            origin = items[0].origin if items and items[0].origin else None
+            destination = items[-1].destination if items and items[-1].destination else None
+            travel_date = items[0].start_time.strftime("%d %b %Y") if items else None
+            booking_ref = f"TRV{str(trip.id).zfill(6)}"
+
+            route = (f"{origin} \u2192 {destination}") if origin and destination else trip.title
+
+            text_parts = [
+                "\u2708\ufe0f Travora Journey Confirmed\n",
+                f"Hi {name},\n",
+                "Your journey has been added successfully.\n",
+                route + "\n",
+            ]
+            if travel_date:
+                text_parts.append(f"Travel date:\n{travel_date}\n")
+            text_parts.append(f"Booking:\n{booking_ref}\n")
+            text_parts.append(
+                "You can open Travora to view your complete itinerary.\n"
+                "We\u2019ll notify you if anything changes."
+            )
+            text = "\n".join(text_parts)
+
+            masked_recipient = (recipient[:3] + "..." + recipient[-4:]) if len(recipient) >= 7 else "<masked>"
+            print(f"[WHATSAPP] sending journey_created for trip {trip.id} to {masked_recipient}", flush=True)
+            logger.info("[WHATSAPP] sending journey_created for trip %d to %s", trip.id, masked_recipient)
+
+            request = NotificationRequest(
+                recipient=recipient,
+                message_type="JOURNEY_CREATED",
+                text=text,
+                trip_id=trip.id,
+                timestamp=datetime.now(timezone.utc),
+            )
+            result = self.send(request)
+            try:
+                db.add(models.NotificationRecord(
+                    channel=result.channel.value,
+                    recipient=result.recipient,
+                    message_type="JOURNEY_CREATED",
+                    trip_id=trip.id,
+                    status=result.status,
+                    provider_message_id=result.provider_message_id,
+                    error_message=result.error,
+                ))
+                db.commit()
+            except Exception as exc:
+                logger.warning("Failed to persist journey-created WhatsApp record: %s", exc)
+                db.rollback()
+            return result
+        except Exception as exc:
+            logger.exception("send_journey_created_notification failed: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
             return NotificationResult(
                 success=False,
                 channel=NotificationChannel.WHATSAPP,
                 recipient="",
                 status="FAILED",
-                error="Traveler has no WhatsApp phone number configured.",
+                error=str(exc),
             )
-
-        # Idempotency check
-        existing = db.query(models.NotificationRecord).filter(
-            models.NotificationRecord.message_type == "JOURNEY_CREATED",
-            models.NotificationRecord.trip_id == trip.id,
-            models.NotificationRecord.channel == "WHATSAPP",
-            models.NotificationRecord.status == "SENT",
-        ).first()
-        if existing:
-            print(f"[WHATSAPP] journey_created already sent for trip {trip.id} — skipping", flush=True)
-            return NotificationResult(
-                success=True,
-                channel=NotificationChannel.WHATSAPP,
-                recipient=recipient,
-                status="ALREADY_SENT",
-                provider_message_id=existing.provider_message_id,
-            )
-
-        name = (user.name or "Traveler").strip() if user else "Traveler"
-
-        # Build journey summary from actual trip items (no hardcoding)
-        items = sorted(
-            [i for i in (trip.items or []) if i.start_time is not None],
-            key=lambda x: x.start_time,
-        )
-        origin = items[0].origin if items and items[0].origin else None
-        destination = items[-1].destination if items and items[-1].destination else None
-        travel_date = items[0].start_time.strftime("%d %b %Y") if items else None
-        booking_ref = f"TRV{str(trip.id).zfill(6)}"
-
-        route = (f"{origin} \u2192 {destination}") if origin and destination else trip.title
-
-        text_parts = [
-            "\u2708\ufe0f Travora Journey Confirmed\n",
-            f"Hi {name},\n",
-            "Your journey has been added successfully.\n",
-            route + "\n",
-        ]
-        if travel_date:
-            text_parts.append(f"Travel date:\n{travel_date}\n")
-        text_parts.append(f"Booking:\n{booking_ref}\n")
-        text_parts.append(
-            "You can open Travora to view your complete itinerary.\n"
-            "We\u2019ll notify you if anything changes."
-        )
-        text = "\n".join(text_parts)
-
-        masked_recipient = (recipient[:3] + "..." + recipient[-4:]) if len(recipient) >= 7 else "<masked>"
-        print(f"[WHATSAPP] sending journey_created for trip {trip.id} to {masked_recipient}", flush=True)
-        logger.info("[WHATSAPP] sending journey_created for trip %d to %s", trip.id, masked_recipient)
-
-        request = NotificationRequest(
-            recipient=recipient,
-            message_type="JOURNEY_CREATED",
-            text=text,
-            trip_id=trip.id,
-            timestamp=datetime.now(timezone.utc),
-        )
-        result = self.send(request)
-        db.add(models.NotificationRecord(
-            channel=result.channel.value,
-            recipient=result.recipient,
-            message_type="JOURNEY_CREATED",
-            trip_id=trip.id,
-            status=result.status,
-            provider_message_id=result.provider_message_id,
-            error_message=result.error,
-        ))
-        db.commit()
-        return result
 
     def send_disruption_notification(
         self,

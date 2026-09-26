@@ -473,6 +473,22 @@ def add_trip_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    return {
+        "id": item.id,
+        "trip_id": item.trip_id,
+        "type": item.type,
+        "provider": item.provider,
+        "origin": item.origin,
+        "destination": item.destination,
+        "location": item.location,
+        "start_time": item.start_time.isoformat() if item.start_time else None,
+        "end_time": item.end_time.isoformat() if item.end_time else None,
+        "cost": item.cost,
+        "currency": item.currency,
+        "priority": item.priority,
+        "flexibility": item.flexibility,
+        "status": item.status,
+        "booking_id": item.booking_id,
         "item_metadata": item.item_metadata or {}
     }
 
@@ -491,20 +507,19 @@ def notify_trip_created(
         raise HTTPException(status_code=403, detail="You do not have access to this trip")
 
     # ── Journey Created notifications (non-critical) ──
+    whatsapp_ok = False
     try:
         NotificationService().send_journey_created_notification(
             db=db,
             channel=NotificationChannel.WHATSAPP,
             trip=trip,
         )
+        whatsapp_ok = True
     except Exception as exc:
         logger.warning("[TRIP] Journey-created WhatsApp failed: %s", type(exc).__name__)
 
+    # SMS notification (independent, no rollback needed)
     try:
-        try:
-            db.rollback()   # clean session state before the SMS commit
-        except Exception:
-            pass
         NotificationService().send_journey_created_notification(
             db=db,
             channel=NotificationChannel.SMS,
@@ -513,7 +528,7 @@ def notify_trip_created(
     except Exception as exc:
         logger.warning("[TRIP] Journey-created SMS queueing failed: %s", type(exc).__name__)
 
-    return {"status": "success", "message": "Notifications dispatched"}
+    return {"status": "success", "message": "Notifications dispatched", "whatsapp": "sent" if whatsapp_ok else "failed"}
 
 
 @app.put("/api/trips/{trip_id}/items/{item_id}")
