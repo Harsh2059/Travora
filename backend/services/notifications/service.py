@@ -24,6 +24,7 @@ class NotificationService:
         plan: Dict[str, Any],
         disruption_id: Optional[int] = None,
         plans: Optional[List[Dict[str, Any]]] = None,
+        is_proposal: bool = True,
     ) -> NotificationResult:
         if channel == NotificationChannel.WHATSAPP:
             trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
@@ -65,7 +66,29 @@ class NotificationService:
                         status="ALREADY_QUEUED"
                     )
 
-                message = DynamicSmsGenerator.generate_recovery_sms(plan)
+                all_plans = plans or [plan]
+                
+                if is_proposal:
+                    if len(all_plans) > 1:
+                        from services.whatsapp.formatter import format_whatsapp_recovery_options
+                        from services.whatsapp.context import store_recovery_context
+                        message = format_whatsapp_recovery_options(trip_id, None, all_plans)
+                    else:
+                        from services.whatsapp.formatter import format_recovery_notification
+                        from services.whatsapp.context import store_recovery_context
+                        message = format_recovery_notification(trip_id, plan)
+                    
+                    disr_id = disruption_id or plan.get("disruption_id")
+                    store_recovery_context(
+                        db=db,
+                        sender=recipient,
+                        trip_id=trip_id,
+                        disruption_id=disr_id,
+                        disruption_fingerprint=str(disr_id or plan.get("disruption_fingerprint") or ""),
+                        plans=all_plans,
+                    )
+                else:
+                    message = DynamicSmsGenerator.generate_recovery_sms(plan)
                 
                 job = SmsJob(
                     id=str(uuid.uuid4()),
@@ -153,7 +176,20 @@ class NotificationService:
                             status="ALREADY_QUEUED"
                         )
                 
-                message = DynamicSmsGenerator.generate_disruption_sms(disruption)
+                if plans and len(plans) > 0:
+                    from services.whatsapp.formatter import format_whatsapp_recovery_options
+                    from services.whatsapp.context import store_recovery_context
+                    message = format_whatsapp_recovery_options(trip_id, disruption, plans)
+                    store_recovery_context(
+                        db=db,
+                        sender=recipient,
+                        trip_id=trip_id,
+                        disruption_id=disr_id,
+                        disruption_fingerprint=str(disr_id or ""),
+                        plans=plans,
+                    )
+                else:
+                    message = DynamicSmsGenerator.generate_disruption_sms(disruption)
                 
                 job = SmsJob(
                     id=str(uuid.uuid4()),

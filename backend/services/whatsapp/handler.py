@@ -231,6 +231,7 @@ class WhatsAppWebhookHandler:
                         trip_id=trip.id,
                         plan=plan,
                         disruption_id=context.disruption_id,
+                        is_proposal=False,
                     )
                 except Exception:
                     pass
