@@ -49,9 +49,87 @@ function normalizeImpactSeverity(raw: any): ImpactSeverity {
 }
 
 // ── Mock Contract Response Generator (Fallback only when backend unreachable) ─
+function buildDynamicAffectedEntities(
+  rawEntities: any[] | undefined,
+  req: { rainfall: number; wind: number; visibility: number },
+  estDelay: number,
+  transImpact: number,
+  htlImpact: number,
+  journeyNodes?: any[]
+): AffectedEntity[] {
+  const rainfall = req.rainfall;
+  const wind = req.wind;
+  const visibility = req.visibility;
+
+  const flightRaw = Array.isArray(rawEntities)
+    ? rawEntities.find((e: any) => String(e.type || '').toUpperCase() === 'FLIGHT')
+    : null;
+  const transportRaw = Array.isArray(rawEntities)
+    ? rawEntities.find((e: any) => ['CAB', 'TAXI', 'TRANSPORT', 'TRANSFER'].includes(String(e.type || '').toUpperCase()))
+    : null;
+  const hotelRaw = Array.isArray(rawEntities)
+    ? rawEntities.find((e: any) => ['HOTEL', 'STAY', 'ACCOMMODATION'].includes(String(e.type || '').toUpperCase()))
+    : null;
+
+  const flightNode = journeyNodes?.find((n: any) => String(n.type || '').toUpperCase() === 'FLIGHT');
+  const transportNode = journeyNodes?.find((n: any) => ['CAB', 'TAXI', 'TRANSPORT', 'TRANSFER'].includes(String(n.type || '').toUpperCase()));
+  const hotelNode = journeyNodes?.find((n: any) => ['HOTEL', 'STAY', 'ACCOMMODATION'].includes(String(n.type || '').toUpperCase()));
+
+  const flightName = flightRaw?.name || flightRaw?.title || flightNode?.title || (flightNode?.provider ? `${flightNode.provider}` : 'Air India Express');
+  const flightLoc = flightRaw?.location || (flightNode?.origin && flightNode?.destination ? `${flightNode.origin} → ${flightNode.destination}` : 'Air Corridor');
+
+  const transportName = transportRaw?.name || transportRaw?.title || transportNode?.title || (transportNode?.provider ? `${transportNode.provider}` : 'Uber Ground Transport');
+  const transportLoc = transportRaw?.location || transportNode?.origin || transportNode?.location || 'Airport Transfer';
+
+  const hotelName = hotelRaw?.name || hotelRaw?.title || hotelNode?.title || (hotelNode?.provider ? `${hotelNode.provider}` : 'Hotel Check-in');
+  const hotelLoc = hotelRaw?.location || hotelNode?.location || hotelNode?.destination || 'Hotel Location';
+
+  const airportImpact: ImpactSeverity = rainfall > 100 || wind > 50 ? 'critical' : rainfall > 30 || wind > 30 ? 'high' : 'low';
+
+  return [
+    {
+      type: 'airport',
+      name: `${flightNode?.origin || 'Mumbai'} Airport (${flightNode?.origin || 'BOM'})`,
+      impact: airportImpact,
+      details: `${rainfall} mm rain • Wind: ${wind} km/h • Vis: ${visibility} km`,
+      location: `${flightNode?.origin || 'Mumbai'} (BOM)`,
+      coordinates: [19.0896, 72.8656],
+    },
+    {
+      type: 'flight',
+      name: flightName,
+      impact: normalizeImpactSeverity(flightRaw?.impact || flightRaw?.status || (estDelay > 120 ? 'critical' : estDelay > 30 ? 'high' : 'low')),
+      details: estDelay > 0 ? `+${estDelay} min projected departure delay` : 'On schedule',
+      original_time: flightNode?.startDate || flightNode?.startTime || 'Departure',
+      simulated_time: estDelay > 0 ? `Estimated delay +${estDelay}m` : 'On Time',
+      delay_minutes: estDelay,
+      location: flightLoc,
+      coordinates: [22.95, 74.33],
+    },
+    {
+      type: 'transport',
+      name: transportName,
+      impact: normalizeImpactSeverity(transportRaw?.impact || transportRaw?.status || (transImpact >= 0.7 ? 'critical' : transImpact >= 0.4 ? 'high' : transImpact >= 0.2 ? 'medium' : 'low')),
+      details: estDelay > 30 ? 'Scheduled pickup window breached (>30 min delay)' : 'Pickup buffer intact',
+      location: transportLoc,
+      coordinates: [26.8706, 75.7964],
+    },
+    {
+      type: 'hotel',
+      name: hotelName,
+      impact: normalizeImpactSeverity(hotelRaw?.impact || hotelRaw?.status || (htlImpact >= 0.7 ? 'critical' : htlImpact >= 0.4 ? 'high' : htlImpact >= 0.2 ? 'medium' : 'low')),
+      details: estDelay > 60 ? 'Arrival delayed past check-in window' : 'Confirmed check-in window intact',
+      location: hotelLoc,
+      coordinates: [26.9124, 75.7873],
+    },
+  ];
+}
+
+// ── Mock Contract Response Generator (Fallback only when backend unreachable) ─
 export function generateMockSimulation(
   journeyId: string | number,
-  weather: { rainfall: number; wind: number; visibility: number; temperature?: number }
+  weather: { rainfall: number; wind: number; visibility: number; temperature?: number },
+  journeyNodes?: any[]
 ): DigitalTwinSimulateResponse {
   const { rainfall, wind, visibility, temperature = 31.0 } = weather;
 
@@ -90,28 +168,16 @@ export function generateMockSimulation(
 
   let riskLevel = 'LOW';
   let airportImpact: ImpactSeverity = 'low';
-  let flightImpact: ImpactSeverity = 'low';
-  let transportSev: ImpactSeverity = 'low';
-  let hotelSev: ImpactSeverity = 'low';
 
   if (disruptionProb >= 0.75 || visibility <= 0.5) {
     riskLevel = 'CRITICAL';
     airportImpact = 'critical';
-    flightImpact = 'critical';
-    transportSev = 'high';
-    hotelSev = 'high';
   } else if (disruptionProb >= 0.5) {
     riskLevel = 'HIGH';
     airportImpact = 'high';
-    flightImpact = 'high';
-    transportSev = 'medium';
-    hotelSev = 'medium';
   } else if (disruptionProb >= 0.25) {
     riskLevel = 'MEDIUM';
     airportImpact = 'medium';
-    flightImpact = 'medium';
-    transportSev = 'low';
-    hotelSev = 'low';
   }
 
   const cascadingEffects: string[] = [];
@@ -145,6 +211,15 @@ export function generateMockSimulation(
       'Atmospheric conditions along the corridor are within safe operational limits. Journey propagation remains green and intact.';
   }
 
+  const affectedEntities = buildDynamicAffectedEntities(
+    undefined,
+    { rainfall, wind, visibility },
+    estDelay,
+    transportImpact,
+    hotelImpact,
+    journeyNodes
+  );
+
   return {
     journey_id: journeyId || 7,
     trip_id: journeyId || 7,
@@ -170,44 +245,7 @@ export function generateMockSimulation(
       risk_category: airportImpact,
       is_synthetic: true,
     },
-    affected_entities: [
-      {
-        type: 'airport',
-        name: 'Mumbai Airport (BOM)',
-        impact: airportImpact,
-        details: `${rainfall} mm rain • Wind: ${wind} km/h • Vis: ${visibility} km`,
-        location: 'Mumbai, India',
-        coordinates: [19.0896, 72.8656],
-      },
-      {
-        type: 'flight',
-        name: 'Air India Express AI-441',
-        impact: flightImpact,
-        details: estDelay > 0 ? `+${estDelay} min projected delay` : 'On schedule',
-        original_time: '08:45 Departure',
-        simulated_time: estDelay > 0 ? `Estimated delay +${estDelay}m` : 'On Time',
-        delay_minutes: estDelay,
-        location: 'BOM → JAI Air Corridor',
-        coordinates: [22.95, 74.33],
-      },
-      {
-        type: 'transport',
-        name: 'Uber Ground Transport',
-        impact: transportSev,
-        details:
-          estDelay > 30 ? 'Scheduled pickup window breached' : 'Pickup buffer intact (30 min buffer)',
-        location: 'Jaipur Airport (JAI)',
-        coordinates: [26.8706, 75.7964],
-      },
-      {
-        type: 'hotel',
-        name: 'Hotel Ram Jaipur Check-in',
-        impact: hotelSev,
-        details: estDelay > 60 ? 'Arrival delayed past 22:30' : 'Confirmed check-in 20:30',
-        location: 'Jaipur City',
-        coordinates: [26.9124, 75.7873],
-      },
-    ],
+    affected_entities: affectedEntities,
     cascading_effects: cascadingEffects,
     nugen_reasoning: {
       explanation,
@@ -235,10 +273,11 @@ export function generateMockSimulation(
 // ── Normalize Backend Simulation Response ─────────────────────────────────────
 function normalizeBackendSimulationResponse(
   raw: any,
-  req: { journey_id: number | string; rainfall: number; wind: number; visibility: number; temperature: number }
+  req: { journey_id: number | string; rainfall: number; wind: number; visibility: number; temperature: number },
+  journeyNodes?: any[]
 ): DigitalTwinSimulateResponse {
   if (!raw) {
-    return generateMockSimulation(req.journey_id, req);
+    return generateMockSimulation(req.journey_id, req, journeyNodes);
   }
 
   // Handle nested weather
@@ -254,52 +293,18 @@ function normalizeBackendSimulationResponse(
   const riskLevel = String(pred.risk_level || (disruptionProb >= 0.7 ? 'CRITICAL' : disruptionProb >= 0.4 ? 'HIGH' : 'LOW'));
   const riskCategory = normalizeImpactSeverity(riskLevel);
 
-  // Build the complete 4-stage Cascading Impact Pipeline for Journey #7 (Mumbai → Jaipur)
   const estDelay = Number(pred.estimated_delay_minutes ?? 0);
   const transImpact = Number(pred.transport_impact ?? 0);
   const htlImpact = Number(pred.hotel_impact ?? 0);
 
-  const flightEntityRaw = Array.isArray(raw.affected_entities)
-    ? raw.affected_entities.find((e: any) => String(e.type || '').toUpperCase() === 'FLIGHT')
-    : null;
-
-  const affectedEntities: AffectedEntity[] = [
-    {
-      type: 'airport',
-      name: 'Mumbai Airport (BOM)',
-      impact: rainfall > 100 || wind > 50 ? 'critical' : rainfall > 30 || wind > 30 ? 'high' : 'low',
-      details: `${rainfall} mm rain • Wind: ${wind} km/h • Vis: ${visibility} km`,
-      location: 'Mumbai (BOM)',
-      coordinates: [19.0896, 72.8656],
-    },
-    {
-      type: 'flight',
-      name: flightEntityRaw?.name ? `Air India Express (${flightEntityRaw.name})` : 'Air India Express AI-441',
-      impact: normalizeImpactSeverity(flightEntityRaw?.impact || riskCategory),
-      details: estDelay > 0 ? `+${estDelay} min projected departure delay` : 'On schedule',
-      original_time: '08:45 Departure',
-      simulated_time: estDelay > 0 ? `Estimated delay +${estDelay}m` : 'On Time',
-      delay_minutes: estDelay,
-      location: 'BOM → JAI Air Corridor',
-      coordinates: [22.95, 74.33],
-    },
-    {
-      type: 'transport',
-      name: 'Uber Ground Transport',
-      impact: transImpact >= 0.7 ? 'critical' : transImpact >= 0.4 ? 'high' : transImpact >= 0.2 ? 'medium' : 'low',
-      details: estDelay > 30 ? 'Scheduled pickup window breached (>30 min delay)' : 'Pickup buffer intact',
-      location: 'Jaipur Airport (JAI)',
-      coordinates: [26.8706, 75.7964],
-    },
-    {
-      type: 'hotel',
-      name: 'Hotel Ram Jaipur Check-in',
-      impact: htlImpact >= 0.7 ? 'critical' : htlImpact >= 0.4 ? 'high' : htlImpact >= 0.2 ? 'medium' : 'low',
-      details: estDelay > 60 ? 'Arrival delayed past 22:30 window' : 'Confirmed check-in window intact',
-      location: 'Jaipur City',
-      coordinates: [26.9124, 75.7873],
-    },
-  ];
+  const affectedEntities = buildDynamicAffectedEntities(
+    raw.affected_entities,
+    { rainfall, wind, visibility },
+    estDelay,
+    transImpact,
+    htlImpact,
+    journeyNodes
+  );
 
   // Handle cascading effects from backend
   const nugenRaw = raw.nugen_reasoning || {};
@@ -519,7 +524,8 @@ export async function fetchJourneyWeather(tripId: string | number): Promise<Weat
  * }
  */
 export async function simulateDigitalTwin(
-  payload: DigitalTwinSimulateRequest
+  payload: DigitalTwinSimulateRequest,
+  journeyNodes?: any[]
 ): Promise<DigitalTwinSimulateResponse> {
   const journeyIdNum =
     typeof payload.journey_id === 'string'
@@ -550,14 +556,14 @@ export async function simulateDigitalTwin(
     );
 
     if (res.data) {
-      return normalizeBackendSimulationResponse(res.data, flatBackendRequest);
+      return normalizeBackendSimulationResponse(res.data, flatBackendRequest, journeyNodes);
     }
   } catch (err: any) {
     console.warn('Real digital twin simulation API unreachable, using high-fidelity mock fallback:', err?.message);
   }
 
   // Fallback to high-fidelity contract mock ONLY if backend is offline or network error
-  return generateMockSimulation(journeyIdNum, { rainfall, wind, visibility, temperature });
+  return generateMockSimulation(journeyIdNum, { rainfall, wind, visibility, temperature }, journeyNodes);
 }
 
 /**

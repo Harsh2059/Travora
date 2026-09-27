@@ -506,10 +506,26 @@ def execute_plan(
 
             # Resolve original itinerary row BEFORE recording booking metadata
             target_item = None
-            if node_id_val.isdigit():
+            if str(node_id_val).isdigit():
                 target_item = db.query(models.ItineraryItem).filter(
                     models.ItineraryItem.id == int(node_id_val)
                 ).first()
+
+            if not target_item:
+                target_item = db.query(models.ItineraryItem).filter(
+                    models.ItineraryItem.trip_id == trip_id,
+                    models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"]),
+                    (models.ItineraryItem.booking_id == str(node_id_val)) | (models.ItineraryItem.provider == orig_provider)
+                ).first()
+
+            if not target_item:
+                change_type = (change.get("type") or "FLIGHT").upper()
+                target_item = db.query(models.ItineraryItem).filter(
+                    models.ItineraryItem.trip_id == trip_id,
+                    models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"]),
+                    models.ItineraryItem.type == change_type
+                ).first()
+
             if target_item and target_item.provider:
                 orig_provider = target_item.provider
 

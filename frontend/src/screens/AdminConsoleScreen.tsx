@@ -172,6 +172,15 @@ export default function AdminConsoleScreen() {
   const [detectedAt, setDetectedAt] = useState<string>(formatNowForInput());
   const [reason, setReason] = useState<string>('Operational disruption');
 
+  // Admin Tab & Weather What-If Simulation State
+  const [adminTab, setAdminTab] = useState<'operational' | 'weather_whatif'>('operational');
+  const [simRainfall, setSimRainfall] = useState<number>(65);
+  const [simWind, setSimWind] = useState<number>(45);
+  const [simVisibility, setSimVisibility] = useState<number>(1.2);
+  const [simTemp, setSimTemp] = useState<number>(32);
+  const [simResult, setSimResult] = useState<any | null>(null);
+  const [runningSim, setRunningSim] = useState<boolean>(false);
+
   // Weather state
   const [weather, setWeather] = useState<AdminWeather | null>(null);
   const [loadingWeather, setLoadingWeather] = useState<boolean>(false);
@@ -405,6 +414,62 @@ export default function AdminConsoleScreen() {
     }
   };
 
+  const handleRunDigitalTwinSim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTripId) {
+      setFormError('Select a trip first.');
+      return;
+    }
+    setRunningSim(true);
+    setFormError(null);
+    try {
+      const loc = selectedNode?.origin || selectedNode?.location || journey?.title || 'Mumbai';
+      const res = await axios.post(`${API_BASE_URL}/digital-twin/simulate`, {
+        journey_id: selectedTripId,
+        location: loc,
+        rainfall: simRainfall,
+        wind: simWind,
+        visibility: simVisibility,
+        temperature: simTemp,
+      });
+      setSimResult(res.data || {});
+
+      // Trigger read-only weather disruption event so user view immediately updates
+      const flightNode = activeBookingNodes.find((n) => (n.type || '').toUpperCase() === 'FLIGHT') || activeBookingNodes[0];
+      const delayMinutes = res.data?.prediction?.estimated_delay_minutes || (simRainfall > 80 ? 300 : 120);
+
+      if (flightNode) {
+        const payload = {
+          trip_id: selectedTripId,
+          affected_node_id: flightNode.backendId || flightNode.id,
+          entity_id: flightNode.backendId || flightNode.id,
+          type: 'WEATHER_CONVECTIVE_DELAY',
+          event_type: 'WEATHER_CONVECTIVE_DELAY',
+          detected_at: new Date().toISOString(),
+          reason: `Simulated Weather Disruption (Rain: ${simRainfall}mm, Wind: ${simWind}km/h, Vis: ${simVisibility}km, Temp: ${simTemp}°C)`,
+          delay_minutes: delayMinutes,
+          event_metadata: {
+            rainfall: simRainfall,
+            wind: simWind,
+            visibility: simVisibility,
+            temperature: simTemp,
+          },
+        };
+        await triggerTripDisruption(selectedTripId, payload, true).catch(() => null);
+        const updatedHistory = await fetchTripDisruptions(selectedTripId);
+        setDisruptionHistory(updatedHistory || []);
+      }
+
+      setToastMsg('Digital Twin simulation executed (read-only disruption triggered)!');
+    } catch (err: any) {
+      console.error('Failed to execute Digital Twin simulation:', err);
+      const msg = err?.response?.data?.detail || 'Failed to execute Digital Twin simulation.';
+      setFormError(msg);
+    } finally {
+      setRunningSim(false);
+    }
+  };
+
   const handleResetSimulation = async () => {
     if (!selectedTripId) return;
 
@@ -578,300 +643,564 @@ export default function AdminConsoleScreen() {
           {/* LEFT COLUMN: Simulation Form (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
             <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-slate-200/30 space-y-5">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                  <Radio className="h-4 w-4 text-amber-500 animate-pulse" />
-                  <span>TRIGGER OPERATIONAL DISRUPTION</span>
-                </span>
+              {/* ── 2-MODE TAB SWITCHER: OPERATIONAL vs WEATHER WHAT-IF ── */}
+              <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('operational')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    adminTab === 'operational'
+                      ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-sm border border-slate-200 dark:border-slate-800'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Radio className="h-3.5 w-3.5 text-amber-500" />
+                  <span>1. Operational Disruption</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('weather_whatif')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    adminTab === 'weather_whatif'
+                      ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200 dark:border-slate-800'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <CloudRain className="h-3.5 w-3.5 text-sky-500" />
+                  <span>2. Weather What-If Simulation</span>
+                </button>
               </div>
 
-              <form onSubmit={handleTriggerDisruption} className="space-y-4">
-                {/* 1. Active Trip Selection */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                    1. Select Active Trip *
-                  </label>
-                  <select
-                    value={selectedTripId ?? ''}
-                    onChange={(e) => {
-                      const id = Number(e.target.value);
-                      setSelectedTripId(id);
-                      setActiveTripId(id);
-                    }}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  >
-                    {tripsList.length === 0 && (
-                      <option value="">No active journeys found for this account.</option>
-                    )}
-                    {tripsList.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        #{t.id} · {t.title}
-                      </option>
-                    ))}
-                  </select>
-                  {tripsList.length === 0 && (
-                    <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
-                      No active journeys found for this account. Create a journey in{' '}
-                      <button
-                        type="button"
-                        onClick={() => navigate('/build')}
-                        className="underline font-bold"
-                      >
-                        Trip Builder
-                      </button>
-                      , then select it here.
-                    </p>
-                  )}
-                </div>
-
-                {/* Weather Context Widget */}
-                {selectedTripId && (
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                        <CloudRain className="h-4 w-4 text-sky-500" />
-                        <span>WEATHER CONTEXT</span>
-                        {weather && (
-                          <span className="text-[10px] text-slate-400 font-normal">
-                            ({weather.location})
-                          </span>
-                        )}
-                      </span>
-                      {loadingWeather ? (
-                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                          <Loader2 className="h-3 w-3 animate-spin text-sky-500" /> Fetching live weather...
-                        </span>
-                      ) : weather ? (
-                        <span
-                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-                            weather.is_live
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
-                              : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              weather.is_live ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                            }`}
-                          />
-                          {weather.is_live ? 'LIVE' : 'FALLBACK'}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {loadingWeather ? (
-                      <div className="py-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin text-sky-500" />
-                        Loading environmental weather context...
-                      </div>
-                    ) : weatherError ? (
-                      <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-xs">
-                        {weatherError}
-                      </div>
-                    ) : weather ? (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-4 gap-2 text-center">
-                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
-                            <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
-                              <Thermometer className="h-3.5 w-3.5 text-amber-500" />
-                              <span>{weather.temperature}°C</span>
-                            </div>
-                            <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Temp</p>
-                          </div>
-                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
-                            <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
-                              <CloudRain className="h-3.5 w-3.5 text-sky-500" />
-                              <span>{weather.rainfall} mm</span>
-                            </div>
-                            <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Rainfall</p>
-                          </div>
-                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
-                            <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
-                              <Wind className="h-3.5 w-3.5 text-teal-500" />
-                              <span>{weather.wind} km/h</span>
-                            </div>
-                            <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Wind</p>
-                          </div>
-                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
-                            <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
-                              <Eye className="h-3.5 w-3.5 text-indigo-500" />
-                              <span>{weather.visibility} km</span>
-                            </div>
-                            <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Visibility</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium px-1">
-                          <span>Condition: <strong className="text-slate-800 dark:text-slate-200">{weather.condition}</strong></span>
-                          <span>Updated: <strong className="text-slate-800 dark:text-slate-200">{weather.timestamp}</strong></span>
-                          <span>Source: <strong className="text-slate-800 dark:text-slate-200">{weather.source}</strong></span>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-
-                {/* 2. Select Affected Booking */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                    2. Select Affected Booking *
-                  </label>
-                  <p className="text-[10px] text-slate-400 mb-1.5">
-                    Active bookings only (replaced originals hidden after recovery)
-                  </p>
-                  {loadingTrip ? (
-                    <div className="py-3 text-xs text-slate-500 flex items-center gap-2">
-                      <div className="h-4 w-4 rounded-full animate-spin border-2 border-slate-300 border-t-amber-500" />
-                      Loading trip bookings...
-                    </div>
-                  ) : activeBookingNodes.length === 0 ? (
-                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs text-center">
-                      No active booking items found in this journey. Add a flight, transport, hotel, or other booking item in Trip Builder first.
-                    </div>
-                  ) : (
+              {adminTab === 'operational' ? (
+                <form onSubmit={handleTriggerDisruption} className="space-y-4">
+                  {/* 1. Active Trip Selection */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                      1. Select Active Trip *
+                    </label>
                     <select
-                      value={selectedNodeId}
-                      onChange={(e) => setSelectedNodeId(e.target.value)}
+                      value={selectedTripId ?? ''}
+                      onChange={(e) => {
+                        const id = Number(e.target.value);
+                        setSelectedTripId(id);
+                        setActiveTripId(id);
+                      }}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
-                      {activeBookingNodes.map((n) => {
-                        const routeLabel = n.origin && n.destination ? `${n.origin} → ${n.destination}` : n.location || '';
-                        const dateLabel = n.startDate || (n.startTime ? n.startTime.split('T')[0] : '');
-                        return (
-                          <option key={n.id} value={n.id}>
-                            [{n.type.toUpperCase()}] {n.title} {routeLabel ? `(${routeLabel})` : ''} {dateLabel ? `· ${dateLabel}` : ''}
-                          </option>
-                        );
-                      })}
+                      {tripsList.length === 0 && (
+                        <option value="">No active journeys found for this account.</option>
+                      )}
+                      {tripsList.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          #{t.id} · {t.title}
+                        </option>
+                      ))}
                     </select>
-                  )}
-                </div>
+                    {tripsList.length === 0 && (
+                      <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
+                        No active journeys found for this account. Create a journey in{' '}
+                        <button
+                          type="button"
+                          onClick={() => navigate('/build')}
+                          className="underline font-bold"
+                        >
+                          Trip Builder
+                        </button>
+                        , then select it here.
+                      </p>
+                    )}
+                  </div>
 
-                {/* 3. Disruption Type */}
-                {selectedNode && (
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                      3. Disruption Type *
-                    </label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {getDisruptionOptions(selectedNode.type).map((opt) => {
-                        const isSelected = disruptionType === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setDisruptionType(opt.value)}
-                            className={`p-3 rounded-xl border text-left transition-all flex items-start justify-between ${
-                              isSelected
-                                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-400 dark:border-amber-700 ring-2 ring-amber-500/50'
-                                : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900'
+                  {/* Weather Context Widget */}
+                  {selectedTripId && (
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                          <CloudRain className="h-4 w-4 text-sky-500" />
+                          <span>WEATHER CONTEXT</span>
+                          {weather && (
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              ({weather.location})
+                            </span>
+                          )}
+                        </span>
+                        {loadingWeather ? (
+                          <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin text-sky-500" /> Fetching live weather...
+                          </span>
+                        ) : weather ? (
+                          <span
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                              weather.is_live
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
                             }`}
                           >
-                            <div>
-                              <p className="font-bold text-xs text-slate-900 dark:text-white">{opt.label}</p>
-                              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{opt.desc}</p>
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                weather.is_live ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                              }`}
+                            />
+                            {weather.is_live ? 'LIVE' : 'FALLBACK'}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {loadingWeather ? (
+                        <div className="py-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-sky-500" />
+                          Loading environmental weather context...
+                        </div>
+                      ) : weatherError ? (
+                        <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-xs">
+                          {weatherError}
+                        </div>
+                      ) : weather ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-4 gap-2 text-center">
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
+                              <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                                <Thermometer className="h-3.5 w-3.5 text-amber-500" />
+                                <span>{weather.temperature}°C</span>
+                              </div>
+                              <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Temp</p>
                             </div>
-                            {isSelected && <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1" />}
-                          </button>
-                        );
-                      })}
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
+                              <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                                <CloudRain className="h-3.5 w-3.5 text-sky-500" />
+                                <span>{weather.rainfall} mm</span>
+                              </div>
+                              <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Rainfall</p>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
+                              <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                                <Wind className="h-3.5 w-3.5 text-teal-500" />
+                                <span>{weather.wind} km/h</span>
+                              </div>
+                              <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Wind</p>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
+                              <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                                <Eye className="h-3.5 w-3.5 text-indigo-500" />
+                                <span>{weather.visibility} km</span>
+                              </div>
+                              <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Visibility</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium px-1">
+                            <span>Condition: <strong className="text-slate-800 dark:text-slate-200">{weather.condition}</strong></span>
+                            <span>Updated: <strong className="text-slate-800 dark:text-slate-200">{weather.timestamp}</strong></span>
+                            <span>Source: <strong className="text-slate-800 dark:text-slate-200">{weather.source}</strong></span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* 2. Select Affected Booking */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                      2. Select Affected Booking *
+                    </label>
+                    <p className="text-[10px] text-slate-400 mb-1.5">
+                      Active bookings only (replaced originals hidden after recovery)
+                    </p>
+                    {loadingTrip ? (
+                      <div className="py-3 text-xs text-slate-500 flex items-center gap-2">
+                        <div className="h-4 w-4 rounded-full animate-spin border-2 border-slate-300 border-t-amber-500" />
+                        Loading trip bookings...
+                      </div>
+                    ) : activeBookingNodes.length === 0 ? (
+                      <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs text-center">
+                        No active booking items found in this journey. Add a flight, transport, hotel, or other booking item in Trip Builder first.
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedNodeId}
+                        onChange={(e) => setSelectedNodeId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        {activeBookingNodes.map((n) => {
+                          const routeLabel = n.origin && n.destination ? `${n.origin} → ${n.destination}` : n.location || '';
+                          const dateLabel = n.startDate || (n.startTime ? n.startTime.split('T')[0] : '');
+                          return (
+                            <option key={n.id} value={n.id}>
+                              [{n.type.toUpperCase()}] {n.title} {routeLabel ? `(${routeLabel})` : ''} {dateLabel ? `· ${dateLabel}` : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* 3. Disruption Type */}
+                  {selectedNode && (
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                        3. Disruption Type *
+                      </label>
+                      <div className="grid grid-cols-1 gap-2">
+                        {getDisruptionOptions(selectedNode.type).map((opt) => {
+                          const isSelected = disruptionType === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setDisruptionType(opt.value)}
+                              className={`p-3 rounded-xl border text-left transition-all flex items-start justify-between ${
+                                isSelected
+                                  ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-400 dark:border-amber-700 ring-2 ring-amber-500/50'
+                                  : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900'
+                              }`}
+                            >
+                              <div>
+                                <p className="font-bold text-xs text-slate-900 dark:text-white">{opt.label}</p>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{opt.desc}</p>
+                              </div>
+                              {isSelected && <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. Delay Duration (Conditional) */}
+                  {isDelayType && (
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                        4. Delay Duration (Minutes) *
+                      </label>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          {[30, 60, 90, 120, 180].map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setDelayMinutes(m)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                                delayMinutes === m
+                                  ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              +{m} min
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          value={delayMinutes}
+                          onChange={(e) => setDelayMinutes(Number(e.target.value))}
+                          className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold"
+                          placeholder="Custom minutes..."
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 5. Detected At */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                      Detected At *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={detectedAt}
+                      onChange={(e) => setDetectedAt(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Time Travora system detected the event. Does NOT overwrite scheduled time.
+                    </p>
+                  </div>
+
+                  {/* 6. Reason */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                      Reason (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      placeholder="e.g. Operational disruption, Weather disruption"
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold"
+                    />
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {['Weather disruption', 'Operational disruption', 'Technical issue', 'Schedule change'].map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setReason(r)}
+                          className="text-[10px] font-medium px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 transition-colors"
+                        >
+                          {r}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                )}
 
-                {/* 4. Delay Duration (Conditional) */}
-                {isDelayType && (
+                  {/* Submit Action */}
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={submitting || !selectedNode}
+                      className={`w-full py-3 rounded-2xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-2 ${
+                        submitting || !selectedNode
+                          ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                          : 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20'
+                      }`}
+                    >
+                      <Zap className="h-4 w-4" />
+                      <span>{submitting ? 'Triggering Disruption...' : 'TRIGGER OPERATIONAL DISRUPTION'}</span>
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Weather What-If Simulation Form */
+                <form onSubmit={handleRunDigitalTwinSim} className="space-y-5">
+                  <div className="p-3 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-sky-800 dark:text-sky-300 text-xs space-y-1">
+                    <div className="font-extrabold flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-sky-500 shrink-0" />
+                      <span>READ-ONLY WEATHER STRESS TEST</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                      Simulate extreme weather parameters against your digital twin. Runs Random Forest ML predictions and evaluates cascading impacts across Flight → Transport → Hotel without mutating real journey data.
+                    </p>
+                  </div>
+
+                  {/* Presets */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                      4. Delay Duration (Minutes) *
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">
+                      Quick Stress Presets
                     </label>
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap gap-2">
-                        {[30, 60, 90, 120, 180].map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setDelayMinutes(m)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                              delayMinutes === m
-                                ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                            }`}
-                          >
-                            +{m} min
-                          </button>
-                        ))}
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSimRainfall(0);
+                          setSimWind(10);
+                          setSimVisibility(10);
+                          setSimTemp(28);
+                        }}
+                        className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-sky-400 text-left transition-all"
+                      >
+                        <span className="font-bold text-xs block text-slate-900 dark:text-white">☀️ Clear / Normal</span>
+                        <span className="text-[10px] text-slate-400 block">0mm rain, 10km/h wind</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSimRainfall(65);
+                          setSimWind(45);
+                          setSimVisibility(2.5);
+                          setSimTemp(26);
+                        }}
+                        className="p-2.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50/50 dark:bg-sky-950/30 hover:border-sky-500 text-left transition-all"
+                      >
+                        <span className="font-bold text-xs block text-sky-900 dark:text-sky-200">🌧️ Heavy Monsoon</span>
+                        <span className="text-[10px] text-sky-600 dark:text-sky-400 block">65mm rain, 45km/h wind</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSimRainfall(125);
+                          setSimWind(85);
+                          setSimVisibility(0.8);
+                          setSimTemp(21);
+                        }}
+                        className="p-2.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-950/30 hover:border-rose-500 text-left transition-all"
+                      >
+                        <span className="font-bold text-xs block text-rose-900 dark:text-rose-200">⚡ Severe Storm</span>
+                        <span className="text-[10px] text-rose-600 dark:text-rose-400 block">125mm rain, 85km/h wind</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sliders */}
+                  <div className="space-y-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                    <div>
+                      <div className="flex justify-between text-xs font-bold mb-1">
+                        <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                          <CloudRain className="h-3.5 w-3.5 text-sky-500" />
+                          Rainfall
+                        </span>
+                        <span className="font-mono text-sky-600 dark:text-sky-400">{simRainfall} mm/h</span>
                       </div>
                       <input
-                        type="number"
-                        min="1"
-                        value={delayMinutes}
-                        onChange={(e) => setDelayMinutes(Number(e.target.value))}
-                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold"
-                        placeholder="Custom minutes..."
+                        type="range"
+                        min="0"
+                        max="150"
+                        step="5"
+                        value={simRainfall}
+                        onChange={(e) => setSimRainfall(Number(e.target.value))}
+                        className="w-full accent-sky-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs font-bold mb-1">
+                        <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                          <Wind className="h-3.5 w-3.5 text-teal-500" />
+                          Wind Speed
+                        </span>
+                        <span className="font-mono text-teal-600 dark:text-teal-400">{simWind} km/h</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="120"
+                        step="5"
+                        value={simWind}
+                        onChange={(e) => setSimWind(Number(e.target.value))}
+                        className="w-full accent-teal-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs font-bold mb-1">
+                        <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                          <Eye className="h-3.5 w-3.5 text-indigo-500" />
+                          Visibility
+                        </span>
+                        <span className="font-mono text-indigo-600 dark:text-indigo-400">{simVisibility} km</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="10.0"
+                        step="0.5"
+                        value={simVisibility}
+                        onChange={(e) => setSimVisibility(Number(e.target.value))}
+                        className="w-full accent-indigo-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs font-bold mb-1">
+                        <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                          <Thermometer className="h-3.5 w-3.5 text-amber-500" />
+                          Temperature
+                        </span>
+                        <span className="font-mono text-amber-600 dark:text-amber-400">{simTemp} °C</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-10"
+                        max="50"
+                        step="1"
+                        value={simTemp}
+                        onChange={(e) => setSimTemp(Number(e.target.value))}
+                        className="w-full accent-amber-500 cursor-pointer"
                       />
                     </div>
                   </div>
-                )}
 
-                {/* 5. Detected At */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                    Detected At *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={detectedAt}
-                    onChange={(e) => setDetectedAt(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Time Travora system detected the event. Does NOT overwrite scheduled time.
-                  </p>
-                </div>
-
-                {/* 6. Reason */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                    Reason (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. Operational disruption, Weather disruption"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold"
-                  />
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {['Weather disruption', 'Operational disruption', 'Technical issue', 'Schedule change'].map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setReason(r)}
-                        className="text-[10px] font-medium px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 transition-colors"
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Submit Action */}
-                <div className="pt-2">
+                  {/* Run Sim Action */}
                   <button
                     type="submit"
-                    disabled={submitting || !selectedNode}
+                    disabled={runningSim || !selectedTripId}
                     className={`w-full py-3 rounded-2xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-2 ${
-                      submitting || !selectedNode
+                      runningSim || !selectedTripId
                         ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                        : 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20'
+                        : 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-500/20 cursor-pointer'
                     }`}
                   >
-                    <Zap className="h-4 w-4" />
-                    <span>{submitting ? 'Triggering Disruption...' : 'TRIGGER OPERATIONAL DISRUPTION'}</span>
+                    {runningSim ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    ) : (
+                      <Zap className="h-4 w-4" />
+                    )}
+                    <span>{runningSim ? 'Running Random Forest ML Digital Twin...' : 'RUN DIGITAL TWIN SIMULATION'}</span>
                   </button>
-                </div>
-              </form>
+
+                  {/* Simulation Result Output */}
+                  {simResult && (
+                    <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-sky-300 dark:border-sky-800 shadow-xl space-y-4 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                        <span className="text-xs font-extrabold text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
+                          <ShieldCheck className="h-4 w-4" />
+                          <span>DIGITAL TWIN SIMULATION RESULT</span>
+                        </span>
+                        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 font-bold">
+                          READ-ONLY SIMULATION
+                        </span>
+                      </div>
+
+                      {/* Disruption & Risk Summary */}
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                          <span className="text-xs text-slate-500 font-bold block uppercase text-[9px]">Disruption Prob</span>
+                          <span className="text-base font-extrabold text-rose-600 dark:text-rose-400">
+                            {Math.round((simResult.prediction?.disruption_probability ?? 0) * 100)}%
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                          <span className="text-xs text-slate-500 font-bold block uppercase text-[9px]">Estimated Delay</span>
+                          <span className="text-base font-extrabold text-amber-600 dark:text-amber-400">
+                            +{simResult.prediction?.estimated_delay_minutes ?? 0}m
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                          <span className="text-xs text-slate-500 font-bold block uppercase text-[9px]">ML Risk Level</span>
+                          <span className={`text-xs font-extrabold uppercase px-2 py-1 rounded-lg inline-block mt-0.5 ${
+                            simResult.prediction?.risk_level === 'HIGH'
+                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                              : simResult.prediction?.risk_level === 'MEDIUM'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          }`}>
+                            {simResult.prediction?.risk_level || 'LOW'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Cascading Effects propagation flow */}
+                      <div>
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 block mb-2">
+                          Cascading Twin Propagation
+                        </span>
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                            <span className="px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-200 text-[10px]">✈ Flight</span>
+                            <span>→</span>
+                            <span className="px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-[10px]">🚗 Ground Transport</span>
+                            <span>→</span>
+                            <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 text-[10px]">🏨 Hotel</span>
+                          </div>
+
+                          {simResult.cascading_effects?.length > 0 ? (
+                            <div className="space-y-1 pt-1">
+                              {simResult.cascading_effects.map((eff: string, idx: number) => (
+                                <p key={idx} className="text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1.5">
+                                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                  <span>{eff}</span>
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium pt-1">
+                              ✓ No downstream disruption cascades under these weather parameters.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {simResult.nugen_reasoning && (
+                        <div className="p-3 rounded-xl bg-slate-100/70 dark:bg-slate-950/70 text-xs text-slate-700 dark:text-slate-300 italic border border-slate-200 dark:border-slate-800">
+                          <span className="font-bold not-italic block mb-1 text-[10px] text-slate-500 uppercase">AI Reasoning Summary:</span>
+                          "{typeof simResult.nugen_reasoning === 'string'
+                            ? simResult.nugen_reasoning
+                            : simResult.nugen_reasoning?.explanation || simResult.nugen_reasoning?.reasoning || 'Domain reasoning evaluated against weather parameters.'}"
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </form>
+              )}
             </div>
           </div>
 

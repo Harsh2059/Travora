@@ -4,7 +4,7 @@ load_dotenv()
 from fastapi import FastAPI, Depends, HTTPException, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 import crud, models, schemas, seed
@@ -650,11 +650,36 @@ def get_trip_details(
         models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"])
     ).order_by(models.ItineraryItem.start_time.asc()).all()
 
+    # Identify any item IDs that were replaced by a new replacement item
+    replaced_item_ids = set()
+    for it in active_items_raw:
+        meta = it.item_metadata or {}
+        if meta.get("replaced_item_id"):
+            try:
+                replaced_item_ids.add(int(meta["replaced_item_id"]))
+            except (ValueError, TypeError):
+                pass
+
     seen_active_keys = set()
     active_items = []
     for it in active_items_raw:
-        key = it.booking_id if it.booking_id else f"{it.id}_{it.type}_{it.provider}"
-        if key not in seen_active_keys:
+        if it.id in replaced_item_ids:
+            continue
+        meta = it.item_metadata or {}
+        n_type = (it.type or "").upper()
+        if n_type in ("HOTEL", "STAY"):
+            key = f"hotel_{(it.provider or '').lower()}_{(it.location or it.destination or '').lower()}"
+        elif n_type in ("CAB", "TAXI", "TRANSFER"):
+            key = f"cab_{(it.provider or '').lower()}_{(it.origin or '').lower()}_{(it.destination or '').lower()}"
+        elif it.booking_id:
+            key = f"booking_{it.booking_id}"
+        else:
+            key = f"{it.id}_{it.type}_{it.provider}"
+
+        if key not in seen_active_keys or meta.get("is_replacement"):
+            if key in seen_active_keys:
+                active_items = [x for x in active_items if getattr(x, "_dedup_key", None) != key]
+            setattr(it, "_dedup_key", key)
             seen_active_keys.add(key)
             active_items.append(it)
 
@@ -671,14 +696,29 @@ def get_trip_details(
             all_trip_items.append(it)
 
 
+    def _sanitize_route_locations(orig: Optional[str], dest: Optional[str], item_type: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        if not orig and not dest:
+            return orig, dest
+        orig_str = (orig or "").strip()
+        dest_str = (dest or "").strip()
+
+        def _norm(s):
+            return "".join(c.lower() for c in s if c.isalnum())
+
+        if orig_str and dest_str and _norm(orig_str) == _norm(dest_str):
+            dest_str = f"{dest_str} (Arrival)"
+
+        return orig_str or orig, dest_str or dest
+
     def serialize_item(it):
+        clean_orig, clean_dest = _sanitize_route_locations(it.origin, it.destination, it.type)
         return {
             "id": it.id,
             "trip_id": it.trip_id,
             "type": it.type,
             "provider": it.provider,
-            "origin": it.origin,
-            "destination": it.destination,
+            "origin": clean_orig,
+            "destination": clean_dest,
             "location": it.location,
             "start_time": it.start_time.isoformat() if it.start_time else None,
             "end_time": it.end_time.isoformat() if it.end_time else None,

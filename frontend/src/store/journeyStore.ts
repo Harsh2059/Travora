@@ -372,17 +372,32 @@ export async function fetchTripById(tripId: number, adminMode = false): Promise<
   const rawItems = (data.items && data.items.length > 0) ? data.items : (data.all_items ?? []);
   const rawOrigItems = (data.original_items && data.original_items.length > 0) ? data.original_items : rawItems;
 
-  // Deduplicate items by booking_id or id
+  // Deduplicate items by booking_id, id, or (type + provider + location/origin)
   const dedupMap = new Map<string, any>();
   for (const it of rawItems) {
-    const key = it.booking_id ? `booking_${it.booking_id}` : `id_${it.id}`;
-    if (!dedupMap.has(key)) dedupMap.set(key, it);
+    const meta = it.item_metadata ?? {};
+    const nType = (it.type || '').toUpperCase();
+    let key = it.booking_id ? `booking_${it.booking_id}` : `id_${it.id}`;
+    if (nType === 'HOTEL' || nType === 'STAY') {
+      key = `hotel_${(it.provider || '').toLowerCase()}_${(it.location || it.destination || '').toLowerCase()}`;
+    } else if (nType === 'CAB' || nType === 'TAXI' || nType === 'TRANSFER') {
+      key = `cab_${(it.provider || '').toLowerCase()}_${(it.origin || '').toLowerCase()}_${(it.destination || '').toLowerCase()}`;
+    }
+    if (!dedupMap.has(key) || meta.is_replacement) {
+      dedupMap.set(key, it);
+    }
   }
   const deduplicatedItems = Array.from(dedupMap.values());
 
   const dedupOrigMap = new Map<string, any>();
   for (const it of rawOrigItems) {
-    const key = it.booking_id ? `booking_${it.booking_id}` : `id_${it.id}`;
+    const nType = (it.type || '').toUpperCase();
+    let key = it.booking_id ? `booking_${it.booking_id}` : `id_${it.id}`;
+    if (nType === 'HOTEL' || nType === 'STAY') {
+      key = `hotel_${(it.provider || '').toLowerCase()}_${(it.location || it.destination || '').toLowerCase()}`;
+    } else if (nType === 'CAB' || nType === 'TAXI' || nType === 'TRANSFER') {
+      key = `cab_${(it.provider || '').toLowerCase()}_${(it.origin || '').toLowerCase()}_${(it.destination || '').toLowerCase()}`;
+    }
     if (!dedupOrigMap.has(key)) dedupOrigMap.set(key, it);
   }
   const deduplicatedOrigItems = Array.from(dedupOrigMap.values());

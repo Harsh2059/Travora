@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   ChevronRight,
   Download,
@@ -24,7 +24,6 @@ import { SkyWaySupportModal } from '../components/SkyWaySupportModal';
 import {
   useJourney,
   fetchTripDisruptions,
-  triggerTripDisruption,
   resetTripDisruptions,
   getSelectedRecoveryPlanWithMeta
 } from '../store/journeyStore';
@@ -52,15 +51,65 @@ function fmtTimeStr(isoStr?: string | null): string {
   }
 }
 
+function cleanRouteLocation(orig?: string | null, dest?: string | null, type?: string | null) {
+  let o = (orig || '').trim();
+  let d = (dest || '').trim();
+  const isFlight = (type || '').toLowerCase().includes('flight');
+
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  const parseLocation = (text: string, defaultCode: string) => {
+    if (!text) return { label: '', code: defaultCode };
+
+    // Check if parentheses contain code e.g. "Mumbai (BOM)" or "Delhi (DEL)"
+    const match = text.match(/\(([A-Z]{3,4})\)/i);
+    if (match) {
+      return { label: text, code: match[1].toUpperCase() };
+    }
+
+    const t = norm(text);
+    if (t.includes('mumbai') || t === 'bom') return { label: 'Mumbai (BOM)', code: 'BOM' };
+    if (t.includes('delhi') || t === 'del') return { label: 'Delhi (DEL)', code: 'DEL' };
+    if (t.includes('jaipur') || t === 'jai') return { label: 'Jaipur (JAI)', code: 'JAI' };
+    if (t.includes('london') || t.includes('heathrow') || t === 'lhr') return { label: 'London Heathrow (LHR)', code: 'LHR' };
+    if (t.includes('amritsar') || t === 'atq') return { label: 'Amritsar (ATQ)', code: 'ATQ' };
+    if (t.includes('bengaluru') || t.includes('bangalore') || t === 'blr') return { label: 'Bengaluru (BLR)', code: 'BLR' };
+    if (t.includes('hyderabad') || t === 'hyd') return { label: 'Hyderabad (HYD)', code: 'HYD' };
+    if (t.includes('chennai') || t === 'maa') return { label: 'Chennai (MAA)', code: 'MAA' };
+    if (t.includes('kolkata') || t === 'ccu') return { label: 'Kolkata (CCU)', code: 'CCU' };
+    if (t.includes('pune') || t === 'pnq') return { label: 'Pune (PNQ)', code: 'PNQ' };
+
+    const cleanName = text.charAt(0).toUpperCase() + text.slice(1);
+    const code = text.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() || defaultCode;
+    const label = isFlight && !cleanName.toLowerCase().includes('airport') ? `${cleanName} Airport` : cleanName;
+    return { label, code };
+  };
+
+  let origInfo = parseLocation(o, 'BOM');
+  let destInfo = parseLocation(d, 'JAI');
+
+  if (origInfo.label && destInfo.label && norm(origInfo.label) === norm(destInfo.label)) {
+    destInfo = {
+      label: `${destInfo.label} (Arrival)`,
+      code: destInfo.code
+    };
+  }
+
+  return {
+    origTitle: origInfo.label || o || 'Origin',
+    destTitle: destInfo.label || d || 'Destination',
+    origCode: origInfo.code,
+    destCode: destInfo.code,
+  };
+}
+
 export default function SkyWayMyTripScreen() {
-  const navigate = useNavigate();
   const { journey, refresh } = useJourney();
   const user = getStoredUser();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'passengers' | 'baggage' | 'manage'>('overview');
   const [activeDisruptions, setActiveDisruptions] = useState<any[]>([]);
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [hasRecoveredPlan, setHasRecoveredPlan] = useState(false);
 
   useEffect(() => {
@@ -88,37 +137,6 @@ export default function SkyWayMyTripScreen() {
   const dateRangeStr = firstNode && lastNode
     ? `${fmtDateFull(firstNode.startTime)} – ${fmtDateFull(lastNode.endTime || lastNode.startTime)}`
     : 'Date pending';
-
-  // Handle Simulate Disruption (AI-129 / AI-441 delayed by 6h 30m)
-  const handleSimulateDelay = async () => {
-    if (!journey?.id) return;
-    setIsSimulating(true);
-    setIsActionsMenuOpen(false);
-
-    try {
-      const flightNode = journey.nodes?.find((n: any) => (n.type || '').toUpperCase() === 'FLIGHT');
-      const affectedNode = flightNode || journey.nodes?.[0];
-      const payload = {
-        trip_id: journey.id,
-        affected_node_id: affectedNode?.backendId || 1,
-        entity_id: affectedNode?.backendId || 1,
-        type: 'FLIGHT_DELAYED',
-        event_type: 'FLIGHT_DELAYED',
-        detected_at: new Date().toISOString(),
-        reason: 'Technical issue with aircraft avionics system',
-        delay_minutes: 390, // 6h 30m delay
-      };
-
-      await triggerTripDisruption(journey.id, payload);
-      await refresh();
-      navigate('/disruption');
-    } catch (err) {
-      console.error('Failed to trigger disruption simulation:', err);
-      navigate('/disruption');
-    } finally {
-      setIsSimulating(false);
-    }
-  };
 
   const handleResetTrip = async () => {
     if (!journey?.id) return;
@@ -216,7 +234,7 @@ export default function SkyWayMyTripScreen() {
                 className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:to-indigo-500 shadow-md shadow-indigo-500/20 transition-all flex items-center gap-1.5"
               >
                 <Sparkles className="w-3.5 h-3.5 text-sky-200 animate-pulse" />
-                <span>Digital Twin (Weather What-If)</span>
+                <span>Digital Twin</span>
               </Link>
               <button
                 onClick={() => setActiveTab('manage')}
@@ -253,16 +271,8 @@ export default function SkyWayMyTripScreen() {
                       className="w-full text-left px-3.5 py-2 hover:bg-indigo-50 text-indigo-700 font-bold flex items-center gap-2"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Weather Digital Twin (What-If)</span>
+                      <span>Weather Digital Twin</span>
                     </Link>
-                    <button
-                      onClick={handleSimulateDelay}
-                      disabled={isSimulating}
-                      className="w-full text-left px-3.5 py-2 hover:bg-rose-50 text-rose-700 font-bold flex items-center gap-2"
-                    >
-                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Simulate Flight Delay (6h 30m)</span>
-                    </button>
                     {hasDisruption && (
                       <Link
                         to="/disruption"
@@ -330,10 +340,7 @@ export default function SkyWayMyTripScreen() {
               className="py-3.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-indigo-600 hover:text-indigo-800 transition-colors shrink-0 flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
-              <span>Digital Twin (Weather What-If)</span>
-              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-white">
-                SIMULATE
-              </span>
+              <span>Digital Twin</span>
             </Link>
             <button
               onClick={() => setActiveTab('passengers')}
@@ -375,15 +382,7 @@ export default function SkyWayMyTripScreen() {
               <CloudRain className="w-6 h-6 text-sky-400" />
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-extrabold tracking-wider uppercase px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/20">
-                  HackCelestial 3.0 Demo
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Journey #{journey?.id || 7} ({tripTitle})
-                </span>
-                <h3 className="text-sm sm:text-base font-bold text-white">Weather-Driven Digital Twin & What-If Simulation</h3>
-              </div>
+              <h3 className="text-sm sm:text-base font-bold text-white">Weather-Driven Digital Twin & What-If Simulation</h3>
               <p className="text-xs text-slate-300 mt-1.5 max-w-2xl leading-relaxed">
                 Experience the live Digital Twin: simulate severe weather stress-tests (rainfall, wind, visibility, temp), observe AI delay predictions, map cascading impacts across Flight → Uber → Hotel, and review domain reasoning & recovery plans.
               </p>
@@ -457,93 +456,140 @@ export default function SkyWayMyTripScreen() {
                   <Plane className="w-4 h-4 text-sky-600" />
                   <h2 className="text-base font-bold text-slate-900">Active Journey Itinerary</h2>
                 </div>
-                <span className="text-xs font-semibold text-slate-500">{nodes.length} Segment{nodes.length === 1 ? '' : 's'}</span>
+                <span className="text-xs font-semibold text-slate-500">{(() => {
+                  const dedupMap = new Map<string, any>();
+                  for (const n of nodes) {
+                    const nType = (n.type || '').toLowerCase();
+                    let k = n.id;
+                    if (nType.includes('hotel') || nType.includes('stay')) {
+                      k = `hotel_${(n.provider || '').toLowerCase()}_${(n.location || n.destination || '').toLowerCase()}`;
+                    } else if (nType.includes('cab') || nType.includes('taxi') || nType.includes('transfer')) {
+                      k = `cab_${(n.provider || '').toLowerCase()}_${(n.origin || '').toLowerCase()}_${(n.destination || '').toLowerCase()}`;
+                    }
+                    if (!dedupMap.has(k) || n.metadata?.is_replacement) dedupMap.set(k, n);
+                  }
+                  return dedupMap.size;
+                })()} Segment{nodes.length === 1 ? '' : 's'}</span>
               </div>
 
-              {nodes.map((node, idx) => {
-                const nType = (node.type || '').toLowerCase();
-                const isHotel = nType.includes('hotel');
-                const isCab = nType.includes('cab') || nType.includes('transfer') || nType.includes('taxi');
+              {(() => {
+                const TYPE_ORDER: Record<string, number> = { flight: 1, train: 1, cab: 2, taxi: 2, transfer: 2, metro: 2, hotel: 3, stay: 3 };
+                const dedupMap = new Map<string, any>();
+                for (const n of nodes) {
+                  const nType = (n.type || '').toLowerCase();
+                  let k = n.id;
+                  if (nType.includes('hotel') || nType.includes('stay')) {
+                    k = `hotel_${(n.provider || '').toLowerCase()}_${(n.location || n.destination || '').toLowerCase()}`;
+                  } else if (nType.includes('cab') || nType.includes('taxi') || nType.includes('transfer')) {
+                    k = `cab_${(n.provider || '').toLowerCase()}_${(n.origin || '').toLowerCase()}_${(n.destination || '').toLowerCase()}`;
+                  }
+                  if (!dedupMap.has(k) || n.metadata?.is_replacement) dedupMap.set(k, n);
+                }
 
-                const isDisrupted =
-                  hasDisruption &&
-                  activeDisruptions.some((d: any) => {
-                    const nodeEnt = String(node.backendId || node.id);
-                    const dispEnt = String(d.affected_node_id || d.entity_id || '');
-                    return nodeEnt === dispEnt || (idx === 0 && (!dispEnt || dispEnt === '1'));
-                  });
+                const displayNodes = Array.from(dedupMap.values()).sort((a, b) => {
+                  const orderA = TYPE_ORDER[(a.type || '').toLowerCase()] || 4;
+                  const orderB = TYPE_ORDER[(b.type || '').toLowerCase()] || 4;
+                  return orderA - orderB;
+                });
 
-                return (
-                  <div key={node.id || idx} className="space-y-3">
-                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`w-8 h-8 rounded-xl ${isHotel ? 'bg-indigo-600' : isCab ? 'bg-sky-600' : 'bg-red-600'} text-white font-black text-xs flex items-center justify-center shadow-xs`}>
-                            {isHotel ? <Building className="w-4 h-4" /> : isCab ? <Car className="w-4 h-4" /> : 'AI'}
+                return displayNodes.map((node, idx) => {
+                  const nType = (node.type || '').toLowerCase();
+                  const isHotel = nType.includes('hotel') || nType.includes('stay');
+                  const isCab = nType.includes('cab') || nType.includes('transfer') || nType.includes('taxi');
+
+                  const isDisrupted =
+                    hasDisruption &&
+                    activeDisruptions.some((d: any) => {
+                      const nodeEnt = String(node.backendId || node.id);
+                      const dispEnt = String(d.affected_node_id || d.entity_id || '');
+                      return nodeEnt === dispEnt || (idx === 0 && (!dispEnt || dispEnt === '1'));
+                    });
+
+                  const startTimeFormatted = fmtTimeStr(node.startTime);
+                  const endTimeFormatted = fmtTimeStr(node.endTime);
+
+                  return (
+                    <div key={node.id || idx} className="space-y-3">
+                      <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-8 h-8 rounded-xl ${isHotel ? 'bg-indigo-600' : isCab ? 'bg-sky-600' : 'bg-red-600'} text-white font-black text-xs flex items-center justify-center shadow-xs`}>
+                              {isHotel ? <Building className="w-4 h-4" /> : isCab ? <Car className="w-4 h-4" /> : <Plane className="w-4 h-4" />}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-slate-900">{node.title || node.provider}</p>
+                              <p className="text-[11px] text-slate-500">
+                                {fmtDateFull(node.startTime)} • {node.transportMode || node.type}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs font-bold text-slate-900">{node.title || node.provider}</p>
-                            <p className="text-[11px] text-slate-500">
-                              {fmtDateFull(node.startTime)} • {node.transportMode || node.type}
+                          {isDisrupted ? (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                              🔴 Delayed (+6h 30m)
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                              🟢 Confirmed
+                            </span>
+                          )}
+                        </div>
+
+                        {isHotel ? (
+                          <div className="pt-2 text-xs">
+                            <p className="font-bold text-slate-800">Hotel Location: {node.location || node.destination || 'Jaipur'}</p>
+                            <p className="text-slate-500 text-[11px] mt-0.5">
+                              Check-in: {startTimeFormatted}
+                              {endTimeFormatted !== '00:00' ? ` | Check-out: ${endTimeFormatted}` : ''}
                             </p>
                           </div>
-                        </div>
-                        {isDisrupted ? (
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
-                            🔴 Delayed (+6h 30m)
-                          </span>
+                        ) : isCab ? (
+                          <div className="pt-2 text-xs">
+                            <p className="font-bold text-slate-800">Pickup: {node.origin || 'Airport'} → Dropoff: {node.destination || 'Hotel'}</p>
+                            {startTimeFormatted !== '00:00' && (
+                              <p className="text-slate-500 text-[11px] mt-0.5">Scheduled Pickup: {startTimeFormatted}</p>
+                            )}
+                          </div>
                         ) : (
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                            🟢 Confirmed
-                          </span>
+                          (() => {
+                            const route = cleanRouteLocation(node.origin, node.destination, node.type);
+                            return (
+                              <div className="grid grid-cols-7 items-center pt-2">
+                                <div className="col-span-2">
+                                  <p className="text-xl font-extrabold text-slate-900">{startTimeFormatted}</p>
+                                  <p className="text-xs font-bold text-slate-600">{route.origCode}</p>
+                                  <p className="text-[11px] text-slate-400 truncate" title={route.origTitle}>{route.origTitle}</p>
+                                </div>
+                                <div className="col-span-3 flex flex-col items-center px-2">
+                                  <span className="text-[10px] font-bold text-slate-400">Direct</span>
+                                  <div className="w-full flex items-center my-1">
+                                    <div className="h-0.5 w-full bg-slate-300" />
+                                    <Plane className="w-3.5 h-3.5 text-sky-600 mx-1 shrink-0" />
+                                    <div className="h-0.5 w-full bg-slate-300" />
+                                  </div>
+                                  <span className="text-[10px] font-semibold text-emerald-600">Scheduled</span>
+                                </div>
+                                <div className="col-span-2 text-right">
+                                  <p className="text-xl font-extrabold text-slate-900">{endTimeFormatted}</p>
+                                  <p className="text-xs font-bold text-slate-600">{route.destCode}</p>
+                                  <p className="text-[11px] text-slate-400 truncate" title={route.destTitle}>{route.destTitle}</p>
+                                </div>
+                              </div>
+                            );
+                          })()
                         )}
                       </div>
 
-                      {isHotel ? (
-                        <div className="pt-2 text-xs">
-                          <p className="font-bold text-slate-800">Hotel Location: {node.location || node.destination || 'Jaipur'}</p>
-                          <p className="text-slate-500 text-[11px] mt-0.5">Check-in: {fmtTimeStr(node.startTime)} | Check-out: {fmtTimeStr(node.endTime)}</p>
-                        </div>
-                      ) : isCab ? (
-                        <div className="pt-2 text-xs">
-                          <p className="font-bold text-slate-800">Pickup: {node.origin || 'Airport'} → Dropoff: {node.destination || 'Hotel'}</p>
-                          <p className="text-slate-500 text-[11px] mt-0.5">Scheduled Pickup: {fmtTimeStr(node.startTime)}</p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-7 items-center pt-2">
-                          <div className="col-span-2">
-                            <p className="text-xl font-extrabold text-slate-900">{fmtTimeStr(node.startTime)}</p>
-                            <p className="text-xs font-bold text-slate-600">{node.origin ? node.origin.split(' ')[0] : 'BOM'}</p>
-                            <p className="text-[11px] text-slate-400 truncate">{node.origin || 'Mumbai'}</p>
-                          </div>
-                          <div className="col-span-3 flex flex-col items-center px-2">
-                            <span className="text-[10px] font-bold text-slate-400">Direct</span>
-                            <div className="w-full flex items-center my-1">
-                              <div className="h-0.5 w-full bg-slate-300" />
-                              <Plane className="w-3.5 h-3.5 text-sky-600 mx-1 shrink-0" />
-                              <div className="h-0.5 w-full bg-slate-300" />
-                            </div>
-                            <span className="text-[10px] font-semibold text-emerald-600">Scheduled</span>
-                          </div>
-                          <div className="col-span-2 text-right">
-                            <p className="text-xl font-extrabold text-slate-900">{fmtTimeStr(node.endTime)}</p>
-                            <p className="text-xs font-bold text-slate-600">{node.destination ? node.destination.split(' ')[0] : 'JAI'}</p>
-                            <p className="text-[11px] text-slate-400 truncate">{node.destination || 'Jaipur'}</p>
-                          </div>
+                      {/* Layover alert between segments if applicable */}
+                      {idx < displayNodes.length - 1 && (
+                        <div className="flex items-center justify-center gap-2 py-1 text-xs font-semibold text-slate-500 bg-sky-50/50 rounded-xl border border-dashed border-sky-200">
+                          <Clock className="w-3.5 h-3.5 text-sky-600" />
+                          <span>Connecting Transfer / Transit in Progress</span>
                         </div>
                       )}
                     </div>
-
-                    {/* Layover alert between segments if applicable */}
-                    {idx < nodes.length - 1 && (
-                      <div className="flex items-center justify-center gap-2 py-1 text-xs font-semibold text-slate-500 bg-sky-50/50 rounded-xl border border-dashed border-sky-200">
-                        <Clock className="w-3.5 h-3.5 text-sky-600" />
-                        <span>Connecting Transfer / Transit in Progress</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
 

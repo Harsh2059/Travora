@@ -169,11 +169,6 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
                 >
                   {link.isTwin && <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />}
                   <span>{link.label}</span>
-                  {link.isTwin && (
-                    <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-white leading-none shadow-2xs">
-                      WHAT-IF
-                    </span>
-                  )}
                   {link.hasDisruption && (
                     <span className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                   )}
@@ -354,11 +349,6 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
                     {link.isTwin && <Sparkles className="w-4 h-4 text-indigo-500" />}
                     <span>{link.label}</span>
                   </div>
-                  {link.isTwin && (
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-white">
-                      WHAT-IF
-                    </span>
-                  )}
                   {link.hasDisruption && (
                     <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500 text-white">
                       Alert
