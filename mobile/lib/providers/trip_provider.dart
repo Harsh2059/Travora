@@ -35,6 +35,10 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<RecoveryOption> recoveryOptions = [];
   RecoveryExecution? lastExecution;
   
+  // Recovery loading state
+  bool _recoveryOptionsLoading = false;
+  bool get recoveryOptionsLoading => _recoveryOptionsLoading;
+  
   int? get activeTripId => activeTrip?.id;
   int? defaultTripId;
   Timer? _pollingTimer;
@@ -64,6 +68,10 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _startPolling();
       _pollDisruptions(); // immediate check
+      // Also refresh recovery state if we have an active trip with disruptions
+      if (activeTripId != null && activeDisruptions.isNotEmpty) {
+        fetchRecoveryOptions();
+      }
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _pollingTimer?.cancel();
     }
@@ -144,6 +152,7 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
     recoveryOptions.clear();
     
     await refreshActiveTrip();
+    await fetchRecoveryOptions();
   }
 
   Future<bool> createNewTrip(String title, List<Map<String, dynamic>> items) async {
@@ -248,16 +257,35 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  // Fetch Recovery Options
+  // Fetch Recovery Options with dedicated loading state
   Future<void> fetchRecoveryOptions() async {
     if (activeTripId == null) return;
-    _setState(ProviderState.loading);
+    _recoveryOptionsLoading = true;
+    notifyListeners();
     try {
       recoveryOptions = await _recoveryService.getRecoveryOptions(activeTripId!);
-      _setState(ProviderState.loaded);
     } catch (e) {
-      errorMessage = 'Failed to fetch recovery options: $e';
-      _setState(ProviderState.error);
+      if (kDebugMode) debugPrint('Failed to fetch recovery options: $e');
+    } finally {
+      _recoveryOptionsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Refresh recovery state (trip + disruptions + recovery options)
+  Future<void> refreshRecoveryState() async {
+    if (activeTripId == null) return;
+    _recoveryOptionsLoading = true;
+    notifyListeners();
+    try {
+      await refreshActiveTrip();
+      await _refreshDisruptions();
+      recoveryOptions = await _recoveryService.getRecoveryOptions(activeTripId!);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Failed to refresh recovery state: $e');
+    } finally {
+      _recoveryOptionsLoading = false;
+      notifyListeners();
     }
   }
 

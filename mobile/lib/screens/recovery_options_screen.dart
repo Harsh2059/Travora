@@ -18,6 +18,11 @@ class RecoveryOptionsScreen extends StatelessWidget {
       ),
       body: Consumer<TripProvider>(
         builder: (context, provider, child) {
+          // Show loading state for recovery options specifically
+          if (provider.recoveryOptionsLoading) {
+            return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
+          }
+          
           if (provider.state == ProviderState.loading) {
             return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
           }

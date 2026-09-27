@@ -30,6 +30,13 @@ class ImpactScreen extends StatelessWidget {
             return Center(child: Text('No impact analysis available.'));
           }
 
+          // Trigger recovery options fetch when impact screen loads
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (provider.activeDisruptions.isNotEmpty && provider.recoveryOptions.isEmpty && !provider.recoveryOptionsLoading) {
+              provider.fetchRecoveryOptions();
+            }
+          });
+
           return ListView(
             padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             children: [

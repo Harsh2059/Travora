@@ -36,6 +36,13 @@ class DisruptionScreen extends StatelessWidget {
             );
           }
 
+          // Trigger recovery options fetch when disruption screen loads
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (provider.activeDisruptions.isNotEmpty && provider.recoveryOptions.isEmpty && !provider.recoveryOptionsLoading) {
+              provider.fetchRecoveryOptions();
+            }
+          });
+
           return ListView.builder(
             padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             itemCount: disruptions.length,
