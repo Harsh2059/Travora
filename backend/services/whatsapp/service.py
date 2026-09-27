@@ -8,11 +8,12 @@ import models
 import crypto as phone_crypto
 from services.notifications.contracts import NotificationChannel, NotificationRequest, NotificationResult
 from .client import MetaWhatsAppClient
-from .config import DEMO_WHATSAPP_NUMBER
+from .config import DEMO_WHATSAPP_NUMBER, WhatsAppConfigurationError
 from .context import store_recovery_context
 from .formatter import (
     format_disruption_alert,
     format_recovery_notification,
+    format_recovery_confirmation,
     format_whatsapp_recovery_options,
 )
 from services.recovery.execution_engine import get_active_disruption_fingerprint
@@ -38,14 +39,25 @@ class WhatsAppService:
                 status="SENT",
                 provider_message_id=provider_id,
             )
-        except Exception as exc:
-            logger.warning("WhatsApp notification failed: %s", type(exc).__name__)
+        except WhatsAppConfigurationError as exc:
+            logger.info("WhatsApp not configured: %s", exc)
             return NotificationResult(
                 success=False,
                 channel=NotificationChannel.WHATSAPP,
                 recipient=request.recipient,
-                status="FAILED",
+                status="not_configured",
                 error=str(exc),
+            )
+        except Exception as exc:
+            logger.warning("WhatsApp notification failed: %s", type(exc).__name__)
+            err_str = str(exc)
+            status_val = "not_configured" if any(k in err_str.lower() for k in ("config", "missing", "not configured")) else "FAILED"
+            return NotificationResult(
+                success=False,
+                channel=NotificationChannel.WHATSAPP,
+                recipient=request.recipient,
+                status=status_val,
+                error=err_str,
             )
 
     def send_recovery_notification(
@@ -55,6 +67,8 @@ class WhatsAppService:
         plan: Dict[str, Any],
         disruption_id: Optional[int] = None,
         plans: Optional[List[Dict[str, Any]]] = None,
+        is_proposal: bool = True,
+        execution_result: Optional[Dict[str, Any]] = None,
     ) -> NotificationResult:
         trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
         if not trip or not trip.user:
@@ -66,8 +80,6 @@ class WhatsAppService:
                 error="Traveler has no WhatsApp phone number configured.",
             )
         else:
-            # Resolve the profile row at notification time. This avoids using a
-            # relationship object retained before a successful phone update.
             user = db.query(models.User).populate_existing().filter(models.User.id == trip.user_id).first()
             recipient = (user.whatsapp_phone or phone_crypto.decrypt_phone(user.phone_number)) if user else None
             if not recipient:
@@ -79,47 +91,72 @@ class WhatsAppService:
                     error="Traveler has no WhatsApp phone number configured.",
                 )
 
-            all_plans = plans or [plan]
-            if len(all_plans) > 1:
-                text = format_whatsapp_recovery_options(trip_id, None, all_plans)
-            else:
-                text = format_recovery_notification(trip_id, plan)
+            plan_id = str(plan.get("id") or plan.get("execution_id") or (execution_result or {}).get("execution_id") or "")
+            msg_type = "RECOVERY_PLAN" if is_proposal else "RECOVERY_CONFIRMED"
 
-            fingerprint = (
-                plan.get("disruption_fingerprint")
-                or (all_plans[0].get("disruption_fingerprint") if all_plans else None)
-                or (get_active_disruption_fingerprint(db, trip_id) if db is not None else None)
-                or str(disruption_id or "")
-            )
-            for p in all_plans:
-                if "disruption_fingerprint" not in p and fingerprint:
-                    p["disruption_fingerprint"] = fingerprint
-            store_recovery_context(
-                db=db,
-                sender=recipient,
-                trip_id=trip_id,
-                disruption_id=disruption_id,
-                disruption_fingerprint=fingerprint,
-                plans=all_plans,
-            )
+            # Check idempotency for confirmed recovery
+            if not is_proposal:
+                existing = db.query(models.NotificationRecord).filter(
+                    models.NotificationRecord.message_type == "RECOVERY_CONFIRMED",
+                    models.NotificationRecord.trip_id == trip_id,
+                    models.NotificationRecord.recovery_plan_id == plan_id,
+                    models.NotificationRecord.status.in_(["SENT", "QUEUED", "ALREADY_SENT"]),
+                ).first()
+                if existing:
+                    print(f"[WHATSAPP] recovery confirmation already sent for trip {trip_id} — skipping", flush=True)
+                    return NotificationResult(
+                        success=True,
+                        channel=NotificationChannel.WHATSAPP,
+                        recipient=recipient,
+                        status="ALREADY_SENT",
+                        provider_message_id=existing.provider_message_id,
+                    )
+
+            if not is_proposal:
+                text = format_recovery_confirmation(plan, execution_result)
+            else:
+                all_plans = plans or [plan]
+                if len(all_plans) > 1:
+                    text = format_whatsapp_recovery_options(trip_id, None, all_plans)
+                else:
+                    text = format_recovery_notification(trip_id, plan)
+
+                fingerprint = (
+                    plan.get("disruption_fingerprint")
+                    or (all_plans[0].get("disruption_fingerprint") if all_plans else None)
+                    or (get_active_disruption_fingerprint(db, trip_id) if db is not None else None)
+                    or str(disruption_id or "")
+                )
+                for p in all_plans:
+                    if "disruption_fingerprint" not in p and fingerprint:
+                        p["disruption_fingerprint"] = fingerprint
+                store_recovery_context(
+                    db=db,
+                    sender=recipient,
+                    trip_id=trip_id,
+                    disruption_id=disruption_id,
+                    disruption_fingerprint=fingerprint,
+                    plans=all_plans,
+                )
 
             request = NotificationRequest(
                 recipient=recipient,
-                message_type="RECOVERY_PLAN",
+                message_type=msg_type,
                 text=text,
                 trip_id=trip_id,
                 disruption_id=disruption_id,
-                recovery_plan_id=str(plan.get("id") or plan.get("plan_id") or ""),
+                recovery_plan_id=plan_id,
                 timestamp=datetime.now(timezone.utc),
             )
             result = self.send(request)
+
         db.add(models.NotificationRecord(
             channel=result.channel.value,
             recipient=result.recipient,
-            message_type="RECOVERY_PLAN",
+            message_type=msg_type,
             trip_id=trip_id,
             disruption_id=disruption_id,
-            recovery_plan_id=str(plan.get("id") or plan.get("plan_id") or ""),
+            recovery_plan_id=plan_id,
             status=result.status,
             provider_message_id=result.provider_message_id,
             error_message=result.error,

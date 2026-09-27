@@ -1664,38 +1664,61 @@ def execute_recovery_endpoint(
             db.commit()
 
         # Send WhatsApp Notification
+        wa_status = "not_configured"
+        wa_recipient = None
         try:
-            NotificationService().send_recovery_notification(
+            wa_res = NotificationService().send_recovery_notification(
                 db=db,
                 channel=NotificationChannel.WHATSAPP,
                 trip_id=trip_id,
                 plan=selected_plan,
                 disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
+                is_proposal=False,
+                execution_result=exec_res,
             )
+            if wa_res:
+                wa_status = wa_res.status.lower()
+                wa_recipient = wa_res.recipient
         except Exception as exc:
-            logger.warning(
-                "Recovery WhatsApp alert failed: %s",
-                type(exc).__name__,
-            )
+            logger.warning("Recovery WhatsApp alert failed: %s", type(exc).__name__)
+            wa_status = "not_configured" if any(k in str(exc).lower() for k in ("config", "missing", "not configured")) else "failed"
 
         # Send SMS Notification - fresh session state after WhatsApp path
+        sms_status = "failed"
+        sms_recipient = None
         try:
             try:
                 db.rollback()  # Safety: ensure clean session state before SMS commit
             except Exception:
                 pass
-            NotificationService().send_recovery_notification(
+            sms_res = NotificationService().send_recovery_notification(
                 db=db,
                 channel=NotificationChannel.SMS,
                 trip_id=trip_id,
                 plan=selected_plan,
                 disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
+                is_proposal=False,
+                execution_result=exec_res,
             )
+            if sms_res:
+                sms_status = sms_res.status.lower()
+                sms_recipient = sms_res.recipient
         except Exception as exc:
-            logger.warning(
-                "Recovery SMS queueing failed: %s",
-                type(exc).__name__,
-            )
+            logger.warning("Recovery SMS queueing failed: %s", type(exc).__name__)
+            sms_status = "failed"
+
+        exec_res["success"] = True
+        exec_res["recovery_confirmed"] = True
+        exec_res["notifications"] = {
+            "sms": {
+                "status": sms_status,
+                "recipient": sms_recipient,
+            },
+            "whatsapp": {
+                "status": wa_status,
+                "recipient": wa_recipient,
+            }
+        }
 
 
         # Fetch complete updated journey details to return complete state payload

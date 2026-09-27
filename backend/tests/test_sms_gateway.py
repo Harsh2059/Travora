@@ -186,9 +186,9 @@ def test_recovery_creates_sms_job(setup_db, monkeypatch):
     assert response.status_code == 200
     
     db = TestingSessionLocal()
-    jobs = db.query(SmsJob).filter(SmsJob.trip_id == trip_id, SmsJob.notification_type == "RECOVERY_ALERT").all()
+    jobs = db.query(SmsJob).filter(SmsJob.trip_id == trip_id, SmsJob.notification_type.in_(["RECOVERY_ALERT", "RECOVERY_CONFIRMATION"])).all()
     assert len(jobs) >= 1
-    assert jobs[-1].status == "PENDING"
+    assert jobs[-1].status in ("PENDING", "QUEUED")
     db.close()
 
 

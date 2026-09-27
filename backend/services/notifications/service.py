@@ -26,6 +26,7 @@ class NotificationService:
         disruption_id: Optional[int] = None,
         plans: Optional[List[Dict[str, Any]]] = None,
         is_proposal: bool = True,
+        execution_result: Optional[Dict[str, Any]] = None,
     ) -> NotificationResult:
         if channel == NotificationChannel.WHATSAPP:
             trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
@@ -39,6 +40,8 @@ class NotificationService:
                     plan=plan,
                     disruption_id=disruption_id,
                     plans=plans,
+                    is_proposal=is_proposal,
+                    execution_result=execution_result,
                 )
                 print("[NOTIFICATION] WhatsApp service returned", flush=True)
                 return res
@@ -68,8 +71,10 @@ class NotificationService:
                         error="No recipient phone number available."
                     )
                 
-                plan_id = plan.get("id") or plan.get("execution_id") or uuid.uuid4().hex
-                idemp_key = f"REC_{plan_id}"
+                plan_id = str(plan.get("id") or plan.get("execution_id") or (execution_result or {}).get("execution_id") or uuid.uuid4().hex)
+                idemp_prefix = "REC_PROP" if is_proposal else "REC_CONF"
+                idemp_key = f"{idemp_prefix}_{trip_id}_{plan_id}"
+
                 existing_job = db.query(SmsJob).filter(SmsJob.idempotency_key == idemp_key).first()
                 if existing_job:
                     return NotificationResult(
@@ -109,7 +114,7 @@ class NotificationService:
                     message=message,
                     status="PENDING",
                     trip_id=trip_id,
-                    notification_type="RECOVERY_ALERT",
+                    notification_type="RECOVERY_CONFIRMATION" if not is_proposal else "RECOVERY_ALERT",
                     idempotency_key=idemp_key
                 )
                 db.add(job)
