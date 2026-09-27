@@ -15,7 +15,9 @@ import {
   RefreshCw,
   ArrowRight,
   Sparkles,
-  CloudRain
+  CloudRain,
+  Building,
+  Car
 } from 'lucide-react';
 import { SkyWayNavbar } from '../components/SkyWayNavbar';
 import { SkyWaySupportModal } from '../components/SkyWaySupportModal';
@@ -26,10 +28,34 @@ import {
   resetTripDisruptions,
   getSelectedRecoveryPlanWithMeta
 } from '../store/journeyStore';
+import { getStoredUser } from '../services/auth';
+
+function fmtDateFull(isoStr?: string | null): string {
+  if (!isoStr) return '12 Jun 2025';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return isoStr || '12 Jun 2025';
+  }
+}
+
+function fmtTimeStr(isoStr?: string | null): string {
+  if (!isoStr) return '08:00';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    return isoStr || '08:00';
+  }
+}
 
 export default function SkyWayMyTripScreen() {
   const navigate = useNavigate();
   const { journey, refresh } = useJourney();
+  const user = getStoredUser();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'passengers' | 'baggage' | 'manage'>('overview');
   const [activeDisruptions, setActiveDisruptions] = useState<any[]>([]);
@@ -52,15 +78,26 @@ export default function SkyWayMyTripScreen() {
   }, [journey?.id]);
 
   const hasDisruption = activeDisruptions.length > 0;
+  const nodes = journey?.nodes || [];
+  const primaryUser = user?.name || 'Harsh Raut';
+  const tripTitle = journey?.title || 'My Active Journey';
+  const bookingRef = (journey as any)?.bookingReference || (journey?.id ? `SW${journey.id}84920` : 'SW78492015');
 
-  // Handle Simulate Disruption (AI-129 delayed by 6h 30m)
+  const firstNode = nodes[0];
+  const lastNode = nodes[nodes.length - 1];
+  const dateRangeStr = firstNode && lastNode
+    ? `${fmtDateFull(firstNode.startTime)} – ${fmtDateFull(lastNode.endTime || lastNode.startTime)}`
+    : 'Date pending';
+
+  // Handle Simulate Disruption (AI-129 / AI-441 delayed by 6h 30m)
   const handleSimulateDelay = async () => {
     if (!journey?.id) return;
     setIsSimulating(true);
     setIsActionsMenuOpen(false);
 
     try {
-      const affectedNode = journey.nodes?.[0];
+      const flightNode = journey.nodes?.find((n: any) => (n.type || '').toUpperCase() === 'FLIGHT');
+      const affectedNode = flightNode || journey.nodes?.[0];
       const payload = {
         trip_id: journey.id,
         affected_node_id: affectedNode?.backendId || 1,
@@ -77,7 +114,6 @@ export default function SkyWayMyTripScreen() {
       navigate('/disruption');
     } catch (err) {
       console.error('Failed to trigger disruption simulation:', err);
-      // Even if offline/error, navigate to disruption screen
       navigate('/disruption');
     } finally {
       setIsSimulating(false);
@@ -99,12 +135,12 @@ export default function SkyWayMyTripScreen() {
   };
 
   const handleDownloadItinerary = () => {
-    const printContent = `SkyWay Itinerary: ${journey?.title || 'Trip to London'}\nBooking Reference: SW12345678\nStatus: Confirmed\nPassengers: Shubham Shah, Priya Shah, Aarav Shah`;
+    const printContent = `SkyWay Itinerary: ${tripTitle}\nBooking Reference: ${bookingRef}\nStatus: Confirmed\nPassenger: ${primaryUser}`;
     const blob = new Blob([printContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SkyWay_Itinerary_SW12345678.txt`;
+    a.download = `SkyWay_Itinerary_${bookingRef}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -124,14 +160,13 @@ export default function SkyWayMyTripScreen() {
           <span className="text-slate-900 font-semibold">Booking Details</span>
         </nav>
 
-        {/* ── TRIP HEADER WITH LONDON BANNER (Reference Design) ── */}
+        {/* ── TRIP HEADER BANNER ── */}
         <div className="relative bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
           
-          {/* Background image fade on right flank */}
           <div className="absolute right-0 top-0 bottom-0 w-1/3 hidden lg:block pointer-events-none">
             <img
               src="/london_banner.jpg"
-              alt="London River Thames & Big Ben"
+              alt="Travel Banner"
               className="w-full h-full object-cover object-right opacity-30 mask-radial"
             />
             <div className="absolute inset-0 bg-gradient-to-r from-white via-white/80 to-transparent" />
@@ -143,7 +178,7 @@ export default function SkyWayMyTripScreen() {
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-                  {journey?.title || 'Trip to London'}
+                  {tripTitle}
                 </h1>
                 {hasDisruption ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
@@ -165,12 +200,12 @@ export default function SkyWayMyTripScreen() {
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-slate-500 font-medium">
                 <span>
-                  Booking Reference: <strong className="text-slate-800">SW12345678</strong>
+                  Booking Reference: <strong className="text-slate-800">{bookingRef}</strong>
                 </span>
                 <span className="text-slate-300">•</span>
-                <span>Thu, 12 Jun 2025 – Fri, 20 Jun 2025</span>
+                <span>{dateRangeStr}</span>
                 <span className="text-slate-300">•</span>
-                <span>2 Adults, 1 Child</span>
+                <span>1 Traveller</span>
               </div>
             </div>
 
@@ -269,7 +304,7 @@ export default function SkyWayMyTripScreen() {
             </div>
           </div>
 
-          {/* ── TABS (Overview, Journey Timeline, Passengers, Baggage & Seats, Manage) ── */}
+          {/* ── TABS ── */}
           <div className="px-6 sm:px-8 border-t border-slate-100 flex items-center gap-6 overflow-x-auto no-scrollbar">
             <button
               onClick={() => setActiveTab('overview')}
@@ -333,7 +368,7 @@ export default function SkyWayMyTripScreen() {
           </div>
         </div>
 
-        {/* ── WEATHER-DRIVEN DIGITAL TWIN BANNER CARD (HackCelestial 3.0 Demo) ── */}
+        {/* ── WEATHER-DRIVEN DIGITAL TWIN BANNER CARD ── */}
         <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0 shadow-inner">
@@ -345,12 +380,12 @@ export default function SkyWayMyTripScreen() {
                   HackCelestial 3.0 Demo
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Journey #7 (Mumbai → Jaipur)
+                  Journey #{journey?.id || 7} ({tripTitle})
                 </span>
                 <h3 className="text-sm sm:text-base font-bold text-white">Weather-Driven Digital Twin & What-If Simulation</h3>
               </div>
               <p className="text-xs text-slate-300 mt-1.5 max-w-2xl leading-relaxed">
-                Experience the live Digital Twin: simulate severe weather stress-tests (rainfall, wind, visibility, temp), observe AI delay predictions, map cascading impacts across Flight AI-441 → Uber → Hotel, and review domain reasoning & recovery plans.
+                Experience the live Digital Twin: simulate severe weather stress-tests (rainfall, wind, visibility, temp), observe AI delay predictions, map cascading impacts across Flight → Uber → Hotel, and review domain reasoning & recovery plans.
               </p>
             </div>
           </div>
@@ -365,232 +400,150 @@ export default function SkyWayMyTripScreen() {
         </div>
 
         {/* ── DISRUPTION ALERT BANNER (If Active) ── */}
-        {hasDisruption && (
-          <div className="bg-rose-50 border border-rose-200 rounded-3xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
-            <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-rose-600/30">
-                <AlertTriangle className="w-5 h-5 animate-pulse" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-rose-900">
-                  Flight Disruption Alert: Air India AI-129 Delayed
-                </h3>
-                <p className="text-xs text-rose-700 mt-0.5">
-                  Delayed by 6h 30m due to a technical issue. Our automated engine has computed 3 smart recovery options for you.
-                </p>
-              </div>
-            </div>
-            <Link
-              to="/disruption"
-              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 shrink-0"
-            >
-              <span>Review Recovery Options</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        )}
+        {hasDisruption && (() => {
+          const activeDisp = activeDisruptions[0];
+          const dispNode = activeDisp
+            ? nodes.find(
+                (n) =>
+                  String(n.backendId || n.id) ===
+                  String(activeDisp.affected_node_id || activeDisp.entity_id)
+              ) || nodes[0]
+            : null;
+          const dispType = (dispNode?.type || '').toUpperCase();
+          const delayText = activeDisp?.delay_minutes
+            ? `${Math.floor(activeDisp.delay_minutes / 60)}h ${activeDisp.delay_minutes % 60}m`
+            : '6h 30m';
 
-        {/* ── MAIN CONTENT (2 COLUMNS: ITINERARY vs PASSENGERS & SUMMARY) ── */}
+          return (
+            <div className="bg-rose-50 border border-rose-200 rounded-3xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-rose-600/30">
+                  <AlertTriangle className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-rose-900">
+                    {dispType === 'HOTEL'
+                      ? 'Hotel Disruption Alert: Schedule Impact Detected'
+                      : dispType === 'CAB' || dispType === 'TAXI'
+                      ? 'Transport Disruption Alert: Delay Detected'
+                      : 'Flight Disruption Alert: Delay Detected on Itinerary'}
+                  </h3>
+                  <p className="text-xs text-rose-700 mt-0.5">
+                    {dispNode?.title || 'Segment'} delayed by {delayText} due to operational issues. Our automated recovery engine has generated smart alternatives for you.
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/disruption"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 shrink-0"
+              >
+                <span>Review Recovery Options</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          );
+        })()}
+
+        {/* ── MAIN CONTENT (2 COLUMNS) ── */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* LEFT COLUMN: FLIGHT ITINERARY (8 cols) */}
+          {/* LEFT COLUMN: ITINERARY SEGMENTS (8 cols) */}
           <div className="lg:col-span-8 space-y-6">
             
-            {/* Outbound Itinerary Card */}
+            {/* Outbound & Main Journey Segments Card */}
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 space-y-5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
                   <Plane className="w-4 h-4 text-sky-600" />
-                  <h2 className="text-base font-bold text-slate-900">Flight Itinerary (Outbound)</h2>
+                  <h2 className="text-base font-bold text-slate-900">Active Journey Itinerary</h2>
                 </div>
-                <span className="text-xs font-semibold text-slate-500">2 Segments</span>
+                <span className="text-xs font-semibold text-slate-500">{nodes.length} Segment{nodes.length === 1 ? '' : 's'}</span>
               </div>
 
-              {/* Segment 1: Mumbai -> Delhi */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    {/* Air India Logo Badge */}
-                    <div className="w-8 h-8 rounded-xl bg-red-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
-                      AI
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">Air India AI-129</p>
-                      <p className="text-[11px] text-slate-500">Thu, 12 Jun 2025 • Economy (V)</p>
-                    </div>
-                  </div>
-                  {hasDisruption ? (
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
-                      🔴 Delayed to 14:30
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                      🟢 Confirmed
-                    </span>
-                  )}
-                </div>
+              {nodes.map((node, idx) => {
+                const nType = (node.type || '').toLowerCase();
+                const isHotel = nType.includes('hotel');
+                const isCab = nType.includes('cab') || nType.includes('transfer') || nType.includes('taxi');
 
-                <div className="grid grid-cols-7 items-center pt-2">
-                  <div className="col-span-2">
-                    <p className="text-xl font-extrabold text-slate-900">08:00</p>
-                    <p className="text-xs font-bold text-slate-600">BOM</p>
-                    <p className="text-[11px] text-slate-400 truncate">Mumbai Terminal 2</p>
-                  </div>
-                  <div className="col-span-3 flex flex-col items-center px-2">
-                    <span className="text-[10px] font-bold text-slate-400">2h 20m</span>
-                    <div className="w-full flex items-center my-1">
-                      <div className="h-0.5 w-full bg-slate-300" />
-                      <Plane className="w-3.5 h-3.5 text-sky-600 mx-1 shrink-0" />
-                      <div className="h-0.5 w-full bg-slate-300" />
-                    </div>
-                    <span className="text-[10px] font-semibold text-emerald-600">Non-stop</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <p className="text-xl font-extrabold text-slate-900">10:20</p>
-                    <p className="text-xs font-bold text-slate-600">DEL</p>
-                    <p className="text-[11px] text-slate-400 truncate">New Delhi Terminal 3</p>
-                  </div>
-                </div>
-              </div>
+                const isDisrupted =
+                  hasDisruption &&
+                  activeDisruptions.some((d: any) => {
+                    const nodeEnt = String(node.backendId || node.id);
+                    const dispEnt = String(d.affected_node_id || d.entity_id || '');
+                    return nodeEnt === dispEnt || (idx === 0 && (!dispEnt || dispEnt === '1'));
+                  });
 
-              {/* Layover alert in Delhi */}
-              <div className="flex items-center justify-center gap-2 py-1 text-xs font-semibold text-slate-500 bg-sky-50/50 rounded-xl border border-dashed border-sky-200">
-                <Clock className="w-3.5 h-3.5 text-sky-600" />
-                <span>Layover in New Delhi (DEL): 2h 55m</span>
-              </div>
+                return (
+                  <div key={node.id || idx} className="space-y-3">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-xl ${isHotel ? 'bg-indigo-600' : isCab ? 'bg-sky-600' : 'bg-red-600'} text-white font-black text-xs flex items-center justify-center shadow-xs`}>
+                            {isHotel ? <Building className="w-4 h-4" /> : isCab ? <Car className="w-4 h-4" /> : 'AI'}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-900">{node.title || node.provider}</p>
+                            <p className="text-[11px] text-slate-500">
+                              {fmtDateFull(node.startTime)} • {node.transportMode || node.type}
+                            </p>
+                          </div>
+                        </div>
+                        {isDisrupted ? (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                            🔴 Delayed (+6h 30m)
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            🟢 Confirmed
+                          </span>
+                        )}
+                      </div>
 
-              {/* Segment 2: Delhi -> London */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-red-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
-                      AI
+                      {isHotel ? (
+                        <div className="pt-2 text-xs">
+                          <p className="font-bold text-slate-800">Hotel Location: {node.location || node.destination || 'Jaipur'}</p>
+                          <p className="text-slate-500 text-[11px] mt-0.5">Check-in: {fmtTimeStr(node.startTime)} | Check-out: {fmtTimeStr(node.endTime)}</p>
+                        </div>
+                      ) : isCab ? (
+                        <div className="pt-2 text-xs">
+                          <p className="font-bold text-slate-800">Pickup: {node.origin || 'Airport'} → Dropoff: {node.destination || 'Hotel'}</p>
+                          <p className="text-slate-500 text-[11px] mt-0.5">Scheduled Pickup: {fmtTimeStr(node.startTime)}</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-7 items-center pt-2">
+                          <div className="col-span-2">
+                            <p className="text-xl font-extrabold text-slate-900">{fmtTimeStr(node.startTime)}</p>
+                            <p className="text-xs font-bold text-slate-600">{node.origin ? node.origin.split(' ')[0] : 'BOM'}</p>
+                            <p className="text-[11px] text-slate-400 truncate">{node.origin || 'Mumbai'}</p>
+                          </div>
+                          <div className="col-span-3 flex flex-col items-center px-2">
+                            <span className="text-[10px] font-bold text-slate-400">Direct</span>
+                            <div className="w-full flex items-center my-1">
+                              <div className="h-0.5 w-full bg-slate-300" />
+                              <Plane className="w-3.5 h-3.5 text-sky-600 mx-1 shrink-0" />
+                              <div className="h-0.5 w-full bg-slate-300" />
+                            </div>
+                            <span className="text-[10px] font-semibold text-emerald-600">Scheduled</span>
+                          </div>
+                          <div className="col-span-2 text-right">
+                            <p className="text-xl font-extrabold text-slate-900">{fmtTimeStr(node.endTime)}</p>
+                            <p className="text-xs font-bold text-slate-600">{node.destination ? node.destination.split(' ')[0] : 'JAI'}</p>
+                            <p className="text-[11px] text-slate-400 truncate">{node.destination || 'Jaipur'}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">Air India AI-161</p>
-                      <p className="text-[11px] text-slate-500">Thu, 12 Jun 2025 • Boeing 777-300ER</p>
-                    </div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                    🟢 Confirmed
-                  </span>
-                </div>
 
-                <div className="grid grid-cols-7 items-center pt-2">
-                  <div className="col-span-2">
-                    <p className="text-xl font-extrabold text-slate-900">13:15</p>
-                    <p className="text-xs font-bold text-slate-600">DEL</p>
-                    <p className="text-[11px] text-slate-400 truncate">New Delhi Terminal 3</p>
+                    {/* Layover alert between segments if applicable */}
+                    {idx < nodes.length - 1 && (
+                      <div className="flex items-center justify-center gap-2 py-1 text-xs font-semibold text-slate-500 bg-sky-50/50 rounded-xl border border-dashed border-sky-200">
+                        <Clock className="w-3.5 h-3.5 text-sky-600" />
+                        <span>Connecting Transfer / Transit in Progress</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="col-span-3 flex flex-col items-center px-2">
-                    <span className="text-[10px] font-bold text-slate-400">9h 15m</span>
-                    <div className="w-full flex items-center my-1">
-                      <div className="h-0.5 w-full bg-slate-300" />
-                      <Plane className="w-3.5 h-3.5 text-sky-600 mx-1 shrink-0" />
-                      <div className="h-0.5 w-full bg-slate-300" />
-                    </div>
-                    <span className="text-[10px] font-semibold text-emerald-600">Non-stop</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <p className="text-xl font-extrabold text-slate-900">18:30</p>
-                    <p className="text-xs font-bold text-slate-600">LHR</p>
-                    <p className="text-[11px] text-slate-400 truncate">London Heathrow Terminal 2</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Return Journey Card (Reference Design) */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <Plane className="w-4 h-4 text-sky-600 rotate-180" />
-                  <h2 className="text-base font-bold text-slate-900">Return Journey</h2>
-                </div>
-                <span className="text-xs font-semibold text-slate-500">2 Segments</span>
-              </div>
-
-              {/* Segment 3: London -> Delhi */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-red-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
-                      AI
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">Air India AI-162</p>
-                      <p className="text-[11px] text-slate-500">Fri, 20 Jun 2025 • Economy</p>
-                    </div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                    🟢 Confirmed
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-7 items-center pt-2">
-                  <div className="col-span-2">
-                    <p className="text-xl font-extrabold text-slate-900">20:30</p>
-                    <p className="text-xs font-bold text-slate-600">LHR</p>
-                    <p className="text-[11px] text-slate-400 truncate">London Heathrow</p>
-                  </div>
-                  <div className="col-span-3 flex flex-col items-center px-2">
-                    <span className="text-[10px] font-bold text-slate-400">8h 50m</span>
-                    <div className="w-full flex items-center my-1">
-                      <div className="h-0.5 w-full bg-slate-300" />
-                      <Plane className="w-3.5 h-3.5 text-sky-600 mx-1 shrink-0" />
-                      <div className="h-0.5 w-full bg-slate-300" />
-                    </div>
-                    <span className="text-[10px] font-semibold text-emerald-600">Non-stop</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <p className="text-xl font-extrabold text-slate-900">
-                      09:20 <sup className="text-rose-500 font-bold text-xs">+1</sup>
-                    </p>
-                    <p className="text-xs font-bold text-slate-600">DEL</p>
-                    <p className="text-[11px] text-slate-400 truncate">New Delhi</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Segment 4: Delhi -> Mumbai */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-red-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
-                      AI
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">Air India AI-130</p>
-                      <p className="text-[11px] text-slate-500">Sat, 21 Jun 2025 • Economy</p>
-                    </div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                    🟢 Confirmed
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-7 items-center pt-2">
-                  <div className="col-span-2">
-                    <p className="text-xl font-extrabold text-slate-900">11:10</p>
-                    <p className="text-xs font-bold text-slate-600">DEL</p>
-                    <p className="text-[11px] text-slate-400 truncate">New Delhi</p>
-                  </div>
-                  <div className="col-span-3 flex flex-col items-center px-2">
-                    <span className="text-[10px] font-bold text-slate-400">2h 15m</span>
-                    <div className="w-full flex items-center my-1">
-                      <div className="h-0.5 w-full bg-slate-300" />
-                      <Plane className="w-3.5 h-3.5 text-sky-600 mx-1 shrink-0" />
-                      <div className="h-0.5 w-full bg-slate-300" />
-                    </div>
-                    <span className="text-[10px] font-semibold text-emerald-600">Non-stop</span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <p className="text-xl font-extrabold text-slate-900">13:25</p>
-                    <p className="text-xs font-bold text-slate-600">BOM</p>
-                    <p className="text-[11px] text-slate-400 truncate">Mumbai Terminal 2</p>
-                  </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
           </div>
 
@@ -608,42 +561,19 @@ export default function SkyWayMyTripScreen() {
               </div>
 
               <div className="space-y-3">
-                {/* Passenger 1 */}
                 <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
                   <div className="w-9 h-9 rounded-full bg-sky-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                    SS
+                    HR
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-900 truncate">Shubham Shah</p>
-                    <p className="text-[11px] text-slate-500">Adult • Passport: Z4321987</p>
-                  </div>
-                </div>
-
-                {/* Passenger 2 */}
-                <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
-                  <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                    PS
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-900 truncate">Priya Shah</p>
-                    <p className="text-[11px] text-slate-500">Adult • Passport: Z4321988</p>
-                  </div>
-                </div>
-
-                {/* Passenger 3 */}
-                <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
-                  <div className="w-9 h-9 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                    AS
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-900 truncate">Aarav Shah</p>
-                    <p className="text-[11px] text-slate-500">Child • Passport: Z4321989</p>
+                    <p className="text-xs font-bold text-slate-900 truncate">{primaryUser}</p>
+                    <p className="text-[11px] text-slate-500">Primary Traveller • Passport: Z7894562</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Trip Summary Card (Reference Design) */}
+            {/* Trip Summary Card */}
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 space-y-4">
               <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-3">
                 Trip Summary
@@ -651,23 +581,23 @@ export default function SkyWayMyTripScreen() {
 
               <div className="space-y-2.5 text-xs">
                 <div className="flex items-center justify-between text-slate-600">
-                  <span>Fare (3 Travellers)</span>
-                  <span className="font-semibold text-slate-900">₹1,38,000</span>
+                  <span>Fare (1 Traveller)</span>
+                  <span className="font-semibold text-slate-900">₹8,500</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600">
                   <span>Taxes & Fees</span>
-                  <span className="font-semibold text-slate-900">₹24,600</span>
+                  <span className="font-semibold text-slate-900">₹1,200</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600">
                   <span>Seats & Baggage</span>
-                  <span className="font-semibold text-slate-900">₹6,000</span>
+                  <span className="font-semibold text-slate-900">₹500</span>
                 </div>
               </div>
 
               <div className="border-t border-slate-100 pt-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-slate-900">Total Paid</span>
-                  <span className="text-xl font-extrabold text-slate-900">₹1,68,600</span>
+                  <span className="text-xl font-extrabold text-slate-900">₹10,200</span>
                 </div>
               </div>
 
@@ -710,3 +640,4 @@ export default function SkyWayMyTripScreen() {
     </div>
   );
 }
+

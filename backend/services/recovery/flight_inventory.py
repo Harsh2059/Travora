@@ -104,6 +104,8 @@ FLIGHT_INVENTORY: List[Dict[str, Any]] = [
     _row("Air India Express", "SIM-IX-531", "BOM", "JAI", "11:20", "13:10", 4900, booking_id="AIX-RPL-531", resource_id="AIX-531"),
     _row("SpiceJet", "SIM-SG-601", "BOM", "JAI", "14:30", "16:20", 4300, booking_id="SG-RPL-601", resource_id="SG-601", quality_tier="BUDGET"),
     _row("IndiGo", "SIM-6E-829", "BOM", "JAI", "17:05", "18:55", 5100, quality_tier="RECOMMENDED"),
+    _row("Air India Express", "SIM-IX-535", "BOM", "JAI", "19:30", "21:20", 4950, booking_id="AIX-RPL-535", resource_id="AIX-535"),
+    _row("Air India", "SIM-AI-445", "BOM", "JAI", "21:15", "23:05", 6500, quality_tier="PREMIUM", modification_fee=0),
     # JAI → BOM (return leg)
     _row("IndiGo", "SIM-6E-830", "JAI", "BOM", "07:00", "08:50", 5200, quality_tier="RECOMMENDED"),
     _row("Air India", "SIM-AI-442", "JAI", "BOM", "10:30", "12:20", 6800, quality_tier="PREMIUM", modification_fee=0),

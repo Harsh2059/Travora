@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  ShieldCheck, AlertTriangle, CheckCircle2, Plane,
+  ShieldCheck, AlertTriangle, CheckCircle2, Plane, Hotel, Car, MapPin, Train,
   Zap, Star, TrendingDown, Timer
 } from 'lucide-react';
 import type { Part4RecoveryPlan, Part4RecoveryResult, Journey } from '../../types';
@@ -24,6 +24,17 @@ function fmtTime(isoStr?: string | null): string {
     const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
     if (isNaN(d.getTime())) return isoStr;
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch {
+    return isoStr || '';
+  }
+}
+
+function fmtDate(isoStr?: string | null): string {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   } catch {
     return isoStr || '';
   }
@@ -186,6 +197,44 @@ export const RecoveryOptionsPanel: React.FC<RecoveryOptionsPanelProps> = ({
           const cost = plan.estimated_additional_cost || 0;
           const isBestMatch = i === 0 && preference === 'RECOMMENDED';
 
+          const itemType = (
+            replChange?.type ||
+            newDetails.type ||
+            primaryNode?.type ||
+            ''
+          ).toUpperCase();
+
+          const planStrategyType = (plan as any).strategy_type || '';
+
+          const isHotelType = itemType === 'HOTEL' ||
+                              itemType.includes('HOTEL') ||
+                              Boolean(planStrategyType && planStrategyType.includes('HOTEL')) ||
+                              /hotel|resort|palace|inn|suites|stay/i.test(carrier);
+
+          const isCabType = !isHotelType && (
+            itemType === 'CAB' ||
+            itemType === 'TRANSFER' ||
+            itemType === 'TAXI' ||
+            itemType.includes('CAB') ||
+            itemType.includes('TRANSFER') ||
+            Boolean(planStrategyType && (planStrategyType.includes('CAB') || planStrategyType.includes('TRANSFER') || planStrategyType.includes('SHUTTLE'))) ||
+            /cab|taxi|uber|ola|blusmart|shuttle|transfer/i.test(carrier)
+          );
+
+          const isTrainType = !isHotelType && !isCabType && (
+            itemType === 'TRAIN' ||
+            itemType.includes('TRAIN') ||
+            Boolean(planStrategyType && planStrategyType.includes('TRAIN')) ||
+            /express|rail|train|vande|shatabdi/i.test(carrier)
+          );
+
+          const location = replChange?.origin || newDetails.location || replChange?.new_details?.location || primaryNode?.location || primaryNode?.destination || 'Jodhpur';
+          const origin = replChange?.origin || newDetails.origin || primaryNode?.origin || '';
+          const destination = replChange?.destination || newDetails.destination || primaryNode?.destination || '';
+
+          const startDateStr = replChange?.start_time || newDetails.departure_time || newDetails.start_time || primaryNode?.startDate || primaryNode?.startTime || (primaryNode as any)?.start_time;
+          const dateDisp = fmtDate(startDateStr);
+
           return (
             <div
               key={plan.id}
@@ -224,14 +273,69 @@ export const RecoveryOptionsPanel: React.FC<RecoveryOptionsPanelProps> = ({
                 </span>
               </div>
 
-              {/* Flight Info */}
+              {/* Card Body */}
               <div className="p-3">
-                {replChange ? (
-                  <div className="flex items-center justify-between">
+                {isHotelType ? (
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                        <Hotel className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div>
+                        <div className="text-[13px] font-black text-slate-900 flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>Location: {location}</span>
+                        </div>
+                        <div className="text-[10px] font-bold text-slate-500 mt-0.5">
+                          {carrier} {flNo}
+                        </div>
+                      </div>
+                    </div>
+                    {dateDisp && (
+                      <div className="text-right shrink-0">
+                        <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          {dateDisp}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : isCabType ? (
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
+                        <Car className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <div>
+                        <div className="text-[12px] font-medium text-slate-600 flex items-center gap-1">
+                          <span className="text-slate-400 font-semibold">Pickup:</span>
+                          <span className="font-bold text-slate-900">{origin || 'Jaipur Airport'}</span>
+                          <span className="text-slate-300 mx-1">|</span>
+                          <span className="text-slate-400 font-semibold">Dropoff:</span>
+                          <span className="font-bold text-slate-900">{destination || 'Jodhpur'}</span>
+                        </div>
+                        <div className="text-[10px] font-bold text-slate-500 mt-0.5">
+                          {carrier} {flNo}
+                        </div>
+                      </div>
+                    </div>
+                    {dateDisp && (
+                      <div className="text-right shrink-0">
+                        <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          {dateDisp}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : replChange ? (
+                  <div className="flex items-center justify-between w-full">
                     {/* Carrier + Timing */}
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-                        <Plane className="w-4 h-4 text-sky-500" />
+                        {isTrainType ? (
+                          <Train className="w-4 h-4 text-indigo-500" />
+                        ) : (
+                          <Plane className="w-4 h-4 text-sky-500" />
+                        )}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
@@ -248,16 +352,31 @@ export const RecoveryOptionsPanel: React.FC<RecoveryOptionsPanelProps> = ({
                         </div>
                       </div>
                     </div>
+                    {dateDisp && (
+                      <div className="text-right shrink-0">
+                        <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          {dateDisp}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="py-1 text-sm font-semibold text-slate-700">{plan.title}</div>
+                  <div className="py-1 text-sm font-semibold text-slate-700 flex items-center justify-between">
+                    <span>{plan.title}</span>
+                    {dateDisp && (
+                      <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        {dateDisp}
+                      </span>
+                    )}
+                  </div>
                 )}
 
                 {/* Perks Row & Select Button */}
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <div className="flex flex-wrap gap-1.5">
                     <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-md">
-                      <ShieldCheck className="w-2.5 h-2.5 text-emerald-500" /> Airline credit
+                      <ShieldCheck className="w-2.5 h-2.5 text-emerald-500" />
+                      {isHotelType ? 'Hotel credit' : isCabType ? 'Cab reschedule' : 'Airline credit'}
                     </div>
                     <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-md">
                       <CheckCircle2 className="w-2.5 h-2.5 text-sky-500" /> Auto-sync
@@ -283,3 +402,4 @@ export const RecoveryOptionsPanel: React.FC<RecoveryOptionsPanelProps> = ({
     </div>
   );
 };
+

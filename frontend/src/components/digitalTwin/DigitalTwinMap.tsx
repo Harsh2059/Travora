@@ -10,13 +10,15 @@
  *  - Weather overlays and propagation indicators
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Maximize2, ShieldAlert, Navigation } from 'lucide-react';
 import type { AffectedEntity, ImpactSeverity } from '../../types/digitalTwin';
+import type { Journey } from '../../types';
 
 interface DigitalTwinMapProps {
+  journey?: Journey | null;
   affectedEntities: AffectedEntity[];
   currentRainfall: number;
   currentWind: number;
@@ -25,43 +27,47 @@ interface DigitalTwinMapProps {
   isSimulated: boolean;
 }
 
-const WAYPOINTS = [
-  {
-    id: 'bom',
-    name: 'Mumbai Airport (BOM)',
-    coords: [19.0896, 72.8656] as [number, number],
-    type: 'airport',
-    desc: 'Chhatrapati Shivaji Maharaj Intl • Departure Node',
-  },
-  {
-    id: 'flight',
-    name: 'Air India Express AI-441',
-    coords: [22.95, 74.33] as [number, number],
-    type: 'flight',
-    desc: 'BOM → JAI Air Corridor • Nonstop Service',
-  },
-  {
-    id: 'jai',
-    name: 'Jaipur Airport (JAI)',
-    coords: [26.8289, 75.8056] as [number, number],
-    type: 'airport',
-    desc: 'Jaipur International Airport • Arrival & Transfer Hub',
-  },
-  {
-    id: 'uber',
-    name: 'Uber Ground Transport',
-    coords: [26.8706, 75.7964] as [number, number],
-    type: 'transport',
-    desc: 'Airport to Hotel Transfer • Ground Connection',
-  },
-  {
-    id: 'hotel',
-    name: 'Hotel Ram Jaipur',
-    coords: [26.9124, 75.7873] as [number, number],
-    type: 'hotel',
-    desc: 'Jaipur City Lodging • Final Destination',
-  },
-];
+const CITY_COORDINATES: Record<string, { coords: [number, number]; label: string; code: string }> = {
+  mumbai: { coords: [19.0896, 72.8656], label: 'Mumbai Airport (BOM)', code: 'BOM' },
+  bom: { coords: [19.0896, 72.8656], label: 'Mumbai Airport (BOM)', code: 'BOM' },
+  jaipur: { coords: [26.8289, 75.8056], label: 'Jaipur Airport (JAI)', code: 'JAI' },
+  jai: { coords: [26.8289, 75.8056], label: 'Jaipur Airport (JAI)', code: 'JAI' },
+  delhi: { coords: [28.5562, 77.1000], label: 'Delhi Airport (DEL)', code: 'DEL' },
+  del: { coords: [28.5562, 77.1000], label: 'Delhi Airport (DEL)', code: 'DEL' },
+  bangalore: { coords: [13.1986, 77.7066], label: 'Bengaluru Airport (BLR)', code: 'BLR' },
+  bengaluru: { coords: [13.1986, 77.7066], label: 'Bengaluru Airport (BLR)', code: 'BLR' },
+  blr: { coords: [13.1986, 77.7066], label: 'Bengaluru Airport (BLR)', code: 'BLR' },
+  goa: { coords: [15.3808, 73.8314], label: 'Goa Dabolim (GOI)', code: 'GOI' },
+  goi: { coords: [15.3808, 73.8314], label: 'Goa Dabolim (GOI)', code: 'GOI' },
+  london: { coords: [51.4700, -0.4543], label: 'London Heathrow (LHR)', code: 'LHR' },
+  lhr: { coords: [51.4700, -0.4543], label: 'London Heathrow (LHR)', code: 'LHR' },
+  chennai: { coords: [12.9941, 80.1709], label: 'Chennai Airport (MAA)', code: 'MAA' },
+  maa: { coords: [12.9941, 80.1709], label: 'Chennai Airport (MAA)', code: 'MAA' },
+  kolkata: { coords: [22.6547, 88.4467], label: 'Kolkata Airport (CCU)', code: 'CCU' },
+  ccu: { coords: [22.6547, 88.4467], label: 'Kolkata Airport (CCU)', code: 'CCU' },
+  hyderabad: { coords: [17.2403, 78.4294], label: 'Hyderabad Airport (HYD)', code: 'HYD' },
+  hyd: { coords: [17.2403, 78.4294], label: 'Hyderabad Airport (HYD)', code: 'HYD' },
+  pune: { coords: [18.5822, 73.9197], label: 'Pune Airport (PNQ)', code: 'PNQ' },
+  pnq: { coords: [18.5822, 73.9197], label: 'Pune Airport (PNQ)', code: 'PNQ' },
+  ahmedabad: { coords: [23.0772, 72.6347], label: 'Ahmedabad Airport (AMD)', code: 'AMD' },
+  amd: { coords: [23.0772, 72.6347], label: 'Ahmedabad Airport (AMD)', code: 'AMD' },
+};
+
+function resolveLocationCoords(str: string, fallbackCoords: [number, number]): { coords: [number, number]; label: string; code: string } {
+  if (!str) return { coords: fallbackCoords, label: 'Origin Airport', code: 'ORIG' };
+  const lower = str.toLowerCase();
+  for (const key of Object.keys(CITY_COORDINATES)) {
+    if (lower.includes(key)) return CITY_COORDINATES[key];
+  }
+  // Deterministic fallback derived from text string
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  const lat = 19.0 + (Math.abs(hash) % 1000) / 100;
+  const lng = 72.0 + (Math.abs(hash * 3) % 1000) / 100;
+  const words = str.split(' ');
+  const code = words.length > 1 ? words[0].substring(0, 3).toUpperCase() : str.substring(0, 3).toUpperCase();
+  return { coords: [lat, lng], label: str, code };
+}
 
 function getImpactBadgeStyle(impact: ImpactSeverity) {
   switch (impact) {
@@ -105,6 +111,7 @@ function getImpactBadgeStyle(impact: ImpactSeverity) {
 }
 
 export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
+  journey,
   affectedEntities,
   currentRainfall,
   currentWind,
@@ -115,6 +122,87 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
+
+  // Dynamically extract origin, destination, and waypoints from journey nodes or affectedEntities
+  const waypoints = useMemo(() => {
+    const nodes = journey?.nodes || [];
+    const flightNode = nodes.find((n) => n.type === 'FLIGHT' || n.type === 'flight');
+    const cabNode = nodes.find((n) => n.type === 'CAB' || n.type === 'cab' || n.type === 'METRO' || n.type === 'metro');
+    const hotelNode = nodes.find((n) => n.type === 'HOTEL' || n.type === 'hotel');
+
+    const originStr = flightNode?.origin || nodes[0]?.origin || nodes[0]?.location || 'Mumbai (BOM)';
+    const destStr = flightNode?.destination || nodes[0]?.destination || 'Jaipur (JAI)';
+
+    const originInfo = resolveLocationCoords(originStr, [19.0896, 72.8656]);
+    const destInfo = resolveLocationCoords(destStr, [26.8289, 75.8056]);
+
+    const midLat = (originInfo.coords[0] + destInfo.coords[0]) / 2 + 0.3;
+    const midLng = (originInfo.coords[1] + destInfo.coords[1]) / 2;
+
+    const list: Array<{
+      id: string;
+      name: string;
+      coords: [number, number];
+      type: string;
+      desc: string;
+      code: string;
+    }> = [
+      {
+        id: 'origin',
+        name: flightNode?.origin || originInfo.label,
+        coords: originInfo.coords,
+        type: 'airport',
+        desc: `Departure Node • ${originInfo.label}`,
+        code: originInfo.code,
+      },
+      {
+        id: 'flight',
+        name: flightNode?.title || 'Air India Express AI-441',
+        coords: [midLat, midLng],
+        type: 'flight',
+        desc: `${originInfo.code} → ${destInfo.code} Corridor • ${flightNode?.title || 'Flight Leg'}`,
+        code: 'FLT',
+      },
+      {
+        id: 'dest_airport',
+        name: flightNode?.destination || destInfo.label,
+        coords: destInfo.coords,
+        type: 'airport',
+        desc: `Arrival & Transfer Hub • ${destInfo.label}`,
+        code: destInfo.code,
+      },
+    ];
+
+    if (cabNode) {
+      const cabCoords: [number, number] = [destInfo.coords[0] + 0.04, destInfo.coords[1] - 0.01];
+      list.push({
+        id: 'transport',
+        name: cabNode.title || 'Uber Ground Transport',
+        coords: cabCoords,
+        type: 'transport',
+        desc: `${cabNode.origin || destInfo.label} to ${cabNode.destination || 'Hotel'} Transfer`,
+        code: 'CAB',
+      });
+    }
+
+    if (hotelNode) {
+      const hotelCoords: [number, number] = [destInfo.coords[0] + 0.08, destInfo.coords[1] - 0.02];
+      list.push({
+        id: 'hotel',
+        name: hotelNode.title || 'Hotel Ram Jaipur',
+        coords: hotelCoords,
+        type: 'hotel',
+        desc: `${hotelNode.location || hotelNode.destination || 'Lodging'} • Final Destination`,
+        code: 'HTL',
+      });
+    }
+
+    return list;
+  }, [journey]);
+
+  const originCode = waypoints[0]?.code || 'BOM';
+  const destCode = waypoints[2]?.code || waypoints[waypoints.length - 1]?.code || 'JAI';
+  const corridorTitle = `${originCode} → ${destCode} Corridor (${waypoints[0]?.name.split(' ')[0]} → ${waypoints[2]?.name.split(' ')[0]})`;
 
   // Helper to lookup entity severity
   const getEntityImpact = (type: string): ImpactSeverity => {
@@ -132,10 +220,11 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
 
     // Initialize Map if not already initialized
     if (!mapInstanceRef.current) {
+      const centerCoords = waypoints[0]?.coords || [19.0896, 72.8656];
       const map = L.map(mapContainerRef.current, {
-        center: [23.5, 74.5],
+        center: centerCoords,
         zoom: 6,
-        minZoom: 4,
+        minZoom: 3,
         maxZoom: 16,
         zoomControl: false,
       });
@@ -160,36 +249,29 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
     // Clear previous layers
     layerGroup.clearLayers();
 
-    // ── 1. Flight Path & Ground Connection Lines (Journey #7 Mumbai → Jaipur) ──
-    const bomCoords: [number, number] = [19.0896, 72.8656];
-    const jaiCoords: [number, number] = [26.8289, 75.8056];
-    const hotelCoords: [number, number] = [26.9124, 75.7873];
+    const originPt = waypoints[0]?.coords || [19.0896, 72.8656];
+    const flightMidPt = waypoints[1]?.coords || [22.95, 74.33];
+    const destPt = waypoints[2]?.coords || [26.8289, 75.8056];
+    const hotelPt = waypoints.find((w) => w.type === 'hotel')?.coords || [destPt[0] + 0.08, destPt[1] - 0.02];
 
     // Flight route polyline with simulated impact color
     const flightImpact = getEntityImpact('flight');
     const flightColor =
       flightImpact === 'critical' ? '#e11d48' : flightImpact === 'high' ? '#d97706' : '#0284c7';
 
-    // Route curve from Mumbai (BOM) to Jaipur (JAI) via airway corridor
-    const flightCurve: [number, number][] = [
-      bomCoords,
-      [22.95, 74.33],
-      jaiCoords,
-    ];
-
-    const flightLine = L.polyline(flightCurve, {
+    const flightLine = L.polyline([originPt, flightMidPt, destPt], {
       color: flightColor,
       weight: 4,
       opacity: 0.9,
       dashArray: isSimulated ? '6, 8' : undefined,
     });
-    flightLine.bindTooltip('BOM → JAI Air Corridor (Air India Express AI-441)', {
+    flightLine.bindTooltip(`${corridorTitle} (${waypoints[1]?.name || 'Flight'})`, {
       sticky: true,
       className: 'travora-map-tooltip',
     });
     layerGroup.addLayer(flightLine);
 
-    // Ground Transfer Line (Jaipur Airport -> Hotel Ram)
+    // Ground Transfer Line
     const transferImpact = getEntityImpact('transport');
     const transferColor =
       transferImpact === 'critical'
@@ -198,21 +280,21 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
         ? '#d97706'
         : '#10b981';
 
-    const transferLine = L.polyline([jaiCoords, hotelCoords], {
+    const transferLine = L.polyline([destPt, hotelPt], {
       color: transferColor,
       weight: 4,
       dashArray: '4, 6',
       opacity: 0.9,
     });
-    transferLine.bindTooltip('Uber Ground Transport to Hotel Ram Jaipur', {
+    transferLine.bindTooltip('Ground Transport to Hotel Destination', {
       sticky: true,
     });
     layerGroup.addLayer(transferLine);
 
-    // Weather Storm Danger Zone Circle around Origin if high rain
-    if (currentRainfall > 50) {
-      const stormRadius = Math.min(120000, currentRainfall * 800);
-      const stormCircle = L.circle(bomCoords, {
+    // Weather Storm Danger Zone Circle around Origin if high rain or zero vis
+    if (currentRainfall > 50 || currentVisibility <= 0.5) {
+      const stormRadius = Math.min(140000, currentRainfall > 50 ? currentRainfall * 800 : 90000);
+      const stormCircle = L.circle(originPt, {
         radius: stormRadius,
         color: '#e11d48',
         fillColor: '#f43f5e',
@@ -222,29 +304,30 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
       });
       stormCircle.bindPopup(
         `<div class="p-1">
-          <div class="font-bold text-rose-700 text-xs">⛈️ Severe Weather Alert (Mumbai)</div>
+          <div class="font-bold text-rose-700 text-xs">⛈️ Severe Weather Alert (${waypoints[0]?.name || 'Origin'})</div>
           <div class="text-[11px] text-slate-700 mt-1">Precipitation: <b>${currentRainfall} mm</b></div>
+          <div class="text-[11px] text-slate-700">Visibility: <b>${currentVisibility} km</b></div>
           <div class="text-[11px] text-slate-700">Surface Wind: <b>${currentWind} km/h</b></div>
-          <div class="text-[10px] text-rose-600 font-semibold mt-1">Terminal convective activity affecting departures</div>
+          <div class="text-[10px] text-rose-600 font-semibold mt-1">Terminal weather activity affecting departures</div>
         </div>`
       );
       layerGroup.addLayer(stormCircle);
     }
 
-    // ── 2. Interactive Markers for all Waypoints ─────────────────────────────
-    WAYPOINTS.forEach((wp) => {
+    // Interactive Markers for all Waypoints
+    waypoints.forEach((wp) => {
       const impact = getEntityImpact(wp.type);
       const style = getImpactBadgeStyle(impact);
 
       let iconHtml = '';
-      if (wp.id === 'bom') {
+      if (wp.id === 'origin') {
         iconHtml = `
           <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
             <div class="w-8 h-8 rounded-full ${style.bg} ${style.border} border-2 text-white flex items-center justify-center font-bold text-xs shadow-md ${style.glow}">
               🛫
             </div>
             <div class="absolute -top-6 whitespace-nowrap bg-slate-900/90 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow flex items-center gap-1 border border-slate-700">
-              <span>${style.dot} BOM</span>
+              <span>${style.dot} ${wp.code}</span>
               <span class="${style.text} text-[9px] font-black">${style.label}</span>
             </div>
           </div>
@@ -256,30 +339,30 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
               ✈️
             </div>
             <div class="absolute -bottom-5 whitespace-nowrap bg-white/95 text-slate-800 text-[9px] px-1.5 py-0.5 rounded font-bold shadow border border-slate-200">
-              Air India Express
+              ${wp.name}
             </div>
           </div>
         `;
-      } else if (wp.id === 'jai') {
+      } else if (wp.id === 'dest_airport') {
         iconHtml = `
           <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer">
             <div class="w-8 h-8 rounded-full ${style.bg} ${style.border} border-2 text-white flex items-center justify-center font-bold text-xs shadow-md ${style.glow}">
               🛬
             </div>
             <div class="absolute -top-6 whitespace-nowrap bg-slate-900/90 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow flex items-center gap-1 border border-slate-700">
-              <span>${style.dot} JAI</span>
+              <span>${style.dot} ${wp.code}</span>
               <span class="${style.text} text-[9px] font-black">${style.label}</span>
             </div>
           </div>
         `;
-      } else if (wp.id === 'uber') {
+      } else if (wp.id === 'transport') {
         iconHtml = `
           <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer">
             <div class="w-7 h-7 rounded-full bg-slate-800 border-2 border-white text-white flex items-center justify-center shadow-md text-xs">
               🚗
             </div>
             <div class="absolute -bottom-5 whitespace-nowrap bg-white/95 text-slate-800 text-[9px] px-1.5 py-0.5 rounded font-bold shadow border border-slate-200">
-              Uber
+              ${wp.name}
             </div>
           </div>
         `;
@@ -315,7 +398,7 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
           <p class="text-[11px] text-slate-600 mb-1.5">${wp.desc}</p>
           <div class="bg-slate-50 rounded p-1.5 text-[10px] space-y-1 border border-slate-100">
             <div>Mode: <strong class="${isSimulated ? 'text-rose-600' : 'text-emerald-600'}">${isSimulated ? 'SIMULATED' : 'LIVE'}</strong></div>
-            ${wp.id === 'bom' ? `<div>Rainfall: <b>${currentRainfall} mm</b></div><div>Visibility: <b>${currentVisibility} km</b></div>` : ''}
+            ${wp.id === 'origin' ? `<div>Rainfall: <b>${currentRainfall} mm</b></div><div>Visibility: <b>${currentVisibility} km</b></div>` : ''}
             <div>Disruption Risk: <b>${Math.round(disruptionProb * 100)}%</b></div>
           </div>
         </div>
@@ -324,11 +407,17 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
       marker.bindPopup(popupContent);
       layerGroup.addLayer(marker);
     });
-  }, [affectedEntities, currentRainfall, currentWind, currentVisibility, disruptionProb, isSimulated]);
+
+    // Auto-fit bounds on waypoints
+    if (waypoints.length > 0) {
+      const bounds = L.latLngBounds(waypoints.map((w) => w.coords));
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }, [waypoints, affectedEntities, currentRainfall, currentWind, currentVisibility, disruptionProb, isSimulated, corridorTitle]);
 
   const handleFitBounds = () => {
-    if (mapInstanceRef.current) {
-      const bounds = L.latLngBounds(WAYPOINTS.map((w) => w.coords));
+    if (mapInstanceRef.current && waypoints.length > 0) {
+      const bounds = L.latLngBounds(waypoints.map((w) => w.coords));
       mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
     }
   };
@@ -345,7 +434,7 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
           <span className="text-slate-300">|</span>
           <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
             <Navigation className="w-3 h-3 text-sky-600" />
-            BOM → JAI Corridor (Mumbai → Jaipur)
+            {corridorTitle}
           </span>
           <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-extrabold bg-slate-100 text-slate-700">
             OpenStreetMap

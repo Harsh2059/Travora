@@ -4,10 +4,10 @@ import {
   ChevronRight,
   CheckCircle2,
   Plane,
+  Hotel,
+  Car,
   AlertTriangle,
-  Bell,
   Check,
-  Flag,
   ArrowRight,
   RefreshCw
 } from 'lucide-react';
@@ -20,6 +20,28 @@ import {
   resetTripDisruptions,
   getSelectedRecoveryPlanWithMeta
 } from '../store/journeyStore';
+
+function fmtDate(isoStr?: string | null): string {
+  if (!isoStr) return 'Sep 28';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return isoStr || 'Sep 28';
+  }
+}
+
+function fmtTime(isoStr?: string | null): string {
+  if (!isoStr) return '09:00 AM';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch {
+    return isoStr || '09:00 AM';
+  }
+}
 
 export default function SkyWayTimelineScreen() {
   const navigate = useNavigate();
@@ -53,7 +75,8 @@ export default function SkyWayTimelineScreen() {
     if (!journey?.id) return;
     setIsSimulating(true);
     try {
-      const affectedNode = journey.nodes?.[0];
+      const flightNode = journey.nodes?.find((n: any) => (n.type || '').toUpperCase() === 'FLIGHT');
+      const affectedNode = flightNode || journey.nodes?.[0];
       const payload = {
         trip_id: journey.id,
         affected_node_id: affectedNode?.backendId || 1,
@@ -88,187 +111,112 @@ export default function SkyWayTimelineScreen() {
     }
   };
 
-  // Timeline events representing the full lifecycle in the reference design
-  const timelineEvents = [
+  const nodes = journey?.nodes || [];
+  const firstNode = nodes[0];
+  const tripTitle = journey?.title || 'Active Journey';
+
+  const timelineEvents: any[] = [
     {
       id: 'step_1',
-      date: '12 Jun',
-      time: '06:00',
+      date: fmtDate(firstNode?.startDate || firstNode?.startTime),
+      time: fmtTime(firstNode?.startTime),
       title: 'Booking Confirmed',
-      description: 'Your trip to London has been confirmed.',
+      description: `Your journey "${tripTitle}" is confirmed and active.`,
       icon: Check,
       iconBg: 'bg-sky-600 text-white',
       badge: null,
       isActive: true,
       isCompleted: true,
     },
-    {
-      id: 'step_2',
-      date: '12 Jun',
-      time: '08:00',
-      title: 'Flight AI-129 • Mumbai → Delhi',
-      description: hasDisruption
-        ? 'Rescheduled departure due to technical delay'
-        : 'On time • Terminal 2',
-      icon: Plane,
-      iconBg: hasDisruption ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white',
-      badge: hasDisruption ? (
+  ];
+
+  nodes.forEach((node, idx) => {
+    const isNodeDisrupted = activeDisruptions.some(
+      (d: any) => String(d.affected_node_id) === String(node.id) || String(d.affected_node_id) === String(node.backendId)
+    );
+    const nType = (node.type || '').toLowerCase();
+    const isHotel = nType.includes('hotel');
+    const isCab = nType.includes('cab') || nType.includes('transfer') || nType.includes('taxi');
+
+    const IconComponent = isHotel ? Hotel : isCab ? Car : Plane;
+
+    let routeDesc = '';
+    if (isHotel) {
+      routeDesc = `Location: ${node.location || node.destination || 'Hotel'}`;
+    } else if (node.origin || node.destination) {
+      routeDesc = `${node.origin || 'Origin'} → ${node.destination || 'Destination'}`;
+    } else {
+      routeDesc = node.location || 'Booking details confirmed';
+    }
+
+    timelineEvents.push({
+      id: `node_${node.id || idx}`,
+      date: fmtDate(node.startDate || node.startTime),
+      time: fmtTime(node.startTime),
+      title: `${node.title || node.provider} ${node.bookingRef ? '• #' + node.bookingRef : ''}`,
+      description: isNodeDisrupted ? 'Rescheduled / Disrupted due to operational delay' : routeDesc,
+      icon: IconComponent,
+      iconBg: isNodeDisrupted ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white',
+      badge: isNodeDisrupted ? (
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-          Delayed
+          Disrupted
         </span>
       ) : (
         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          Departed
+          Confirmed
         </span>
       ),
       isActive: true,
-      isCompleted: !hasDisruption,
-    },
-    ...(hasDisruption || hasRecoverySelected
-      ? [
-          {
-            id: 'step_3',
-            date: '12 Jun',
-            time: '10:15',
-            title: 'Disruption Occurred',
-            description: 'Flight AI-129 delayed due to technical issue.',
-            icon: AlertTriangle,
-            iconBg: 'bg-rose-600 text-white',
-            badge: (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                Delayed
-              </span>
-            ),
-            isActive: true,
-            isCompleted: true,
-            action: hasDisruption && !hasRecoverySelected ? (
-              <Link
-                to="/disruption"
-                className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors"
-              >
-                <span>View Recovery Options</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            ) : null,
-          },
-          {
-            id: 'step_4',
-            date: '12 Jun',
-            time: '10:20',
-            title: 'You Were Notified',
-            description: 'We sent you a WhatsApp notification with recovery options.',
-            icon: Bell,
-            iconBg: 'bg-sky-500 text-white',
-            badge: null,
-            isActive: true,
-            isCompleted: true,
-          },
-        ]
-      : []),
-    ...(hasRecoverySelected
-      ? [
-          {
-            id: 'step_5',
-            date: '12 Jun',
-            time: '11:00',
-            title: 'Recovery Option Selected',
-            description: 'You chose Option 2: Alternate flight via Ahmedabad.',
-            icon: CheckCircle2,
-            iconBg: 'bg-emerald-600 text-white',
-            badge: (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Completed
-              </span>
-            ),
-            isActive: true,
-            isCompleted: true,
-          },
-          {
-            id: 'step_6',
-            date: '12 Jun',
-            time: '16:30',
-            title: 'Replacement Flight • Mumbai → Ahmedabad',
-            description: 'AI-645 • Departed • On time',
-            icon: Plane,
-            iconBg: 'bg-sky-600 text-white',
-            badge: (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Completed
-              </span>
-            ),
-            isActive: true,
-            isCompleted: true,
-          },
-          {
-            id: 'step_7',
-            date: '12 Jun',
-            time: '19:45',
-            title: 'Connecting Flight • Ahmedabad → Delhi',
-            description: 'AI-207 • On time',
-            icon: Plane,
-            iconBg: 'bg-white text-sky-600 border-2 border-sky-600',
-            badge: (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
-                Upcoming
-              </span>
-            ),
-            isActive: false,
-            isCompleted: false,
-          },
-          {
-            id: 'step_8',
-            date: '12 Jun',
-            time: '21:15',
-            title: 'Arrive in Delhi',
-            description: 'Expected arrival at 21:15 • Terminal 3',
-            icon: Flag,
-            iconBg: 'bg-slate-100 text-slate-600 border border-slate-300',
-            badge: (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                Upcoming
-              </span>
-            ),
-            isActive: false,
-            isCompleted: false,
-          },
-        ]
-      : !hasDisruption
-      ? [
-          {
-            id: 'step_upcoming_1',
-            date: '12 Jun',
-            time: '13:15',
-            title: 'Connecting Flight AI-161 • Delhi → London',
-            description: 'Scheduled departure from Terminal 3',
-            icon: Plane,
-            iconBg: 'bg-white text-sky-600 border-2 border-sky-600',
-            badge: (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
-                Upcoming
-              </span>
-            ),
-            isActive: false,
-            isCompleted: false,
-          },
-          {
-            id: 'step_upcoming_2',
-            date: '12 Jun',
-            time: '18:30',
-            title: 'Arrive in London (LHR)',
-            description: 'London Heathrow Terminal 2',
-            icon: Flag,
-            iconBg: 'bg-slate-100 text-slate-600 border border-slate-300',
-            badge: (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                Upcoming
-              </span>
-            ),
-            isActive: false,
-            isCompleted: false,
-          },
-        ]
-      : []),
-  ];
+      isCompleted: !isNodeDisrupted,
+    });
+  });
+
+  if (hasDisruption) {
+    timelineEvents.push({
+      id: 'step_disruption_alert',
+      date: fmtDate(activeDisruptions[0]?.detected_at),
+      time: fmtTime(activeDisruptions[0]?.detected_at),
+      title: 'Disruption Detected',
+      description: activeDisruptions[0]?.reason || 'Operational delay detected on your itinerary.',
+      icon: AlertTriangle,
+      iconBg: 'bg-rose-600 text-white',
+      badge: (
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+          Action Required
+        </span>
+      ),
+      isActive: true,
+      isCompleted: true,
+      action: !hasRecoverySelected ? (
+        <Link
+          to="/disruption"
+          className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors"
+        >
+          <span>View Recovery Options</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
+      ) : null,
+    });
+  }
+
+  if (hasRecoverySelected) {
+    timelineEvents.push({
+      id: 'step_recovery_confirm',
+      date: 'Today',
+      time: 'Just now',
+      title: 'Recovery Option Selected',
+      description: 'Your recovery option has been confirmed and updated in real-time.',
+      icon: CheckCircle2,
+      iconBg: 'bg-emerald-600 text-white',
+      badge: (
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          Recovered
+        </span>
+      ),
+      isActive: true,
+      isCompleted: true,
+    });
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fbff] text-slate-900 font-sans flex flex-col">
@@ -282,7 +230,7 @@ export default function SkyWayTimelineScreen() {
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <Link to="/my-trips" className="hover:text-sky-600 transition-colors">My Trips</Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-          <Link to="/my-trips" className="hover:text-sky-600 transition-colors">Trip to London</Link>
+          <Link to="/my-trips" className="hover:text-sky-600 transition-colors">{tripTitle}</Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-900 font-semibold">Journey Timeline</span>
         </nav>

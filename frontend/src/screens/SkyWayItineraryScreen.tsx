@@ -7,15 +7,37 @@ import {
   Share2,
   ArrowRight,
   Plane,
-  Clock,
   Luggage,
   Armchair,
   Headphones,
-  MapPin
+  Car,
+  Building
 } from 'lucide-react';
 import { SkyWayNavbar } from '../components/SkyWayNavbar';
 import { SkyWaySupportModal } from '../components/SkyWaySupportModal';
 import { useJourney, getSelectedRecoveryPlanWithMeta } from '../store/journeyStore';
+
+function fmtDate(isoStr?: string | null): string {
+  if (!isoStr) return '12 Jun';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
+  } catch {
+    return isoStr || '12 Jun';
+  }
+}
+
+function fmtTime(isoStr?: string | null): string {
+  if (!isoStr) return '08:00';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    return isoStr || '08:00';
+  }
+}
 
 export default function SkyWayItineraryScreen() {
   const navigate = useNavigate();
@@ -24,14 +46,7 @@ export default function SkyWayItineraryScreen() {
   const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
   const [copyToast, setCopyToast] = useState(false);
   const itineraryNodes = journey?.nodes ?? [];
-
-  const formatDateTime = (value?: string) => {
-    if (!value) return 'Time pending';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
-      ? value
-      : date.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-  };
+  const tripTitle = journey?.title || 'Active Journey';
 
   useEffect(() => {
     if (journey?.id) {
@@ -45,9 +60,9 @@ export default function SkyWayItineraryScreen() {
   const handleDownload = () => {
     const content = [
       'Travora Updated Itinerary',
-      `Trip: ${journey?.title || 'Your journey'}`,
+      `Trip: ${tripTitle}`,
       'Status: Recovery applied',
-      ...itineraryNodes.map((node) => `${node.transportMode || node.type}: ${node.title} | ${node.origin || node.location || '—'} -> ${node.destination || '—'} | ${formatDateTime(node.startTime)}`),
+      ...itineraryNodes.map((node) => `${node.transportMode || node.type}: ${node.title} | ${node.origin || node.location || '—'} -> ${node.destination || '—'} | ${fmtTime(node.startTime)}`),
     ].join('\n');
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -64,6 +79,8 @@ export default function SkyWayItineraryScreen() {
     setTimeout(() => setCopyToast(false), 2000);
   };
 
+  const firstNode = itineraryNodes[0];
+
   return (
     <div className="min-h-screen bg-[#f8fbff] text-slate-900 font-sans flex flex-col">
       <SkyWayNavbar hasActiveDisruption={false} />
@@ -76,12 +93,12 @@ export default function SkyWayItineraryScreen() {
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <Link to="/my-trips" className="hover:text-sky-600 transition-colors">My Trips</Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-          <Link to="/my-trips" className="hover:text-sky-600 transition-colors">Trip to London</Link>
+          <Link to="/my-trips" className="hover:text-sky-600 transition-colors">{tripTitle}</Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-900 font-semibold">Updated Itinerary</span>
         </nav>
 
-        {/* ── TITLE & ACTIONS HEADER (Reference Design) ── */}
+        {/* ── TITLE & ACTIONS HEADER ── */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
@@ -115,18 +132,18 @@ export default function SkyWayItineraryScreen() {
           </div>
         </div>
 
-        {/* ── ORIGINAL vs NEW FLIGHT COMPARISON CARD (Reference Design) ── */}
+        {/* ── ORIGINAL vs NEW FLIGHT COMPARISON CARD ── */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs">
           <div className="grid grid-cols-1 md:grid-cols-11 items-center gap-4">
             
-            {/* Left: Original Flight (Cancelled/Changed) */}
+            {/* Left: Original Segment (Cancelled/Changed) */}
             <div className="md:col-span-5 p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Original Flight (Cancelled/Changed)
+                  Original Flight (Disrupted)
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-700">
-                  Cancelled
+                  Delayed
                 </span>
               </div>
 
@@ -135,15 +152,17 @@ export default function SkyWayItineraryScreen() {
                   AI
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-800">Air India AI-129</p>
-                  <p className="text-[11px] text-slate-500">Mumbai → Delhi • 12 Jun 2025</p>
+                  <p className="text-xs font-bold text-slate-800">{firstNode?.title || 'Air India AI-441'}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {firstNode?.origin || 'Mumbai'} → {firstNode?.destination || 'Jaipur'} • {fmtDate(firstNode?.startTime)}
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center justify-between text-xs font-bold text-slate-700 pt-1">
-                <span>08:00</span>
+                <span>{fmtTime(firstNode?.startTime)}</span>
                 <span className="text-slate-300">➜</span>
-                <span>10:20</span>
+                <span>{fmtTime(firstNode?.endTime)}</span>
               </div>
             </div>
 
@@ -171,112 +190,64 @@ export default function SkyWayItineraryScreen() {
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-900">
-                    {itineraryNodes[0]?.title || selectedPlan?.replacement_flight?.carrier || 'Updated journey'}
+                    {selectedPlan?.replacement_flight?.carrier || selectedPlan?.title || 'Rescheduled Air India AI-441'}
                   </p>
                   <p className="text-[11px] text-slate-600 font-medium">
-                    {selectedPlan?.replacement_flight?.route || 'Mumbai → Ahmedabad'} • {selectedPlan?.replacement_flight?.date || '12 Jun 2025'}
+                    {selectedPlan?.replacement_flight?.route || `${firstNode?.origin || 'Mumbai'} → ${firstNode?.destination || 'Jaipur'}`} • {selectedPlan?.replacement_flight?.date || fmtDate(firstNode?.startTime)}
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center justify-between text-xs font-bold text-slate-800 pt-1">
-                <span>{formatDateTime(itineraryNodes[0]?.startTime)}</span>
+                <span>{selectedPlan?.replacement_flight?.departure_time || fmtTime(firstNode?.startTime)}</span>
                 <span className="text-sky-400">➜</span>
-                <span>{formatDateTime(itineraryNodes[0]?.endTime)}</span>
+                <span>{selectedPlan?.replacement_flight?.arrival_time || fmtTime(firstNode?.endTime)}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── UPDATED JOURNEY TIMELINE (Reference Design) ── */}
+        {/* ── UPDATED JOURNEY TIMELINE ── */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-5">
           <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-3">
             Updated Journey Timeline
           </h2>
 
           <div className="space-y-4">
-            
-            {/* Step 1: Mumbai Departs 11:45 */}
-            <div className="flex items-start gap-4">
-              <div className="w-16 text-right shrink-0 pt-0.5">
-                <p className="text-xs font-black text-slate-900">11:45</p>
-                <p className="text-[10px] font-semibold text-slate-400">12 Jun</p>
-              </div>
-              <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-                <Plane className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-bold text-slate-900">Mumbai (BOM)</p>
-                  <p className="text-[11px] text-slate-500">Air India AI-645 • Terminal 2</p>
-                </div>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                  Confirmed • Departs 11:45
-                </span>
-              </div>
-            </div>
+            {itineraryNodes.map((node, idx) => {
+              const nType = (node.type || '').toLowerCase();
+              const isHotel = nType.includes('hotel');
+              const isCab = nType.includes('cab') || nType.includes('transfer') || nType.includes('taxi');
 
-            {/* Step 2: Layover in Ahmedabad */}
-            <div className="flex items-start gap-4">
-              <div className="w-16 text-right shrink-0 pt-0.5">
-                <p className="text-xs font-black text-slate-900">13:45</p>
-                <p className="text-[10px] font-semibold text-slate-400">12 Jun</p>
-              </div>
-              <div className="w-7 h-7 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center shrink-0 mt-0.5">
-                <Clock className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 bg-sky-50/60 rounded-2xl p-3 border border-dashed border-sky-200 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-bold text-slate-900">Ahmedabad (AMD)</p>
-                  <p className="text-[11px] text-slate-600">1h 30m layover • Same terminal transfer</p>
-                </div>
-                <span className="text-[11px] font-semibold text-sky-700">Protected Transit</span>
-              </div>
-            </div>
+              const IconComp = isHotel ? Building : isCab ? Car : Plane;
 
-            {/* Step 3: Ahmedabad Departs 15:15 */}
-            <div className="flex items-start gap-4">
-              <div className="w-16 text-right shrink-0 pt-0.5">
-                <p className="text-xs font-black text-slate-900">15:15</p>
-                <p className="text-[10px] font-semibold text-slate-400">12 Jun</p>
-              </div>
-              <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-                <Plane className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-bold text-slate-900">Ahmedabad (AMD)</p>
-                  <p className="text-[11px] text-slate-500">Air India AI-207 • Connecting flight</p>
+              return (
+                <div key={node.id || idx} className="flex items-start gap-4">
+                  <div className="w-16 text-right shrink-0 pt-0.5">
+                    <p className="text-xs font-black text-slate-900">{fmtTime(node.startTime)}</p>
+                    <p className="text-[10px] font-semibold text-slate-400">{fmtDate(node.startTime)}</p>
+                  </div>
+                  <div className={`w-7 h-7 rounded-full ${isHotel ? 'bg-indigo-600' : isCab ? 'bg-sky-600' : 'bg-emerald-500'} text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5`}>
+                    <IconComp className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="flex-1 bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">{node.title || node.provider}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {isHotel ? `Location: ${node.location || node.destination || 'Hotel'}` : isCab ? `Pickup: ${node.origin || 'Airport'} → Dropoff: ${node.destination || 'Hotel'}` : `${node.origin || 'Mumbai'} → ${node.destination || 'Jaipur'}`}
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      Confirmed • {fmtTime(node.startTime)}
+                    </span>
+                  </div>
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                  Confirmed • Departs 15:15
-                </span>
-              </div>
-            </div>
-
-            {/* Step 4: Delhi Arrival 16:50 */}
-            <div className="flex items-start gap-4">
-              <div className="w-16 text-right shrink-0 pt-0.5">
-                <p className="text-xs font-black text-slate-900">16:50</p>
-                <p className="text-[10px] font-semibold text-slate-400">12 Jun</p>
-              </div>
-              <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 mt-0.5">
-                <MapPin className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 bg-slate-50 rounded-2xl p-3 border border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-bold text-slate-900">Delhi (DEL)</p>
-                  <p className="text-[11px] text-slate-500">Arrives 16:50 • Terminal 3</p>
-                </div>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                  Onward International Transit Ready
-                </span>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* ── ADDITIONAL 3 CARDS: BAGGAGE, SEATS, EXTRA SUPPORT (Reference Design) ── */}
+        {/* ── ADDITIONAL 3 CARDS: BAGGAGE, SEATS, EXTRA SUPPORT ── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           
           {/* Card 1: Baggage */}
@@ -286,8 +257,8 @@ export default function SkyWayItineraryScreen() {
             </div>
             <div>
               <h3 className="text-xs font-bold text-slate-900">Baggage</h3>
-              <p className="text-[11px] font-bold text-slate-800 mt-0.5">25 kg</p>
-              <p className="text-[10px] text-slate-500">Checked baggage (unchanged)</p>
+              <p className="text-[11px] font-bold text-slate-800 mt-0.5">15 kg</p>
+              <p className="text-[10px] text-slate-500">Checked baggage (protected)</p>
             </div>
           </div>
 
@@ -298,8 +269,8 @@ export default function SkyWayItineraryScreen() {
             </div>
             <div>
               <h3 className="text-xs font-bold text-slate-900">Seats</h3>
-              <p className="text-[11px] font-bold text-slate-800 mt-0.5">12A, 12B, 12C</p>
-              <p className="text-[10px] text-emerald-600 font-semibold">Confirmed (unchanged)</p>
+              <p className="text-[11px] font-bold text-slate-800 mt-0.5">14B</p>
+              <p className="text-[10px] text-emerald-600 font-semibold">Confirmed (protected)</p>
             </div>
           </div>
 
@@ -317,7 +288,7 @@ export default function SkyWayItineraryScreen() {
           </div>
         </div>
 
-        {/* ── PRIMARY CTA: CONTINUE TO MY TRIP (Reference Design) ── */}
+        {/* ── PRIMARY CTA: CONTINUE TO MY TRIP ── */}
         <div className="pt-2">
           <button
             onClick={() => navigate('/my-trips')}

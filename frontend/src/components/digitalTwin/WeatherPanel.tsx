@@ -38,6 +38,101 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
   locationName = 'Mumbai (BOM)',
   isSimulatedMode,
 }) => {
+  // Dynamic weather condition status string
+  const getWeatherStatusText = () => {
+    const vis = simulatedWeather.visibility;
+    const rain = simulatedWeather.rainfall;
+    const wind = simulatedWeather.wind;
+
+    if (vis <= 0.5) return 'Zero Visibility / CAT III Fog Hazard';
+    if (vis <= 2.0) return 'Dense Fog / Low Visibility Warning';
+    if (wind >= 60) return 'Gale-Force Wind Hazard';
+    if (rain >= 120) return 'Torrential Downpour & Convective Storm';
+    if (rain >= 40) return 'Heavy Precipitation';
+    if (rain >= 15 || wind >= 25 || vis <= 5.0) return 'Moderate Rain & Turbulence';
+    return 'Simulated Moderate Weather';
+  };
+
+  // Dynamic multi-metric What-If Delta badge
+  const getWhatIfDeltaBadge = () => {
+    const rainDiff = simulatedWeather.rainfall - liveWeather.rainfall_mm;
+    const visDiff = simulatedWeather.visibility - liveWeather.visibility_km;
+    const windDiff = simulatedWeather.wind - liveWeather.wind_kmh;
+
+    if (simulatedWeather.visibility <= 0.5) {
+      return `0.0 km Vis (${visDiff.toFixed(1)} km Vis)`;
+    }
+    if (simulatedWeather.visibility <= 2.0) {
+      return `${simulatedWeather.visibility} km Vis (Low Vis)`;
+    }
+    if (Math.abs(windDiff) >= 20) {
+      return `${windDiff >= 0 ? '+' : ''}${windDiff} km/h Wind`;
+    }
+    if (rainDiff !== 0) {
+      return `${rainDiff >= 0 ? '+' : ''}${rainDiff} mm Rain`;
+    }
+    return 'Nominal Target';
+  };
+
+  // Dynamic 24-Hour Forecast Items based on live vs simulated mode
+  const effectiveForecast: WeatherForecastItem[] = React.useMemo(() => {
+    if (!isSimulatedMode) return forecast;
+
+    const r = simulatedWeather.rainfall;
+    const w = simulatedWeather.wind;
+    const v = simulatedWeather.visibility;
+    const t = simulatedWeather.temperature ?? 28;
+
+    return [
+      {
+        time: '+3h Peak Stress',
+        condition:
+          v <= 0.5
+            ? 'Zero Vis Fog'
+            : r > 100
+            ? 'Severe Storm'
+            : r > 40 || w > 35
+            ? 'Heavy Downpour'
+            : 'Moderate Weather',
+        temp_c: Math.round(t),
+        rain_mm: Math.round(r),
+        wind_kmh: Math.round(w),
+        risk_level: v <= 1.0 || r > 100 || w > 60 ? 'critical' : r > 35 || w > 30 ? 'high' : 'medium',
+      },
+      {
+        time: '+6h Sustained',
+        condition:
+          v <= 1.5
+            ? 'Low Vis / Fog'
+            : r > 60
+            ? 'Heavy Rain'
+            : r > 20
+            ? 'Passing Showers'
+            : 'Partly Cloudy',
+        temp_c: Math.round(t - 1),
+        rain_mm: Math.round(r * 0.65),
+        wind_kmh: Math.round(w * 0.75),
+        risk_level: v <= 2.0 || r > 60 || w > 45 ? 'high' : r > 15 ? 'medium' : 'low',
+      },
+      {
+        time: '+12h Moderating',
+        condition: r > 30 ? 'Light Rain' : 'Partly Cloudy',
+        temp_c: Math.round(t + 1),
+        rain_mm: Math.round(r * 0.25),
+        wind_kmh: Math.round(w * 0.5),
+        risk_level: r > 30 || w > 35 ? 'medium' : 'low',
+      },
+      {
+        time: '+24h Nominal',
+        condition: 'Clear Skies',
+        temp_c: 27,
+        rain_mm: Math.min(2, Math.round(r * 0.05)),
+        wind_kmh: Math.min(15, Math.round(w * 0.25)),
+        risk_level: 'low',
+      },
+    ];
+  }, [isSimulatedMode, simulatedWeather, forecast]);
+
   return (
     <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-xs space-y-6">
       {/* Header */}
@@ -150,24 +245,16 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
                   ? `${simulatedWeather.temperature.toFixed(1)}°C`
                   : simulatedWeather.rainfall > 100
                   ? '25.0°C'
-                  : simulatedWeather.rainfall > 40
-                  ? '27.0°C'
                   : '28.5°C'}
               </div>
               <div className="text-xs font-bold text-rose-700">
-                {simulatedWeather.rainfall > 120
-                  ? 'Torrential Downpour & Low Vis'
-                  : simulatedWeather.rainfall > 40
-                  ? 'Heavy Precipitation'
-                  : 'Simulated Moderate Weather'}
+                {getWeatherStatusText()}
               </div>
             </div>
             <div className="text-right text-xs text-slate-500">
               <span className="font-bold text-slate-700">What-If Delta</span>
               <div className="text-[10px] text-rose-600 font-bold">
-                {simulatedWeather.rainfall - liveWeather.rainfall_mm >= 0
-                  ? `+${simulatedWeather.rainfall - liveWeather.rainfall_mm} mm Rain`
-                  : `${simulatedWeather.rainfall - liveWeather.rainfall_mm} mm Rain`}
+                {getWhatIfDeltaBadge()}
               </div>
             </div>
           </div>
@@ -199,7 +286,7 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
       </div>
 
       {/* 24-Hour Forecast Timeline */}
-      {forecast && forecast.length > 0 && (
+      {effectiveForecast && effectiveForecast.length > 0 && (
         <div className="space-y-2 pt-2">
           <div className="flex items-center justify-between text-xs font-bold text-slate-700">
             <span>24-HOUR FORECAST</span>
@@ -207,7 +294,7 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {forecast.map((item, idx) => (
+            {effectiveForecast.map((item, idx) => (
               <div
                 key={idx}
                 className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-between"
@@ -216,7 +303,9 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
                   <span className="font-extrabold text-slate-800">{item.time}</span>
                   <span
                     className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
-                      item.risk_level === 'high'
+                      item.risk_level === 'critical'
+                        ? 'bg-rose-600 text-white'
+                        : item.risk_level === 'high'
                         ? 'bg-rose-100 text-rose-800'
                         : item.risk_level === 'medium'
                         ? 'bg-amber-100 text-amber-800'

@@ -145,7 +145,7 @@ def analyze_part4_recovery(
         }
         cands = provider.search_candidates(node, context=search_ctx) if provider else []
         if n_type == "FLIGHT":
-            cands = rank_flight_candidates(filter_flight_candidates(cands, node, nodes))
+            cands = rank_flight_candidates(filter_flight_candidates(cands, node, nodes), disrupted_node=node)
         
         # If node priority is MUST_PRESERVE and zero candidates exist
         node_priority = str(node.get("priority") or "HIGH").upper()

@@ -7,15 +7,41 @@ import {
   Plane,
   ArrowRight,
   Sparkles,
-  Info
+  Info,
+  Building,
+  Car,
+  CheckCircle2
 } from 'lucide-react';
 import { SkyWayNavbar } from '../components/SkyWayNavbar';
 import { SkyWaySupportModal } from '../components/SkyWaySupportModal';
 import {
   useJourney,
+  fetchTripDisruptions,
   saveSelectedRecoveryPlan
 } from '../store/journeyStore';
 import { analyzePart4Recovery, executePart5Recovery } from '../services/recoveryApi';
+
+function fmtDate(isoStr?: string | null): string {
+  if (!isoStr) return '12 Jun';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
+  } catch {
+    return isoStr || '12 Jun';
+  }
+}
+
+function fmtTime(isoStr?: string | null): string {
+  if (!isoStr) return '08:00';
+  try {
+    const d = new Date(isoStr.includes('T') ? isoStr : `${isoStr}T00:00:00`);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    return isoStr || '08:00';
+  }
+}
 
 export default function SkyWayDisruptionScreen() {
   const navigate = useNavigate();
@@ -23,88 +49,158 @@ export default function SkyWayDisruptionScreen() {
 
   const [selectedOptionId, setSelectedOptionId] = useState<string>('opt_2');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [dynamicOptions, setDynamicOptions] = useState<any[] | null>(null);
+  const [activeDisruptions, setActiveDisruptions] = useState<any[]>([]);
 
   useEffect(() => {
     if (journey?.id) {
-      // Attempt querying real recovery engine
-      analyzePart4Recovery(journey.id).catch((err) => {
-        console.warn('Backend recovery query fallback:', err?.message);
-      });
+      fetchTripDisruptions(journey.id)
+        .then((disruptions) => {
+          const active = (disruptions || []).filter((d: any) => (d.status || 'ACTIVE') === 'ACTIVE');
+          setActiveDisruptions(active);
+        })
+        .catch(() => setActiveDisruptions([]));
+
+      analyzePart4Recovery(journey.id)
+        .then((res) => {
+          if (res?.plans && res.plans.length > 0) {
+            setDynamicOptions(res.plans);
+            setSelectedOptionId(res.plans[0]?.id || 'opt_2');
+          }
+        })
+        .catch((err) => {
+          console.warn('Backend recovery query fallback:', err?.message);
+        });
     }
   }, [journey?.id]);
 
-  // Recovery Options (matching reference design exactly with real fallback data)
-  const recoveryOptions = [
+  const tripTitle = journey?.title || 'Active Journey';
+
+  const activeDisp = activeDisruptions[0];
+  const affectedNodeId = activeDisp?.affected_node_id || activeDisp?.entity_id;
+  const disruptedNode = affectedNodeId
+    ? journey?.nodes?.find((n) => String(n.backendId || n.id) === String(affectedNodeId)) || journey?.nodes?.[0]
+    : journey?.nodes?.find((n) => (n.type || '').toUpperCase() === 'FLIGHT') || journey?.nodes?.[0];
+
+  const nodeType = (disruptedNode?.type || 'FLIGHT').toUpperCase();
+  const isHotelDisruption = nodeType === 'HOTEL' || nodeType === 'STAY';
+  const isCabDisruption = nodeType === 'CAB' || nodeType === 'TAXI' || nodeType === 'TRANSFER';
+
+  const affectedTitle = disruptedNode?.title || disruptedNode?.provider || (isHotelDisruption ? 'Courtyard Convention Hotel' : 'Air India Express AI-441');
+  const originStr = disruptedNode?.origin || disruptedNode?.location || 'Mumbai (BOM)';
+  const destStr = disruptedNode?.destination || (isHotelDisruption ? (disruptedNode?.location || 'Jodhpur') : 'Jaipur (JAI)');
+  const delayMinutes = activeDisp?.delay_minutes || 390;
+  const delayStr = `${Math.floor(delayMinutes / 60)}h ${delayMinutes % 60}m`;
+
+  // Default fallback recovery options
+  const defaultRecoveryOptions = [
     {
       id: 'opt_1',
-      title: 'Wait for Same Flight',
+      title: isHotelDisruption ? `Priority-Preserving (${affectedTitle})` : 'Wait for Same Flight',
       badge: 'Simplest Option',
       badgeColor: 'bg-slate-100 text-slate-700',
       isRecommended: false,
-      departs: '14:30',
-      departsSub: '(6h 30m delay)',
-      arrives: '16:50',
+      isHotel: isHotelDisruption,
+      departs: isHotelDisruption ? 'Check-in 08:00' : '14:30',
+      departsSub: isHotelDisruption ? fmtDate(disruptedNode?.startTime) : '(6h 30m delay)',
+      arrives: isHotelDisruption ? 'Check-out 12:00' : '16:50',
       arrivesSub: '',
-      travelTime: '2h 20m',
-      stops: 'Non-stop',
-      impact: 'Longer wait at airport',
+      travelTime: isHotelDisruption ? destStr : '2h 20m',
+      stops: isHotelDisruption ? 'Late Check-in Protection' : 'Non-stop',
+      impact: isHotelDisruption ? 'Confirmed late check-in hold' : 'Longer wait at airport',
       buttonVariant: 'outline',
       replacementFlight: {
-        flightNumber: 'AI-129',
-        carrier: 'Air India',
-        route: 'Mumbai (BOM) → Delhi (DEL)',
+        flightNumber: affectedTitle,
+        carrier: disruptedNode?.provider || 'Air India',
+        route: isHotelDisruption ? destStr : `${originStr} → ${destStr}`,
         departure: '14:30',
         arrival: '16:50',
-        date: '12 Jun 2025',
+        date: fmtDate(disruptedNode?.startTime),
       },
+      replacementHotel: undefined as any,
     },
     {
       id: 'opt_2',
-      title: 'Alternate via Ahmedabad',
-      badge: 'Faster Arrival',
+      title: isHotelDisruption ? 'Alternative (Heritage Grand Palace)' : 'Alternate via Connecting Hub',
+      badge: 'Recommended Option',
       badgeColor: 'bg-emerald-100 text-emerald-800',
       isRecommended: true,
-      departs: '11:45',
-      departsSub: 'From BOM',
-      arrives: '16:50',
-      arrivesSub: 'At DEL',
-      travelTime: '5h 5m',
-      stops: '1 step (AMD)',
-      impact: 'Arrive 1h earlier',
+      isHotel: isHotelDisruption,
+      departs: isHotelDisruption ? 'Check-in 14:00' : '11:45',
+      departsSub: isHotelDisruption ? fmtDate(disruptedNode?.startTime) : `From ${originStr.split(' ')[0]}`,
+      arrives: isHotelDisruption ? 'Check-out 11:00' : '16:50',
+      arrivesSub: isHotelDisruption ? '' : `At ${destStr.split(' ')[0]}`,
+      travelTime: isHotelDisruption ? destStr : '5h 5m',
+      stops: isHotelDisruption ? 'Upgraded Suite' : '1 step',
+      impact: isHotelDisruption ? 'Arrive anytime with 24h reception' : 'Arrive 1h earlier',
       buttonVariant: 'primary',
       replacementFlight: {
-        flightNumber: 'AI-645',
-        carrier: 'Air India',
-        route: 'Mumbai (BOM) → Ahmedabad (AMD) → Delhi (DEL)',
+        flightNumber: isHotelDisruption ? 'Heritage Grand Palace' : 'AI-645',
+        carrier: disruptedNode?.provider || 'Air India',
+        route: `${originStr} → ${destStr}`,
         departure: '11:45',
         arrival: '16:50',
-        date: '12 Jun 2025',
+        date: fmtDate(disruptedNode?.startTime),
       },
+      replacementHotel: undefined as any,
     },
     {
       id: 'opt_3',
-      title: 'Next Day Flight',
-      badge: 'Less Hassle',
+      title: isHotelDisruption ? 'Alternative (Marriott Business Hotel)' : 'Next Day Flight',
+      badge: 'Alternative',
       badgeColor: 'bg-purple-100 text-purple-800',
       isRecommended: false,
-      departs: '08:00',
-      departsSub: '13 Jun 2025',
-      arrives: '10:20',
-      arrivesSub: '13 Jun 2025',
-      travelTime: '2h 20m',
-      stops: 'Non-stop',
-      impact: 'Stay overnight in Mumbai',
+      isHotel: isHotelDisruption,
+      departs: isHotelDisruption ? 'Check-in 15:00' : '08:00',
+      departsSub: isHotelDisruption ? fmtDate(disruptedNode?.startTime) : 'Next Day',
+      arrives: isHotelDisruption ? 'Check-out 12:00' : '10:20',
+      arrivesSub: isHotelDisruption ? '' : 'Next Day',
+      travelTime: isHotelDisruption ? destStr : '2h 20m',
+      stops: isHotelDisruption ? 'Standard King' : 'Non-stop',
+      impact: isHotelDisruption ? 'Free breakfast included' : 'Stay overnight at origin',
       buttonVariant: 'outline',
       replacementFlight: {
-        flightNumber: 'AI-131',
-        carrier: 'Air India',
-        route: 'Mumbai (BOM) → Delhi (DEL)',
+        flightNumber: isHotelDisruption ? 'Marriott Business' : 'AI-131',
+        carrier: disruptedNode?.provider || 'Air India',
+        route: `${originStr} → ${destStr}`,
         departure: '08:00',
         arrival: '10:20',
-        date: '13 Jun 2025',
+        date: fmtDate(disruptedNode?.startTime),
       },
+      replacementHotel: undefined as any,
     },
   ];
+
+  const recoveryOptions = dynamicOptions && dynamicOptions.length > 0
+    ? dynamicOptions.map((plan: any, idx: number) => {
+        const isHotelPlan = Boolean(plan.replacement_hotel) || isHotelDisruption;
+        return {
+          id: plan.id || `opt_${idx + 1}`,
+          title: plan.title || 'Recovery Alternative',
+          badge: plan.is_recommended ? 'Recommended Option' : 'Alternative',
+          badgeColor: plan.is_recommended ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700',
+          isRecommended: Boolean(plan.is_recommended),
+          isHotel: isHotelPlan,
+          departs: isHotelPlan ? (plan.replacement_hotel?.check_in || 'Check-in 08:00') : (plan.replacement_flight?.departure_time || '14:30'),
+          departsSub: isHotelPlan ? (plan.replacement_hotel?.date || fmtDate(disruptedNode?.startTime)) : (plan.replacement_flight?.date || fmtDate(disruptedNode?.startTime)),
+          arrives: isHotelPlan ? (plan.replacement_hotel?.check_out || 'Check-out 12:00') : (plan.replacement_flight?.arrival_time || '16:50'),
+          arrivesSub: '',
+          travelTime: isHotelPlan ? (plan.replacement_hotel?.location || destStr) : (plan.travel_time || '2h 20m'),
+          stops: isHotelPlan ? (plan.replacement_hotel?.room_type || 'Guaranteed Stay') : (plan.stops || 'Non-stop'),
+          impact: plan.impact || 'Confirmed schedule',
+          buttonVariant: plan.is_recommended ? 'primary' : 'outline',
+          replacementFlight: plan.replacement_flight || {
+            flightNumber: affectedTitle,
+            carrier: disruptedNode?.provider || 'Air India',
+            route: `${originStr} → ${destStr}`,
+            departure: '14:30',
+            arrival: '16:50',
+            date: fmtDate(disruptedNode?.startTime),
+          },
+          replacementHotel: plan.replacement_hotel,
+        };
+      })
+    : defaultRecoveryOptions;
 
   const handleSelectOption = async (option: typeof recoveryOptions[0]) => {
     setSelectedOptionId(option.id);
@@ -112,13 +208,13 @@ export default function SkyWayDisruptionScreen() {
 
     const tripId = journey?.id || 1;
 
-    // Build standard recovery plan structure
     const planPayload: any = {
       id: option.id,
       title: option.title,
       strategy_type: option.isRecommended ? 'REROUTE' : 'REBOOK',
-      description: `Rebooked on ${option.replacementFlight.flightNumber} (${option.stops}). Impact: ${option.impact}.`,
+      description: `Rebooked on ${option.title} (${option.stops}). Impact: ${option.impact}.`,
       replacement_flight: option.replacementFlight,
+      replacement_hotel: option.replacementHotel,
       travel_time: option.travelTime,
       stops: option.stops,
       impact: option.impact,
@@ -132,8 +228,6 @@ export default function SkyWayDisruptionScreen() {
         throw new Error(result.message || 'Recovery booking did not complete.');
       }
 
-      // The booking endpoint is authoritative. Refresh its exact trip before
-      // navigating so every consumer receives the newly persisted itinerary.
       await refresh();
       saveSelectedRecoveryPlan(tripId, planPayload, 'fingerprint_delay_6h30m', false);
       setIsProcessing(false);
@@ -156,7 +250,7 @@ export default function SkyWayDisruptionScreen() {
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <Link to="/my-trips" className="hover:text-sky-600 transition-colors">My Trips</Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-          <Link to="/my-trips" className="hover:text-sky-600 transition-colors">Trip to London</Link>
+          <Link to="/my-trips" className="hover:text-sky-600 transition-colors">{tripTitle}</Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-900 font-semibold">Disruption & Recovery</span>
         </nav>
@@ -164,7 +258,7 @@ export default function SkyWayDisruptionScreen() {
         {/* ── TITLE ── */}
         <div className="flex items-center justify-between">
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-            Flight Disruption
+            Itinerary Disruption
           </h1>
           <Link
             to="/timeline"
@@ -175,42 +269,41 @@ export default function SkyWayDisruptionScreen() {
           </Link>
         </div>
 
-        {/* ── PROMINENT DISRUPTION ALERT BOX (Reference Design) ── */}
+        {/* ── PROMINENT DISRUPTION ALERT BOX ── */}
         <div className="bg-rose-50/90 border border-rose-200/90 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          
-          {/* Left Text */}
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-600/30">
               <AlertTriangle className="w-6 h-6 animate-pulse" />
             </div>
             <div>
               <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
-                Your flight has been delayed
+                {isHotelDisruption ? 'Your hotel schedule has been impacted' : isCabDisruption ? 'Your ground transfer is delayed' : 'Your schedule has been disrupted'}
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-xl leading-relaxed">
-                Air India AI-129 (Mumbai → Delhi) is delayed due to a technical issue. Our team has found the best recovery options for you.
+                {isHotelDisruption
+                  ? `${affectedTitle} (${destStr}) is impacted due to weather / itinerary delay. Our automated recovery engine has calculated optimized alternatives for you.`
+                  : `${affectedTitle} (${originStr} → ${destStr}) is delayed due to technical issues. Our automated recovery engine has calculated optimized alternatives for you.`}
               </p>
             </div>
           </div>
 
-          {/* Right Red/Orange Callout Box */}
           <div className="bg-rose-100/70 border border-rose-200/80 rounded-2xl p-4 text-center md:text-right shrink-0 min-w-[210px] w-full md:w-auto">
             <p className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">
-              New Departure Time
+              {isHotelDisruption ? 'Impact Status' : 'New Departure Time'}
             </p>
             <p className="text-2xl sm:text-3xl font-black text-rose-600 my-0.5">
-              14:30
+              {isHotelDisruption ? 'Late Check-in' : '14:30'}
             </p>
             <p className="text-[11px] font-semibold text-rose-700">
-              (Delayed by 6h 30m)
+              (Delayed by {delayStr})
             </p>
             <p className="text-[10px] text-slate-500 mt-0.5">
-              Originally 08:00
+              Originally {fmtTime(disruptedNode?.startTime)}
             </p>
           </div>
         </div>
 
-        {/* ── DISRUPTION DETAILS CARD (Reference Design) ── */}
+        {/* ── DISRUPTION DETAILS CARD ── */}
         <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-4">
           <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3">
             Disruption Details
@@ -219,17 +312,23 @@ export default function SkyWayDisruptionScreen() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Affected Flight
+                Affected Leg
               </p>
               <div className="mt-1 flex items-center gap-1.5 font-bold text-slate-900">
-                <Plane className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                <span>Air India AI-129</span>
+                {isHotelDisruption ? (
+                  <Building className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                ) : isCabDisruption ? (
+                  <Car className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                ) : (
+                  <Plane className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                )}
+                <span className="truncate">{affectedTitle}</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Mumbai (BOM) → Delhi (DEL)
+                {isHotelDisruption ? `Location: ${destStr}` : `${originStr} → ${destStr}`}
               </p>
               <p className="text-[10px] text-slate-400">
-                Thu, 12 Jun 2025 • Terminal 2
+                {fmtDate(disruptedNode?.startTime)} • Scheduled
               </p>
             </div>
 
@@ -237,16 +336,22 @@ export default function SkyWayDisruptionScreen() {
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Reason
               </p>
-              <p className="mt-1 font-bold text-slate-800">Technical issue</p>
-              <p className="text-[11px] text-slate-500">Aircraft avionics inspection</p>
+              <p className="mt-1 font-bold text-slate-800">
+                {activeDisp?.reason || 'Technical issue'}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                {isHotelDisruption ? 'Weather / delay propagation' : 'Avionics inspection'}
+              </p>
             </div>
 
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Impact
               </p>
-              <p className="mt-1 font-bold text-rose-600">6h 30m delay</p>
-              <p className="text-[11px] text-slate-500">Misses original London connect</p>
+              <p className="mt-1 font-bold text-rose-600">{delayStr} delay</p>
+              <p className="text-[11px] text-slate-500">
+                {isHotelDisruption ? 'Arrival past standard check-in' : 'Impacts onward connections'}
+              </p>
             </div>
 
             <div>
@@ -263,7 +368,7 @@ export default function SkyWayDisruptionScreen() {
           </div>
         </div>
 
-        {/* ── RECOVERY OPTIONS SECTION (Reference Design) ── */}
+        {/* ── RECOVERY OPTIONS SECTION ── */}
         <div className="space-y-4 pt-2">
           <div>
             <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
@@ -274,7 +379,7 @@ export default function SkyWayDisruptionScreen() {
             </p>
           </div>
 
-          {/* 3 COMPARISON CARDS (Grid 3 cols) */}
+          {/* 3 COMPARISON CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {recoveryOptions.map((opt) => {
               const isSelected = selectedOptionId === opt.id;
@@ -288,7 +393,6 @@ export default function SkyWayDisruptionScreen() {
                       : 'bg-white border border-slate-200/90 hover:border-slate-300 shadow-xs hover:shadow-md'
                   }`}
                 >
-                  {/* Recommended Pill Badge */}
                   {opt.isRecommended && (
                     <div className="absolute -top-3 right-6 bg-sky-600 text-white text-[11px] font-extrabold px-3 py-0.5 rounded-full shadow-md shadow-sky-600/30 flex items-center gap-1">
                       <Sparkles className="w-3 h-3" />
@@ -297,7 +401,6 @@ export default function SkyWayDisruptionScreen() {
                   )}
 
                   <div className="space-y-4">
-                    {/* Card Header with Radio & Title */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5">
                         <input
@@ -308,7 +411,7 @@ export default function SkyWayDisruptionScreen() {
                           className="w-4 h-4 text-sky-600 focus:ring-sky-500"
                         />
                         <span className="text-xs font-bold text-slate-400">
-                          {opt.id === 'opt_1' ? 'Option 1' : opt.id === 'opt_2' ? 'Option 2' : 'Option 3'}
+                          {opt.id}
                         </span>
                       </div>
                       <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${opt.badgeColor}`}>
@@ -322,17 +425,20 @@ export default function SkyWayDisruptionScreen() {
                       </h3>
                     </div>
 
-                    {/* Flight Times */}
                     <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-100 text-xs">
                       <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Departs</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          {opt.isHotel ? 'Check-in' : 'Departs'}
+                        </p>
                         <p className="text-lg font-black text-slate-900">{opt.departs}</p>
                         {opt.departsSub && (
                           <p className="text-[10px] font-semibold text-slate-500">{opt.departsSub}</p>
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Arrives</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          {opt.isHotel ? 'Check-out' : 'Arrives'}
+                        </p>
                         <p className="text-lg font-black text-slate-900">{opt.arrives}</p>
                         {opt.arrivesSub && (
                           <p className="text-[10px] font-semibold text-slate-500">{opt.arrivesSub}</p>
@@ -340,19 +446,18 @@ export default function SkyWayDisruptionScreen() {
                       </div>
                     </div>
 
-                    {/* Meta Specs */}
                     <div className="space-y-2 text-xs">
                       <div className="flex items-center justify-between text-slate-600">
                         <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                          <Clock className="w-3 h-3" />
-                          Travel Time
+                          {opt.isHotel ? <Building className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                          {opt.isHotel ? 'Location' : 'Travel Time'}
                         </span>
                         <span className="font-bold text-slate-800">{opt.travelTime}</span>
                       </div>
                       <div className="flex items-center justify-between text-slate-600">
                         <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                          <Plane className="w-3 h-3" />
-                          Stops
+                          {opt.isHotel ? <CheckCircle2 className="w-3 h-3" /> : <Plane className="w-3 h-3" />}
+                          {opt.isHotel ? 'Room Status' : 'Stops'}
                         </span>
                         <span className="font-bold text-slate-800">{opt.stops}</span>
                       </div>
@@ -366,7 +471,6 @@ export default function SkyWayDisruptionScreen() {
                     </div>
                   </div>
 
-                  {/* Select Option CTA Button */}
                   <div className="pt-6">
                     <button
                       type="button"
@@ -391,7 +495,7 @@ export default function SkyWayDisruptionScreen() {
           </div>
         </div>
 
-        {/* ── BOTTOM TRAVEL EXPERT CHAT BAR (Reference Design) ── */}
+        {/* ── BOTTOM SUPPORT BAR ── */}
         <div className="bg-sky-50/70 border border-sky-100 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 text-xs text-slate-700 font-semibold">
             <Info className="w-4 h-4 text-sky-600 shrink-0" />

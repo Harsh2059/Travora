@@ -87,20 +87,29 @@ export function clearDraft(): void {
 
 export function getActiveTripId(): number | null {
   const key = userScopedStorageKey(ACTIVE_TRIP_ID_KEY);
-  const raw = key ? localStorage.getItem(key) : null;
-  if (!raw) return null;
-  const n = parseInt(raw, 10);
-  return isNaN(n) ? null : n;
+  const rawScoped = key ? localStorage.getItem(key) : null;
+  if (rawScoped) {
+    const n = parseInt(rawScoped, 10);
+    if (!isNaN(n)) return n;
+  }
+  const rawBase = localStorage.getItem(ACTIVE_TRIP_ID_KEY);
+  if (rawBase) {
+    const n = parseInt(rawBase, 10);
+    if (!isNaN(n)) return n;
+  }
+  return null;
 }
 
 export function setActiveTripId(id: number): void {
   const key = userScopedStorageKey(ACTIVE_TRIP_ID_KEY);
   if (key) localStorage.setItem(key, String(id));
+  localStorage.setItem(ACTIVE_TRIP_ID_KEY, String(id));
 }
 
 export function clearActiveTripId(): void {
   const key = userScopedStorageKey(ACTIVE_TRIP_ID_KEY);
   if (key) localStorage.removeItem(key);
+  localStorage.removeItem(ACTIVE_TRIP_ID_KEY);
 }
 
 // ── Local (unsynced) journey helpers (localStorage) ──────────────────────────
@@ -363,10 +372,49 @@ export async function fetchTripById(tripId: number, adminMode = false): Promise<
   const rawItems = (data.items && data.items.length > 0) ? data.items : (data.all_items ?? []);
   const rawOrigItems = (data.original_items && data.original_items.length > 0) ? data.original_items : rawItems;
 
+  // Deduplicate items by booking_id or id
+  const dedupMap = new Map<string, any>();
+  for (const it of rawItems) {
+    const key = it.booking_id ? `booking_${it.booking_id}` : `id_${it.id}`;
+    if (!dedupMap.has(key)) dedupMap.set(key, it);
+  }
+  const deduplicatedItems = Array.from(dedupMap.values());
+
+  const dedupOrigMap = new Map<string, any>();
+  for (const it of rawOrigItems) {
+    const key = it.booking_id ? `booking_${it.booking_id}` : `id_${it.id}`;
+    if (!dedupOrigMap.has(key)) dedupOrigMap.set(key, it);
+  }
+  const deduplicatedOrigItems = Array.from(dedupOrigMap.values());
+
+  // Determine primary travel date from transport legs (flight / train)
+  let primaryTravelDate: string | undefined = undefined;
+  for (const it of deduplicatedItems) {
+    if (it.start_time && (it.type === 'FLIGHT' || it.type === 'TRAIN' || it.type === 'flight' || it.type === 'train')) {
+      primaryTravelDate = String(it.start_time).split('T')[0];
+      break;
+    }
+  }
+
   const mapItemToNode = (it: any): JourneyNode => {
-    const meta = it.item_metadata ?? {};
-    const hasExactStart = meta.hasExactStartTime ?? (Boolean(it.start_time) && !it.start_time.endsWith('T00:00:00'));
-    const hasExactEnd = meta.hasExactEndTime ?? (Boolean(it.end_time) && !it.end_time.endsWith('T23:59:59'));
+    const meta = { ...(it.item_metadata ?? {}) };
+    let startTimeIso = it.start_time;
+    let endTimeIso = it.end_time;
+    let startDateStr = meta.startDate ?? (it.start_time ? String(it.start_time).split('T')[0] : undefined);
+    let endDateStr = meta.endDate ?? (it.end_time ? String(it.end_time).split('T')[0] : undefined);
+
+    // If item is hotel/stay/cab and date is missing or earlier than primary travel date, align with primary travel date
+    if (primaryTravelDate && (it.type === 'HOTEL' || it.type === 'hotel' || it.type === 'stay' || it.type === 'CAB' || it.type === 'cab')) {
+      if (!startDateStr || startDateStr < primaryTravelDate) {
+        startDateStr = primaryTravelDate;
+        if (startTimeIso && String(startTimeIso).includes('T')) {
+          startTimeIso = `${primaryTravelDate}T${String(startTimeIso).split('T')[1]}`;
+        }
+      }
+    }
+
+    const hasExactStart = meta.hasExactStartTime ?? (Boolean(startTimeIso) && !String(startTimeIso).endsWith('T00:00:00'));
+    const hasExactEnd = meta.hasExactEndTime ?? (Boolean(endTimeIso) && !String(endTimeIso).endsWith('T23:59:59'));
     const isMetro = meta.transportMode === 'METRO' || (it.provider && it.provider.toLowerCase() === 'metro');
 
     return {
@@ -376,10 +424,10 @@ export async function fetchTripById(tripId: number, adminMode = false): Promise<
       title: it.provider || it.type,
       provider: it.provider || it.type,
       status: it.status || 'CONFIRMED',
-      startTime: hasExactStart ? it.start_time : undefined,
-      endTime: hasExactEnd ? it.end_time : undefined,
-      startDate: meta.startDate ?? (it.start_time ? it.start_time.split('T')[0] : undefined),
-      endDate: meta.endDate ?? (it.end_time ? it.end_time.split('T')[0] : undefined),
+      startTime: hasExactStart ? startTimeIso : undefined,
+      endTime: hasExactEnd ? endTimeIso : undefined,
+      startDate: startDateStr,
+      endDate: endDateStr,
       timeStatus: meta.timeStatus ?? (hasExactStart ? 'FIXED' : 'UNKNOWN'),
       isTimeFlexible: meta.isTimeFlexible ?? (!hasExactStart),
       priority: meta.priority || (it.priority as any) || 'MUST_PRESERVE',
@@ -392,8 +440,9 @@ export async function fetchTripById(tripId: number, adminMode = false): Promise<
     };
   };
 
-  const nodes: JourneyNode[] = rawItems.map(mapItemToNode);
-  const originalNodes: JourneyNode[] = rawOrigItems.map(mapItemToNode);
+  const nodes: JourneyNode[] = deduplicatedItems.map(mapItemToNode);
+  const originalNodes: JourneyNode[] = deduplicatedOrigItems.map(mapItemToNode);
+
 
   return {
     id: tripId,
@@ -576,6 +625,14 @@ export function getBaselineDemoJourney(): Journey {
 
 // ── useJourney hook ───────────────────────────────────────────────────────────
 
+let globalCachedJourney: Journey | null = null;
+const journeySubscribers = new Set<(j: Journey | null) => void>();
+
+function updateGlobalJourney(j: Journey | null): void {
+  globalCachedJourney = j;
+  journeySubscribers.forEach((subscriber) => subscriber(j));
+}
+
 export interface JourneyState {
   journey: Journey | null;
   loading: boolean;
@@ -587,37 +644,47 @@ export interface JourneyState {
 }
 
 export function useJourney(): JourneyState {
-  const [journey, setJourney] = useState<Journey | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [journey, setJourney] = useState<Journey | null>(globalCachedJourney);
+  const [loading, setLoading] = useState<boolean>(!globalCachedJourney);
   const [error, setError] = useState<string | null>(null);
   // A slow earlier request must never overwrite a newer recovery refresh.
   const latestRequestRef = useRef(0);
 
+  useEffect(() => {
+    const subscriber = (j: Journey | null) => {
+      setJourney(j);
+    };
+    journeySubscribers.add(subscriber);
+    return () => {
+      journeySubscribers.delete(subscriber);
+    };
+  }, []);
+
   const load = useCallback(async () => {
     const requestId = ++latestRequestRef.current;
-    setLoading(true);
+    if (!globalCachedJourney) setLoading(true);
     setError(null);
 
     // 1. Try fetching from backend first
     try {
       const userTrips = await fetchUserTrips();
-      if (userTrips && userTrips.length > 0) {
-        // ALWAYS select the latest trip created on the backend if active ID is not set or points to old trip
-        const storedActiveId = getActiveTripId();
-        let targetId = storedActiveId;
+      let targetId = getActiveTripId();
 
+      if (userTrips && userTrips.length > 0) {
         if (!targetId || !userTrips.some((t) => t.id === targetId)) {
           targetId = userTrips[userTrips.length - 1].id;
-          setActiveTripId(targetId);
         }
+      }
 
-        const j = await fetchTripById(targetId);
-        if (j && j.nodes && j.nodes.length > 0) {
-          if (requestId !== latestRequestRef.current) return;
-          clearLocalJourney(); // Clear unsynced local cache when backend trip exists
-          setJourney(j);
-          return;
-        }
+      const fetchId = targetId || 1;
+      const j = await fetchTripById(fetchId);
+      if (j && j.nodes && j.nodes.length > 0) {
+        if (requestId !== latestRequestRef.current) return;
+        if (j.id !== undefined) setActiveTripId(j.id);
+        clearLocalJourney(); // Clear unsynced local cache when backend trip exists
+        updateGlobalJourney(j);
+        setLoading(false);
+        return;
       }
     } catch {
       // Backend unreachable — fall through to local fallback
@@ -627,12 +694,28 @@ export function useJourney(): JourneyState {
     const local = getLocalJourney();
     if (local && local.nodes && local.nodes.length > 0) {
       if (requestId !== latestRequestRef.current) return;
-      setJourney(local);
+      updateGlobalJourney(local);
+      setLoading(false);
       return;
     }
 
-    // 3. If no backend trip or local draft exists, set journey to null (empty state)
-    if (requestId === latestRequestRef.current) setJourney(null);
+    // 3. Fallback to active trip #1
+    try {
+      const fallbackTrip = await fetchTripById(1);
+      if (fallbackTrip && fallbackTrip.nodes && fallbackTrip.nodes.length > 0) {
+        if (requestId !== latestRequestRef.current) return;
+        if (fallbackTrip.id !== undefined) setActiveTripId(fallbackTrip.id);
+        updateGlobalJourney(fallbackTrip);
+        setLoading(false);
+        return;
+      }
+    } catch {}
+
+    // 4. If no backend trip or local draft exists, set journey to null (empty state)
+    if (requestId === latestRequestRef.current) {
+      updateGlobalJourney(null);
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -643,7 +726,7 @@ export function useJourney(): JourneyState {
   // journey synchronously and load only the new account's trips.
   useEffect(() => {
     const handleAuthChange = () => {
-      setJourney(null);
+      updateGlobalJourney(null);
       void load().finally(() => setLoading(false));
     };
     window.addEventListener('travora_auth_change', handleAuthChange);
@@ -651,21 +734,20 @@ export function useJourney(): JourneyState {
   }, [load]);
 
   const refresh = useCallback(async () => {
-    const tripId = journey?.id ?? getActiveTripId();
+    const tripId = journey?.id ?? globalCachedJourney?.id ?? getActiveTripId();
     if (!tripId) {
-      setJourney(null);
+      updateGlobalJourney(null);
       setLoading(false);
       return;
     }
 
     const requestId = ++latestRequestRef.current;
-    setLoading(true);
     try {
       // Refresh the exact trip being displayed, rather than whichever trip happens
       // to be stored as active when the recovery response arrives.
       const j = await fetchTripById(tripId);
       if (requestId === latestRequestRef.current) {
-        setJourney(j);
+        updateGlobalJourney(j);
         setError(null);
       }
     } catch {
@@ -677,8 +759,9 @@ export function useJourney(): JourneyState {
 
   // Subscribe to canonical trip mutations (including a completed recovery).
   useEffect(() => {
-    if (journey?.id) {
-      const unsubscribe = subscribeToTripUpdates(journey.id, () => {
+    const activeId = journey?.id ?? globalCachedJourney?.id;
+    if (activeId) {
+      const unsubscribe = subscribeToTripUpdates(activeId, () => {
         void refresh();
       });
       return unsubscribe;
@@ -689,7 +772,7 @@ export function useJourney(): JourneyState {
     clearActiveTripId();
     clearLocalJourney();
     clearDraft(); // also wipe sessionStorage draft so next builder session starts fresh
-    setJourney(null);
+    updateGlobalJourney(null);
   }, []);
 
   return { journey, loading, error, refresh, clearActive };

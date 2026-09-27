@@ -57,28 +57,36 @@ export function generateMockSimulation(
 
   const rainStress = Math.min(rainfall / 150, 1.2);
   const windStress = Math.min(wind / 80, 1.2);
-  const visStress = Math.max(0, (10 - visibility) / 10);
-  const compositeScore = Math.min(1.0, rainStress * 0.45 + windStress * 0.35 + visStress * 0.35);
+  const visStress = visibility <= 0.5 ? 1.5 : Math.max(0, (10 - visibility) / 10);
 
-  let disruptionProb = Number((compositeScore * 0.85).toFixed(2));
+  let compositeScore = Math.min(1.0, rainStress * 0.45 + windStress * 0.35 + visStress * 0.55);
+  if (visibility <= 0.5) {
+    compositeScore = Math.max(0.92, compositeScore);
+  }
+
+  let disruptionProb = Number(compositeScore.toFixed(2));
   if (rainfall <= 15 && wind <= 25 && visibility >= 8) {
     disruptionProb = 0.08;
-  } else if (rainfall >= 120 || wind >= 60 || visibility <= 2) {
-    disruptionProb = Math.max(0.75, Number(Math.min(0.96, compositeScore).toFixed(2)));
+  } else if (visibility <= 0.5) {
+    disruptionProb = 0.94;
+  } else if (rainfall >= 120 || wind >= 60 || visibility <= 2.0) {
+    disruptionProb = Math.max(0.78, Number(Math.min(0.96, compositeScore).toFixed(2)));
   }
 
   let estDelay = 0;
-  if (disruptionProb > 0.6) {
-    estDelay = Math.round(50 + (disruptionProb - 0.6) * 130 + (rainfall / 200) * 45);
+  if (visibility <= 0.5) {
+    estDelay = Math.round(240 + (0.5 - Math.max(0.0, visibility)) * 200 + (rainfall / 150) * 60 + (wind / 80) * 40);
+  } else if (disruptionProb > 0.6) {
+    estDelay = Math.round(50 + (disruptionProb - 0.6) * 130 + (rainfall / 200) * 45 + (10 - visibility) * 12);
   } else if (disruptionProb > 0.3) {
-    estDelay = Math.round(20 + disruptionProb * 40);
+    estDelay = Math.round(20 + disruptionProb * 40 + (10 - visibility) * 5);
   } else {
     estDelay = 0;
   }
 
-  const transportImpact = Number(Math.min(1.0, disruptionProb * 0.82).toFixed(2));
-  const hotelImpact = Number(Math.min(1.0, disruptionProb * 0.74).toFixed(2));
-  const confidence = 0.88;
+  const transportImpact = Number(Math.min(1.0, disruptionProb * 0.85).toFixed(2));
+  const hotelImpact = Number(Math.min(1.0, disruptionProb * 0.78).toFixed(2));
+  const confidence = 0.89;
 
   let riskLevel = 'LOW';
   let airportImpact: ImpactSeverity = 'low';
@@ -86,7 +94,7 @@ export function generateMockSimulation(
   let transportSev: ImpactSeverity = 'low';
   let hotelSev: ImpactSeverity = 'low';
 
-  if (disruptionProb >= 0.75) {
+  if (disruptionProb >= 0.75 || visibility <= 0.5) {
     riskLevel = 'CRITICAL';
     airportImpact = 'critical';
     flightImpact = 'critical';
@@ -107,28 +115,34 @@ export function generateMockSimulation(
   }
 
   const cascadingEffects: string[] = [];
-  if (estDelay > 60) {
-    cascadingEffects.push(`Flight departure delayed by ${estDelay} min due to convective weather at Mumbai Airport`);
-    cascadingEffects.push('Jaipur Airport Uber transfer connection buffer breached (>30 min required)');
-    cascadingEffects.push('Late hotel arrival past scheduled check-in window at Hotel Ram Jaipur');
+  if (visibility <= 0.5) {
+    cascadingEffects.push(`CAT III Zero-Visibility Fog at Departure Airport: Flight grounded / delayed by ${estDelay} min`);
+    cascadingEffects.push('Destination airport arrival slot missed; ground transport pickup window breached');
+    cascadingEffects.push('Hotel late arrival warning required');
+  } else if (estDelay > 60) {
+    cascadingEffects.push(`Flight departure delayed by ${estDelay} min due to convective weather at Departure Airport`);
+    cascadingEffects.push('Ground transport transfer connection buffer breached (>30 min required)');
+    cascadingEffects.push('Late hotel arrival past scheduled check-in window');
   } else if (estDelay > 20) {
-    cascadingEffects.push(`Flight turnaround delayed by ${estDelay} min at BOM`);
-    cascadingEffects.push('Tight Uber pickup transfer buffer at Jaipur Airport');
+    cascadingEffects.push(`Flight turnaround delayed by ${estDelay} min`);
+    cascadingEffects.push('Tight ground transport pickup transfer buffer');
     cascadingEffects.push('Hotel front desk late arrival notification recommended');
   } else {
     cascadingEffects.push('Flight schedule within nominal buffer (<10 min variation)');
-    cascadingEffects.push('Ground transport pickup connections intact at Jaipur');
+    cascadingEffects.push('Ground transport pickup connections intact');
     cascadingEffects.push('Hotel check-in unaffected');
   }
 
   let explanation = '';
-  if (rainfall > 100 || wind > 50 || visibility < 2.5) {
-    explanation = `Severe convective weather in Mumbai (${rainfall} mm rain, ${wind} km/h wind, ${visibility} km vis) induces departure holding patterns. Flight delay (~${estDelay} min) propagates downstream to Jaipur arrival, Uber pickup timing, and Hotel Ram check-in window.`;
+  if (visibility <= 0.5) {
+    explanation = `Critical zero-visibility fog (0.0 km vis) at Departure Airport renders visual flight operations impossible. CAT III autoland / holding pattern in effect with projected ~${estDelay} min delay propagating downstream to ground transport and hotel check-in.`;
+  } else if (rainfall > 100 || wind > 50 || visibility < 2.5) {
+    explanation = `Severe convective weather (${rainfall} mm rain, ${wind} km/h wind, ${visibility} km vis) induces departure holding patterns. Flight delay (~${estDelay} min) propagates downstream to arrival, pickup timing, and hotel check-in window.`;
   } else if (rainfall > 40 || wind > 35) {
-    explanation = `Moderate precipitation (${rainfall} mm) and surface wind (${wind} km/h) at BOM may trigger runway sequencing delays, estimating ~${estDelay} min arrival shift in Jaipur.`;
+    explanation = `Moderate precipitation (${rainfall} mm) and surface wind (${wind} km/h) trigger runway sequencing delays, estimating ~${estDelay} min arrival shift.`;
   } else {
     explanation =
-      'Atmospheric conditions along the BOM-JAI corridor are within safe operational limits. Journey propagation remains green and intact.';
+      'Atmospheric conditions along the corridor are within safe operational limits. Journey propagation remains green and intact.';
   }
 
   return {

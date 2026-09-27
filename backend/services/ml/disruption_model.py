@@ -114,21 +114,25 @@ class DisruptionRiskModel:
 
         # Weather multiplier adjustment
         weather_factor = 0.0
-        if rainfall > 100 or wind > 60 or visibility < 1.0:
-            weather_factor = 0.45
+        if visibility <= 0.5:
+            weather_factor = 0.88
+        elif rainfall > 100 or wind > 60 or visibility < 1.5:
+            weather_factor = 0.65
         elif rainfall > 30 or wind > 35 or visibility < 3.0:
-            weather_factor = 0.25
+            weather_factor = 0.35
         elif rainfall > 5 or wind > 20:
-            weather_factor = 0.10
+            weather_factor = 0.15
 
         disruption_prob = min(0.98, round(max(raw_prob, weather_factor), 2))
 
         # Calculate estimated delay minutes based on disruption probability and weather parameters
         base_delay = 0
-        if disruption_prob > 0.70:
-            base_delay = int(60 + (rainfall * 0.8) + (wind * 0.5) + ((10.0 - visibility) * 8))
+        if visibility <= 0.5:
+            base_delay = int(240 + ((0.5 - max(0.0, visibility)) * 200) + (rainfall * 0.8) + (wind * 0.5))
+        elif disruption_prob > 0.70:
+            base_delay = int(60 + (rainfall * 0.8) + (wind * 0.5) + ((10.0 - visibility) * 12))
         elif disruption_prob > 0.35:
-            base_delay = int(25 + (rainfall * 0.4) + (wind * 0.3))
+            base_delay = int(25 + (rainfall * 0.4) + (wind * 0.3) + ((10.0 - visibility) * 6))
         else:
             base_delay = int(rainfall * 0.2)
 

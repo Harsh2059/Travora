@@ -645,14 +645,31 @@ def get_trip_details(
     if not admin and isinstance(current_user, models.User) and trip.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not have access to this trip")
 
-    active_items = db.query(models.ItineraryItem).filter(
+    active_items_raw = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.trip_id == trip_id,
         models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"])
     ).order_by(models.ItineraryItem.start_time.asc()).all()
 
-    all_trip_items = db.query(models.ItineraryItem).filter(
+    seen_active_keys = set()
+    active_items = []
+    for it in active_items_raw:
+        key = it.booking_id if it.booking_id else f"{it.id}_{it.type}_{it.provider}"
+        if key not in seen_active_keys:
+            seen_active_keys.add(key)
+            active_items.append(it)
+
+    all_trip_items_raw = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.trip_id == trip_id
     ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    seen_all_keys = set()
+    all_trip_items = []
+    for it in all_trip_items_raw:
+        key = it.booking_id if it.booking_id else f"{it.id}_{it.type}_{it.provider}"
+        if key not in seen_all_keys:
+            seen_all_keys.add(key)
+            all_trip_items.append(it)
+
 
     def serialize_item(it):
         return {

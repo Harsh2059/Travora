@@ -99,11 +99,14 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
     }
   };
 
-  // Default display name: Shubham Shah (matching reference design) or logged in user
-  const displayName = currentUser?.name || 'Shubham Shah';
-  const displayInitials = currentUser?.name
-    ? currentUser.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-    : 'SS';
+  // Default display name: logged in user or Harsh Raut
+  const displayName = currentUser?.name || 'Harsh Raut';
+  const displayInitials = (currentUser?.name || 'Harsh Raut')
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <>

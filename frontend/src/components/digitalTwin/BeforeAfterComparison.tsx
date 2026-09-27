@@ -47,10 +47,10 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
             </div>
             <div>
               <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-                Before / After Simulation Comparison
+                Journey Comparison (Original vs Simulated Weather)
               </h2>
               <p className="text-xs text-slate-500">
-                Direct comparative differential between Nominal Schedule and What-If Stress Output.
+                See how bad weather might delay your flight and affect your cab and hotel bookings.
               </p>
             </div>
           </div>
@@ -58,7 +58,7 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-            Judge Delta View
+            Live Comparison
           </span>
         </div>
       </div>
@@ -70,19 +70,19 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-emerald-500" />
               <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">
-                Baseline (Normal Weather)
+                Original Schedule (Normal Weather)
               </h3>
             </div>
             <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-              NOMINAL
+              ON SCHEDULE
             </span>
           </div>
 
           <div className="space-y-3 text-xs">
             {/* Weather */}
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
-              <span className="font-bold text-slate-500">Atmospheric Condition</span>
-              <span className="font-extrabold text-slate-800">Clear / Moderate (18 mm)</span>
+              <span className="font-bold text-slate-500">Expected Weather</span>
+              <span className="font-extrabold text-slate-800">Clear / Mild Weather</span>
             </div>
 
             {/* Flight */}
@@ -104,7 +104,7 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
                 <span className="font-bold text-slate-700">Uber Cab (Jaipur Airport)</span>
               </div>
               <span className="font-extrabold text-emerald-700">
-                Normal (30m Buffer Intact)
+                On Time (30 min wait buffer)
               </span>
             </div>
 
@@ -115,14 +115,14 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
                 <span className="font-bold text-slate-700">Hotel Ram Jaipur Check-in</span>
               </div>
               <span className="font-extrabold text-emerald-700">
-                Scheduled (20:30 Check-in)
+                On Time (20:30 Check-in)
               </span>
             </div>
 
             {/* Risk Score */}
             <div className="pt-2 flex items-center justify-between text-xs font-bold text-slate-600">
-              <span>Overall Feasibility Risk:</span>
-              <span className="text-emerald-700 font-black">LOW (8% Prob)</span>
+              <span>Overall Trip Delay Risk:</span>
+              <span className="text-emerald-700 font-black">Very Low Risk (8% chance of delay)</span>
             </div>
           </div>
         </div>
@@ -143,7 +143,7 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
                 }`}
               />
               <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">
-                After What-If Simulation
+                Simulated Weather Impact
               </h3>
             </div>
             <span
@@ -153,14 +153,14 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
                   : 'bg-emerald-100 text-emerald-800 border-emerald-200'
               }`}
             >
-              {isSeverelyDisrupted ? 'SIMULATION ESTIMATE — RISK DETECTED' : 'FEASIBLE'}
+              {isSeverelyDisrupted ? 'SIMULATION ESTIMATE — DELAY LIKELY' : 'FEASIBLE'}
             </span>
           </div>
 
           <div className="space-y-3 text-xs">
             {/* Weather Stress */}
             <div className="bg-white/95 p-3 rounded-xl border border-rose-100 shadow-2xs flex items-center justify-between">
-              <span className="font-bold text-slate-500">Synthetic Weather</span>
+              <span className="font-bold text-slate-500">Simulated Weather</span>
               <span className="font-black text-rose-700">
                 Rain: {rainfall} mm • Wind: {wind} km/h • Vis: {visibility} km
               </span>
@@ -196,10 +196,10 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
               </div>
               <span
                 className={`font-black ${
-                  transportImpact > 0.4 ? 'text-amber-700' : 'text-emerald-700'
+                  transportImpact > 0.4 ? 'text-rose-600' : 'text-emerald-700'
                 }`}
               >
-                {transportImpact > 0.4 ? 'High impact (Pickup buffer breached)' : 'Nominal buffer'}
+                {transportImpact > 0.4 ? 'Cab Pickup Missed (Flight delay eats wait time)' : 'Pickup buffer intact'}
               </span>
             </div>
 
@@ -214,16 +214,16 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
                   hotelImpact > 0.4 ? 'text-amber-700' : 'text-emerald-700'
                 }`}
               >
-                {hotelImpact > 0.4 ? 'Delayed arrival past 22:30' : 'Normal check-in'}
+                {hotelImpact > 0.4 ? 'Late Check-in Expected (Past 22:30)' : 'Normal check-in'}
               </span>
             </div>
 
             {/* Risk Score */}
             <div className="pt-2 flex items-center justify-between text-xs font-bold">
-              <span className="text-slate-700">Disruption Probability Delta:</span>
+              <span className="text-slate-700">Likelihood of Delay:</span>
               <span className="text-rose-700 font-black text-sm flex items-center gap-1">
                 <TrendingUp className="w-4 h-4" />
-                {Math.round(disruptionProb * 100)}% ({Math.round(disruptionProb * 100) - 8}% delta)
+                {Math.round(disruptionProb * 100)}% chance (+{Math.round(disruptionProb * 100) - 8}% higher)
               </span>
             </div>
           </div>

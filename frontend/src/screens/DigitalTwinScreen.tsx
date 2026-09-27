@@ -64,12 +64,8 @@ export default function DigitalTwinScreen() {
   );
   const [socialSignals, setSocialSignals] = useState<SocialSignalsResponse | null>(null);
 
-  // Default demo journey is Journey ID #7 (Mumbai → Jaipur)
-  const activeTripId = tripId ? parseInt(tripId, 10) || 7 : (journey?.id || 7);
-  const journeyTitle =
-    journey?.title && !journey.title.toLowerCase().includes('london')
-      ? journey.title
-      : 'Mumbai to Jaipur Express Journey (Trip #7)';
+  const activeTripId = tripId ? parseInt(tripId, 10) || journey?.id || 1 : (journey?.id || 1);
+  const journeyTitle = journey?.title || `Journey #${activeTripId}`;
 
   // ── Execute Simulation Function ─────────────────────────────────────────────
   const executeSimulation = useCallback(
@@ -167,12 +163,44 @@ export default function DigitalTwinScreen() {
     if (type === 'temp') setTemperature(val);
   };
 
+  // ── Manual Trigger for SIMULATE button ────────────────────────────────────
+  const handleSimulateClick = async () => {
+    setIsSimulatedMode(true);
+    await executeSimulation(rainfall, wind, visibility, temperature);
+
+    // Trigger disruption on backend active trip so ripple events update across nodes
+    const tripToDisrupt = journey?.id || activeTripId;
+    if (tripToDisrupt) {
+      try {
+        const flightNode = journey?.nodes?.find((n) => (n.type || '').toUpperCase() === 'FLIGHT');
+        const affectedNode = flightNode || journey?.nodes?.[0];
+        const delayMinutes = simulationResult?.prediction.estimated_delay_minutes || (rainfall > 100 ? 390 : rainfall > 30 ? 180 : 45);
+
+        const payload = {
+          trip_id: tripToDisrupt,
+          affected_node_id: affectedNode?.backendId || 1,
+          entity_id: affectedNode?.backendId || 1,
+          type: 'WEATHER_CONVECTIVE_DELAY',
+          event_type: 'WEATHER_CONVECTIVE_DELAY',
+          detected_at: new Date().toISOString(),
+          reason: `Digital Twin What-If: Convective weather (${rainfall}mm rain, ${wind}km/h wind, ${visibility}km vis)`,
+          delay_minutes: delayMinutes,
+        };
+
+        await triggerTripDisruption(tripToDisrupt, payload).catch(() => null);
+      } catch {
+        // offline fallback
+      }
+    }
+  };
+
   // ── Connect to Existing Recovery Screen ────────────────────────────────────
   const handleViewRecoveryOptions = async () => {
     const tripToDisrupt = journey?.id || 7;
 
     try {
-      const affectedNode = journey?.nodes?.[0];
+      const flightNode = journey?.nodes?.find((n) => (n.type || '').toUpperCase() === 'FLIGHT');
+      const affectedNode = flightNode || journey?.nodes?.[0];
       const delayMinutes = simulationResult?.prediction.estimated_delay_minutes || 279;
 
       const payload = {
@@ -278,7 +306,7 @@ export default function DigitalTwinScreen() {
           onWindChange={(v) => handleSliderChange('wind', v)}
           onVisibilityChange={(v) => handleSliderChange('vis', v)}
           onTemperatureChange={(v) => handleSliderChange('temp', v)}
-          onSimulate={() => executeSimulation(rainfall, wind, visibility, temperature)}
+          onSimulate={handleSimulateClick}
           onResetToLive={handleResetToLive}
           isSimulating={isSimulating}
           isCustomSimulated={isSimulatedMode}
@@ -295,6 +323,7 @@ export default function DigitalTwinScreen() {
 
         {/* ── PHASE 4: LEAFLET + OPENSTREETMAP MAP VISUALIZATION ── */}
         <DigitalTwinMap
+          journey={journey}
           affectedEntities={simulationResult.affected_entities}
           currentRainfall={rainfall}
           currentWind={wind}

@@ -48,7 +48,7 @@ export const WhatIfController: React.FC<WhatIfControllerProps> = ({
   onSimulate,
   onResetToLive,
   isSimulating,
-  isCustomSimulated,
+  isCustomSimulated: _isCustomSimulated,
 }) => {
   // Preset scenarios for instant judge demonstration
   const handleApplyPreset = (
@@ -77,30 +77,19 @@ export const WhatIfController: React.FC<WhatIfControllerProps> = ({
             </div>
             <div>
               <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>What-If Weather Simulation</span>
+                <span>What-If Weather Simulator</span>
                 {isSimulating && (
                   <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin" />
                 )}
               </h2>
               <p className="text-xs text-slate-500">
-                Stress-test trip nodes against synthetic meteorological variations.
+                Test how different weather conditions will impact your trip schedule.
               </p>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {isCustomSimulated ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200 tracking-wide uppercase">
-              <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
-              DIGITAL TWIN — WHAT-IF
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-600" />
-              SYNCHRONIZED WITH LIVE TELEMETRY
-            </span>
-          )}
 
           {onSimulate && (
             <button
@@ -134,10 +123,9 @@ export const WhatIfController: React.FC<WhatIfControllerProps> = ({
         <AlertCircle className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
         <div>
           <span className="font-extrabold text-slate-800">
-            REAL JOURNEY ≠ SIMULATED JOURNEY:
+            SAFE SIMULATION TEST:
           </span>{' '}
-          Adjusting these parameters runs a non-destructive predictive simulation on the Digital
-          Twin DAG without modifying your live booking or tickets.
+          Adjusting these weather sliders will test potential delays without modifying your real flight tickets or live bookings.
         </div>
       </div>
 
@@ -256,7 +244,7 @@ export const WhatIfController: React.FC<WhatIfControllerProps> = ({
       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mr-1">
           <Sparkles className="w-3 h-3 text-amber-500" />
-          Judge Demo Scenarios:
+          Quick Weather Presets:
         </span>
         <button
           onClick={() => handleApplyPreset(0, 10, 10, 28)}

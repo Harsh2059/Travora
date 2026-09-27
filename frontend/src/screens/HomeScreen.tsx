@@ -503,7 +503,7 @@ export default function HomeScreen() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/home')}>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
               <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-1.5 rounded-lg text-white shadow-sm">
                 <Compass className="w-4 h-4" />
               </div>

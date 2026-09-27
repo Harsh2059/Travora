@@ -36,8 +36,8 @@ interface DigitalTwinRiskHeaderProps {
 
 export const DigitalTwinRiskHeader: React.FC<DigitalTwinRiskHeaderProps> = ({
   journeyTitle = 'Mumbai to Jaipur Express Journey (Trip #7)',
-  tripId = 7,
-  isSimulated,
+  tripId: _tripId = 7,
+  isSimulated: _isSimulated,
   prediction,
   rainfall,
   wind,
@@ -80,27 +80,7 @@ export const DigitalTwinRiskHeader: React.FC<DigitalTwinRiskHeaderProps> = ({
         <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           {/* Left Column: Title & Journey Info */}
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="text-[11px] font-black tracking-widest text-sky-600 uppercase bg-sky-50 px-2.5 py-1 rounded-full border border-sky-100">
-                TRAVORA DIGITAL TWIN ENGINE (JOURNEY #{tripId})
-              </span>
-              {isSimulated ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wide">
-                  <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
-                  DIGITAL TWIN — WHAT-IF
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                  LIVE JOURNEY
-                </span>
-              )}
-              {prediction.is_synthetic && (
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 uppercase">
-                  Simulation Estimate
-                </span>
-              )}
-            </div>
+
 
             <div>
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-slate-900 flex items-center gap-3">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import axios from 'axios';
 import {
   AlertTriangle,
   RotateCcw,
@@ -11,8 +12,16 @@ import {
   Radio,
   Zap,
   Trash2,
+  CloudRain,
+  Wind,
+  Eye,
+  Thermometer,
+  ExternalLink,
+  ShieldCheck,
+  Loader2,
 } from 'lucide-react';
 import {
+  API_BASE_URL,
   fetchUserTrips,
   fetchTripById,
   getActiveTripId,
@@ -41,6 +50,18 @@ type DisruptionCategory =
   | 'HOTEL_CANCELLED'
   | 'ACTIVITY_CANCELLED'
   | 'MISSED_CONNECTION';
+
+interface AdminWeather {
+  location: string;
+  temperature: number;
+  rainfall: number;
+  wind: number;
+  visibility: number;
+  condition: string;
+  timestamp: string;
+  source: string;
+  is_live: boolean;
+}
 
 function getDisruptionOptions(itemType?: string): Array<{ value: DisruptionCategory; label: string; desc: string }> {
   if (!itemType) return [];
@@ -105,9 +126,7 @@ function fmtDisplayTime(s?: string): string {
   } catch { return s; }
 }
 
-/** Active bookings only — hide REPLACED / RESTORED_DEMO / CANCELLED.
- *  Also hides recovery replacements when their original is still active
- *  (guards against duplicate CONFIRMED original + replacement rows). */
+/** Active bookings only — hide REPLACED / RESTORED_DEMO / CANCELLED. */
 function getActiveBookingNodes(nodes: Journey['nodes'] | undefined): Journey['nodes'] {
   if (!nodes?.length) return [];
 
@@ -127,7 +146,6 @@ function getActiveBookingNodes(nodes: Journey['nodes'] | undefined): Journey['no
       const original = byId.get(String(meta.replaced_item_id));
       if (original) {
         const origStatus = (original.status || 'CONFIRMED').toUpperCase();
-        // Original still active → this replacement is a duplicate; hide it
         if (origStatus !== 'REPLACED' && origStatus !== 'RESTORED_DEMO' && origStatus !== 'CANCELLED') {
           return false;
         }
@@ -154,11 +172,17 @@ export default function AdminConsoleScreen() {
   const [detectedAt, setDetectedAt] = useState<string>(formatNowForInput());
   const [reason, setReason] = useState<string>('Operational disruption');
 
+  // Weather state
+  const [weather, setWeather] = useState<AdminWeather | null>(null);
+  const [loadingWeather, setLoadingWeather] = useState<boolean>(false);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+
   // Status & Feedback
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [resetting, setResetting] = useState<boolean>(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showResetAllConfirm, setShowResetAllConfirm] = useState<boolean>(false);
 
   // Active Disruption History
   const [disruptionHistory, setDisruptionHistory] = useState<any[]>([]);
@@ -186,15 +210,13 @@ export default function AdminConsoleScreen() {
     setFormError(null);
 
     Promise.all([
-      fetchTripById(selectedTripId, true), // admin=true: bypass ownership check
+      fetchTripById(selectedTripId, true),
       fetchTripDisruptions(selectedTripId),
     ])
       .then(([j, history]) => {
         setJourney(j);
         const historyList = history || [];
         setDisruptionHistory(historyList);
-        
-        // Let the effect that depends on journey/viewMode handle reconciliation
       })
       .catch((err) => {
         console.error('Failed to load trip details for admin:', err);
@@ -206,10 +228,8 @@ export default function AdminConsoleScreen() {
   // Initial fetch and subscription to updates
   useEffect(() => {
     if (!selectedTripId) return;
-    
-    // Sync view mode
-    setViewMode(getPersistedViewMode(selectedTripId));
 
+    setViewMode(getPersistedViewMode(selectedTripId));
     fetchSelectedTrip();
 
     const unsubUpdates = subscribeToTripUpdates(selectedTripId, fetchSelectedTrip);
@@ -224,19 +244,67 @@ export default function AdminConsoleScreen() {
   // 3. Reconcile Selected Booking whenever derived active journey changes
   const activeJourneyNodes = viewMode === 'ORIGINAL' && journey?.originalNodes ? journey.originalNodes : journey?.nodes;
   const activeBookingNodes = getActiveBookingNodes(activeJourneyNodes);
-  
+
   const selectedNode = activeBookingNodes.find((n) => n.id === selectedNodeId) ||
     activeJourneyNodes?.find((n) => n.id === selectedNodeId && !['REPLACED', 'RESTORED_DEMO', 'CANCELLED'].includes((n.status || '').toUpperCase()));
+
+  // 4. Fetch Weather Context when journey or selected node location changes
+  useEffect(() => {
+    if (!selectedTripId) {
+      setWeather(null);
+      setWeatherError(null);
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingWeather(true);
+    setWeatherError(null);
+
+    const loc = selectedNode?.origin || selectedNode?.location || journey?.title || 'Mumbai';
+
+    axios
+      .get(`${API_BASE_URL}/weather/current`, {
+        params: { location: loc },
+        timeout: 6000,
+      })
+      .then((res) => {
+        if (!isMounted) return;
+        const data = res.data || {};
+        setWeather({
+          location: data.location || loc,
+          temperature: Number(data.temperature ?? 28),
+          rainfall: Number(data.rainfall ?? 0),
+          wind: Number(data.wind ?? 10),
+          visibility: Number(data.visibility ?? 10),
+          condition: data.condition || 'Clear',
+          timestamp: data.timestamp
+            ? new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          source: data.source || 'Live Weather API',
+          is_live: Boolean(data.is_live),
+        });
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.warn('Weather fetch failed in Admin:', err?.message);
+        setWeatherError('Weather data temporarily unavailable.');
+      })
+      .finally(() => {
+        if (isMounted) setLoadingWeather(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedTripId, selectedNode?.id, selectedNode?.origin, selectedNode?.location, journey?.title]);
 
   useEffect(() => {
     if (loadingTrip || !journey) return;
 
-    // Check if the current selected node is still valid
     const stillValid = activeBookingNodes.some(n => n.id === selectedNodeId);
     const activeDisp = disruptionHistory.find((d: any) => (d.status || 'ACTIVE') === 'ACTIVE') ?? null;
 
     if (!stillValid && activeBookingNodes.length > 0) {
-      // If we have an active disruption, try to select its node
       if (activeDisp) {
         const entityIdStr = String(activeDisp.entity_id || activeDisp.affected_node_id || '');
         const matchedNode = activeBookingNodes.find(
@@ -247,22 +315,20 @@ export default function AdminConsoleScreen() {
           return;
         }
       }
-      // Otherwise fallback to first active node
       setSelectedNodeId(activeBookingNodes[0].id);
     } else if (activeBookingNodes.length === 0) {
       setSelectedNodeId('');
     }
 
     if (activeDisp && stillValid) {
-       // Hydrate disruption form from active disruption
-       const evType = activeDisp.event_type || activeDisp.type;
-       if (evType && evType !== disruptionType) setDisruptionType(evType as DisruptionCategory);
-       const ts = activeDisp.timestamp || activeDisp.detected_at;
-       if (ts) setDetectedAt(formatDateForInput(ts));
-       const meta = activeDisp.event_metadata || {};
-       if (meta.reason || activeDisp.reason) setReason(meta.reason || activeDisp.reason);
-       const dm = meta.delay_minutes ?? activeDisp.delay_minutes;
-       if (dm !== undefined && dm !== null) setDelayMinutes(Number(dm));
+      const evType = activeDisp.event_type || activeDisp.type;
+      if (evType && evType !== disruptionType) setDisruptionType(evType as DisruptionCategory);
+      const ts = activeDisp.timestamp || activeDisp.detected_at;
+      if (ts) setDetectedAt(formatDateForInput(ts));
+      const meta = activeDisp.event_metadata || {};
+      if (meta.reason || activeDisp.reason) setReason(meta.reason || activeDisp.reason);
+      const dm = meta.delay_minutes ?? activeDisp.delay_minutes;
+      if (dm !== undefined && dm !== null) setDelayMinutes(Number(dm));
     }
 
   }, [journey, viewMode, disruptionHistory, loadingTrip, activeBookingNodes.length]);
@@ -325,10 +391,9 @@ export default function AdminConsoleScreen() {
         delay_minutes: isDelayType ? delayMinutes : null,
       };
 
-      await triggerTripDisruption(selectedTripId, payload, true); // admin=true: bypass ownership check
+      await triggerTripDisruption(selectedTripId, payload, true);
       setToastMsg('Disruption triggered successfully!');
 
-      // Refresh disruption history
       const updatedHistory = await fetchTripDisruptions(selectedTripId);
       setDisruptionHistory(updatedHistory || []);
     } catch (err: any) {
@@ -350,7 +415,6 @@ export default function AdminConsoleScreen() {
       await resetTripDisruptions(selectedTripId);
       setDisruptionHistory([]);
 
-      // Reset form state to clean initial defaults
       if (journey && activeBookingNodes.length > 0) {
         const firstNode = activeBookingNodes[0];
         setSelectedNodeId(firstNode.id);
@@ -404,6 +468,40 @@ export default function AdminConsoleScreen() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-20">
+      {/* Reset ALL Confirmation Modal */}
+      {showResetAllConfirm && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="h-6 w-6 shrink-0" />
+              <h3 className="font-extrabold text-base text-slate-900 dark:text-white">Reset all simulations?</h3>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              This will clear active simulation/disruption states across all journeys. Confirmed real itineraries will not be changed.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetAllConfirm(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowResetAllConfirm(false);
+                  await handleResetAllSimulations();
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition-colors"
+              >
+                Reset All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toastMsg && (
         <div className="fixed top-20 right-6 z-50 bg-emerald-600 text-white text-xs font-semibold px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 duration-200">
@@ -448,7 +546,7 @@ export default function AdminConsoleScreen() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleResetAllSimulations}
+              onClick={() => setShowResetAllConfirm(true)}
               disabled={resetting}
               className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 transition-colors flex items-center gap-1.5 cursor-pointer"
               title="Reset all disruption simulations across all trips"
@@ -461,7 +559,7 @@ export default function AdminConsoleScreen() {
               className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
             >
               <Layout className="h-3.5 w-3.5 text-sky-500" />
-              <span>Phase 2 Legacy Demo</span>
+              <span>Legacy Demo</span>
             </button>
           </div>
         </div>
@@ -483,7 +581,7 @@ export default function AdminConsoleScreen() {
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                   <Radio className="h-4 w-4 text-amber-500 animate-pulse" />
-                  <span>TRIGGER DISRUPTION EVENT</span>
+                  <span>TRIGGER OPERATIONAL DISRUPTION</span>
                 </span>
               </div>
 
@@ -503,7 +601,7 @@ export default function AdminConsoleScreen() {
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                   >
                     {tripsList.length === 0 && (
-                      <option value="">No trips found for current user</option>
+                      <option value="">No active journeys found for this account.</option>
                     )}
                     {tripsList.map((t) => (
                       <option key={t.id} value={t.id}>
@@ -513,7 +611,7 @@ export default function AdminConsoleScreen() {
                   </select>
                   {tripsList.length === 0 && (
                     <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
-                      No trips yet. Create a journey in{' '}
+                      No active journeys found for this account. Create a journey in{' '}
                       <button
                         type="button"
                         onClick={() => navigate('/build')}
@@ -525,6 +623,93 @@ export default function AdminConsoleScreen() {
                     </p>
                   )}
                 </div>
+
+                {/* Weather Context Widget */}
+                {selectedTripId && (
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <CloudRain className="h-4 w-4 text-sky-500" />
+                        <span>WEATHER CONTEXT</span>
+                        {weather && (
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            ({weather.location})
+                          </span>
+                        )}
+                      </span>
+                      {loadingWeather ? (
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin text-sky-500" /> Fetching live weather...
+                        </span>
+                      ) : weather ? (
+                        <span
+                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                            weather.is_live
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                              : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              weather.is_live ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                            }`}
+                          />
+                          {weather.is_live ? 'LIVE' : 'FALLBACK'}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {loadingWeather ? (
+                      <div className="py-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-sky-500" />
+                        Loading environmental weather context...
+                      </div>
+                    ) : weatherError ? (
+                      <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-xs">
+                        {weatherError}
+                      </div>
+                    ) : weather ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-4 gap-2 text-center">
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
+                            <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                              <Thermometer className="h-3.5 w-3.5 text-amber-500" />
+                              <span>{weather.temperature}°C</span>
+                            </div>
+                            <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Temp</p>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
+                            <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                              <CloudRain className="h-3.5 w-3.5 text-sky-500" />
+                              <span>{weather.rainfall} mm</span>
+                            </div>
+                            <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Rainfall</p>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
+                            <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                              <Wind className="h-3.5 w-3.5 text-teal-500" />
+                              <span>{weather.wind} km/h</span>
+                            </div>
+                            <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Wind</p>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800">
+                            <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                              <Eye className="h-3.5 w-3.5 text-indigo-500" />
+                              <span>{weather.visibility} km</span>
+                            </div>
+                            <p className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">Visibility</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium px-1">
+                          <span>Condition: <strong className="text-slate-800 dark:text-slate-200">{weather.condition}</strong></span>
+                          <span>Updated: <strong className="text-slate-800 dark:text-slate-200">{weather.timestamp}</strong></span>
+                          <span>Source: <strong className="text-slate-800 dark:text-slate-200">{weather.source}</strong></span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
 
                 {/* 2. Select Affected Booking */}
                 <div>
@@ -541,7 +726,7 @@ export default function AdminConsoleScreen() {
                     </div>
                   ) : activeBookingNodes.length === 0 ? (
                     <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs text-center">
-                      No active booking items found in this trip. Add items in Trip Builder first.
+                      No active booking items found in this journey. Add a flight, transport, hotel, or other booking item in Trip Builder first.
                     </div>
                   ) : (
                     <select
@@ -654,11 +839,11 @@ export default function AdminConsoleScreen() {
                     type="text"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. Operational disruption, Weather, ATC holding"
+                    placeholder="e.g. Operational disruption, Weather disruption"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold"
                   />
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {['Operational disruption', 'Weather disruption', 'Technical issue', 'Schedule change'].map((r) => (
+                    {['Weather disruption', 'Operational disruption', 'Technical issue', 'Schedule change'].map((r) => (
                       <button
                         key={r}
                         type="button"
@@ -683,7 +868,7 @@ export default function AdminConsoleScreen() {
                     }`}
                   >
                     <Zap className="h-4 w-4" />
-                    <span>{submitting ? 'Triggering Disruption...' : 'TRIGGER DISRUPTION'}</span>
+                    <span>{submitting ? 'Triggering Disruption...' : 'TRIGGER OPERATIONAL DISRUPTION'}</span>
                   </button>
                 </div>
               </form>
@@ -706,6 +891,12 @@ export default function AdminConsoleScreen() {
                 )}
               </div>
 
+              {/* Safety Badge Banner */}
+              <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold tracking-wider uppercase flex items-center justify-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                <span>SIMULATION MODE — REAL JOURNEY UNCHANGED</span>
+              </div>
+
               {activeDisruption ? (
                 <div className="p-4 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 space-y-3">
                   <div className="flex items-start justify-between">
@@ -721,27 +912,76 @@ export default function AdminConsoleScreen() {
                   </div>
 
                   <div className="text-xs space-y-1 text-slate-600 dark:text-slate-300 font-medium">
+                    {journey?.title && (
+                      <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                        Journey: {journey.title}
+                      </p>
+                    )}
+                    {activeDisruption.severity && (
+                      <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                        Risk Level: {activeDisruption.severity}
+                      </p>
+                    )}
                     {activeDisruption.event_metadata?.detected_at && (
                       <p className="flex items-center gap-1.5">
                         <Clock className="h-3.5 w-3.5 text-rose-500 shrink-0" />
                         <span>Detected at {fmtDisplayTime(activeDisruption.event_metadata.detected_at)}</span>
                       </p>
                     )}
-                    {activeDisruption.event_metadata?.delay_minutes && (
+                    {activeDisruption.event_metadata?.delay_minutes !== undefined && activeDisruption.event_metadata?.delay_minutes !== null && (
                       <p className="text-amber-700 dark:text-amber-300 font-bold">
-                        Delay: +{activeDisruption.event_metadata.delay_minutes} minutes
+                        Estimated Delay: +{activeDisruption.event_metadata.delay_minutes} minutes
                       </p>
                     )}
                     {activeDisruption.event_metadata?.reason && (
-                      <p className="text-slate-500 italic">"{activeDisruption.event_metadata.reason}"</p>
+                      <p className="text-slate-500 italic">Disruption: "{activeDisruption.event_metadata.reason}"</p>
                     )}
                   </div>
+
+                  {/* Affected Entities Summary */}
+                  {activeBookingNodes.length > 0 && (
+                    <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/60 text-[10px]">
+                      <span className="font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                        Affected Entities ({activeBookingNodes.length}):
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {activeBookingNodes.map((n) => (
+                          <span
+                            key={n.id}
+                            className="px-2 py-0.5 rounded-md bg-white/80 dark:bg-slate-900/80 font-semibold border border-rose-200/50 dark:border-rose-900/50 text-slate-700 dark:text-slate-300"
+                          >
+                            [{n.type}] {n.title}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="py-6 text-center text-slate-400 text-xs">
                   No active disruption triggered for this trip.
                 </div>
               )}
+
+              {/* Navigation Action Buttons */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => navigate('/digital-twin')}
+                  className="py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>OPEN DIGITAL TWIN</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/disruption')}
+                  className="py-2.5 px-3 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white font-extrabold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>VIEW RECOVERY OPTIONS</span>
+                </button>
+              </div>
 
               {/* Reset Simulation Controls */}
               <div className="grid grid-cols-2 gap-2 pt-1">
@@ -756,7 +996,7 @@ export default function AdminConsoleScreen() {
                 </button>
 
                 <button
-                  onClick={handleResetAllSimulations}
+                  onClick={() => setShowResetAllConfirm(true)}
                   disabled={resetting}
                   className="py-2 px-3 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 font-semibold text-xs text-rose-700 dark:text-rose-300 transition-colors flex items-center justify-center gap-1.5"
                   title="Clear all simulations across all trips"

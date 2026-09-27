@@ -215,9 +215,9 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
               
               <div className="text-left sm:text-right shrink-0">
                 <div className="text-[13px] font-medium text-slate-700">{timeBadge(node)}</div>
-                {node.startDate && (
-                  <div className="text-[13px] font-medium text-slate-500 mt-0.5">
-                    {fmtDate(node.startDate)}
+                {(node.startDate || node.startTime) && (
+                  <div className="text-[13px] font-semibold text-slate-500 mt-0.5">
+                    {fmtDate(node.startDate || (node.startTime ? node.startTime.split('T')[0] : ''))}
                   </div>
                 )}
               </div>
@@ -289,7 +289,22 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   });
 
   const displayNodes = routeStats(activeNodes).total > 0 ? timelineItems.map(ti => ti.node) : activeNodes;
-  const itemsToRender = displayNodes.length > 0 ? displayNodes : activeNodes;
+
+  // Deduplicate items to prevent duplicate booking records in timeline
+  const dedupedItems: JourneyNode[] = [];
+  const seenRenderKeys = new Set<string>();
+
+  for (const node of (displayNodes.length > 0 ? displayNodes : activeNodes)) {
+    const key = node.bookingRef
+      ? `ref_${node.bookingRef}`
+      : `${node.backendId || node.id}_${node.type}_${node.title}`;
+    if (!seenRenderKeys.has(key)) {
+      seenRenderKeys.add(key);
+      dedupedItems.push(node);
+    }
+  }
+
+  const itemsToRender = dedupedItems;
 
   return (
     <div className="bg-transparent space-y-4">
