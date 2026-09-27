@@ -17,6 +17,67 @@ def _get_keycap(num: int) -> str:
     return _KEYCAPS.get(num, f"{num}️⃣")
 
 
+def _adapt_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Adapter to normalize RecoveryPlanModel output (which uses added_items)
+    into the format expected by the WhatsApp formatter (changes -> new_details).
+    """
+    if "changes" in plan or "added_items" not in plan:
+        return plan
+
+    adapted = plan.copy()
+    changes = []
+
+    for item in adapted.get("added_items") or []:
+        start = item.get("start_time") or item.get("departure_time")
+        end = item.get("end_time") or item.get("arrival_time")
+
+        dur = item.get("duration")
+        if not dur and start and end:
+            try:
+                from datetime import datetime
+                s = datetime.fromisoformat(str(start).replace("Z", "+00:00")) if isinstance(start, str) else start
+                e = datetime.fromisoformat(str(end).replace("Z", "+00:00")) if isinstance(end, str) else end
+                mins = int((e - s).total_seconds() / 60)
+                dur = f"{mins // 60}h {mins % 60}m"
+            except Exception:
+                pass
+
+        new_details = {
+            "type": str(item.get("type", "FLIGHT")).upper(),
+            "provider": item.get("provider") or item.get("airline"),
+            "airline": item.get("airline") or item.get("provider"),
+            "flight_number": item.get("flight_number"),
+            "train_number": item.get("train_number"),
+            "booking_id": item.get("booking_id"),
+            "origin": item.get("origin"),
+            "destination": item.get("destination"),
+            "departure_time": start,
+            "arrival_time": end,
+            "duration": dur,
+            "fare": item.get("cost") or item.get("price"),
+            "currency": item.get("currency", "INR"),
+            "is_direct": item.get("is_direct"),
+            "hotel_name": item.get("hotel_name") or item.get("provider"),
+            "room_type": item.get("room_type"),
+            "check_in": item.get("check_in"),
+            "check_out": item.get("check_out"),
+            "vehicle_type": item.get("vehicle_type"),
+        }
+
+        # Remove empty keys so we don't accidentally print None or override
+        new_details = {k: v for k, v in new_details.items() if v is not None}
+
+        changes.append({
+            "type": new_details.get("type"),
+            "action": "REPLACE",
+            "new_details": new_details
+        })
+
+    adapted["changes"] = changes
+    return adapted
+
+
 def _classify_mode(mode: Optional[str]) -> str:
     m = (mode or "").strip().upper()
     if not m:
@@ -793,7 +854,8 @@ def format_whatsapp_recovery_options(
         return "\n".join(lines)
 
     option_modes = []
-    for plan in plans:
+    adapted_plans = [_adapt_plan(p) for p in plans]
+    for plan in adapted_plans:
         changes = plan.get("changes") or []
         change = changes[0] if changes else {}
         new_details = change.get("new_details") or {}
@@ -821,7 +883,7 @@ def format_whatsapp_recovery_options(
     lines.append("")
     lines.append(intro)
 
-    for idx, (plan, opt_mode) in enumerate(zip(plans, option_modes), start=1):
+    for idx, (plan, opt_mode) in enumerate(zip(adapted_plans, option_modes), start=1):
         lines.append("")
         changes = plan.get("changes") or []
         change = changes[0] if changes else {}
@@ -851,6 +913,7 @@ def format_recovery_confirmation(
     execution_result: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Format a dynamic WhatsApp confirmation after successful recovery plan execution."""
+    plan = _adapt_plan(plan)
     lines = [
         "✅ RECOVERY CONFIRMED",
         "",
@@ -873,7 +936,7 @@ def format_recovery_confirmation(
     service_no = _clean_str(
         booking.get("flight_number") or booking.get("train_number") or new_details.get("flight_number") or new_details.get("train_number") or new_details.get("booking_id")
     )
-    
+
     header = f"{icon}"
     if provider and service_no and service_no not in provider:
         header += f" {provider} {service_no}"
@@ -901,12 +964,12 @@ def format_recovery_confirmation(
 
     dep = _format_time_hhmm(booking.get("departure_time") or new_details.get("departure_time") or new_details.get("start_time") or change.get("start_time"))
     arr = _format_time_hhmm(booking.get("arrival_time") or new_details.get("arrival_time") or new_details.get("end_time") or change.get("end_time"))
-    
+
     if dep:
         lines.append(f"🕐 Departure: {dep}")
     if arr:
         lines.append(f"🕐 Arrival: {arr}")
-        
+
     dur_str = _format_duration(new_details.get("duration") or new_details.get("duration_minutes") or change.get("duration"))
     if dur_str:
         lines.append(f"⏱️ Duration: {dur_str}")
@@ -927,26 +990,26 @@ def format_recovery_confirmation(
     # Before vs After
     lines.append("")
     lines.append("Previous itinerary:")
-    
+
     old_provider = _clean_str(booking.get("original_provider") or orig_details.get("provider") or change.get("original_provider"))
     old_title = _clean_str(booking.get("original_title") or orig_details.get("title"))
     old_header = old_provider or old_title or "Old Booking"
-    
+
     old_service_no = _clean_str(orig_details.get("flight_number") or orig_details.get("train_number"))
     if old_service_no and old_provider and old_service_no not in old_provider:
         old_header = f"{old_provider} {old_service_no}"
-        
+
     lines.append(old_header)
-    
+
     old_origin = _clean_str(orig_details.get("origin") or change.get("origin"))
     old_dest = _clean_str(orig_details.get("destination") or change.get("destination"))
     if old_origin and old_dest:
         lines.append(f"{old_origin} → {old_dest}")
-        
+
     old_dep = _format_time_hhmm(orig_details.get("start_time") or orig_details.get("departure_time"))
     if old_dep:
         lines.append(f"Departure: {old_dep}")
-        
+
     old_fare = _clean_str(orig_details.get("cost") or orig_details.get("price") or orig_details.get("fare"))
     if old_fare:
         old_curr = _clean_str(orig_details.get("currency")) or "INR"
@@ -967,6 +1030,7 @@ def format_recovery_confirmation(
 
 
 def format_recovery_notification(trip_id: int, plan: Dict[str, Any]) -> str:
+    plan = _adapt_plan(plan)
     changes = plan.get("changes") or []
     replacements = [c for c in changes if c.get("action") in ("REPLACE", "MODIFY")]
     lines = ["Travel Disruption", "", plan.get("title") or "A recovery plan is ready for your journey.", ""]
