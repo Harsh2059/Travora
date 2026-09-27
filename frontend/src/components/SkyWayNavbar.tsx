@@ -9,7 +9,8 @@ import {
   Plane,
   Settings,
   LogOut,
-  Bell
+  Bell,
+  Sparkles
 } from 'lucide-react';
 import { getStoredUser, clearAuth } from '../services/auth';
 import type { UserProfile } from '../services/auth';
@@ -37,25 +38,30 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
     return () => window.removeEventListener('travora_auth_change', handleAuthChange);
   }, []);
 
-  const navLinks = [
+  const navLinks: Array<{ label: string; path: string; hasDisruption?: boolean; isTwin?: boolean }> = [
     { label: 'Home', path: '/' },
     { label: 'Flights', path: '/#search-flights' },
     { label: 'Hotels', path: '/#search-hotels' },
     { label: 'Packages', path: '/#search-packages' },
     { label: 'My Trips', path: '/my-trips', hasDisruption: hasActiveDisruption },
+    { label: 'Digital Twin', path: '/digital-twin', isTwin: true },
     { label: 'Support', path: '#support' },
   ];
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     if (path.startsWith('/#')) return false;
+    if (path === '/digital-twin') {
+      return location.pathname === '/digital-twin' || location.pathname.includes('/digital-twin');
+    }
     if (path === '/my-trips') {
       return (
-        location.pathname === '/my-trips' ||
+        (location.pathname === '/my-trips' ||
         location.pathname.startsWith('/trip') ||
         location.pathname === '/timeline' ||
         location.pathname === '/disruption' ||
-        location.pathname === '/itinerary'
+        location.pathname === '/itinerary') &&
+        !location.pathname.includes('/digital-twin')
       );
     }
     return location.pathname.startsWith(path);
@@ -150,17 +156,27 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
                   key={link.label}
                   to={link.path}
                   onClick={(e) => handleNavClick(e, link.path)}
-                  className={`relative px-3.5 py-2 rounded-full text-sm font-semibold transition-colors duration-150 flex items-center gap-1.5 ${
+                  className={`relative px-3.5 py-2 rounded-full text-sm font-semibold transition-all duration-150 flex items-center gap-1.5 ${
                     active
-                      ? 'text-sky-600 font-bold bg-sky-50/80'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      ? link.isTwin
+                        ? 'text-indigo-700 font-bold bg-indigo-50 border border-indigo-200 shadow-2xs'
+                        : 'text-sky-600 font-bold bg-sky-50/80'
+                      : link.isTwin
+                        ? 'text-indigo-600 hover:text-indigo-900 bg-indigo-50/60 hover:bg-indigo-100/70 border border-indigo-200/80 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                   }`}
                 >
+                  {link.isTwin && <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />}
                   <span>{link.label}</span>
+                  {link.isTwin && (
+                    <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-white leading-none shadow-2xs">
+                      WHAT-IF
+                    </span>
+                  )}
                   {link.hasDisruption && (
                     <span className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                   )}
-                  {active && (
+                  {active && !link.isTwin && (
                     <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-sky-600 rounded-full" />
                   )}
                 </Link>
@@ -325,11 +341,23 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
                   onClick={(e) => handleNavClick(e, link.path)}
                   className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold ${
                     active
-                      ? 'bg-sky-50 text-sky-700 font-bold'
-                      : 'text-slate-700 hover:bg-slate-50'
+                      ? link.isTwin
+                        ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200'
+                        : 'bg-sky-50 text-sky-700 font-bold'
+                      : link.isTwin
+                        ? 'bg-indigo-50/60 text-indigo-700 font-semibold'
+                        : 'text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  <span>{link.label}</span>
+                  <div className="flex items-center gap-2">
+                    {link.isTwin && <Sparkles className="w-4 h-4 text-indigo-500" />}
+                    <span>{link.label}</span>
+                  </div>
+                  {link.isTwin && (
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-white">
+                      WHAT-IF
+                    </span>
+                  )}
                   {link.hasDisruption && (
                     <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500 text-white">
                       Alert
