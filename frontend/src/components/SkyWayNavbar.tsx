@@ -40,8 +40,6 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
 
   const navLinks: Array<{ label: string; path: string; hasDisruption?: boolean; isTwin?: boolean }> = [
     { label: 'Home', path: '/' },
-    { label: 'Flights', path: '/#search-flights' },
-    { label: 'Hotels', path: '/#search-hotels' },
     { label: 'Packages', path: '/#search-packages' },
     { label: 'My Trips', path: '/my-trips', hasDisruption: hasActiveDisruption },
     { label: 'Digital Twin', path: '/digital-twin', isTwin: true },
