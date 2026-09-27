@@ -257,3 +257,41 @@ class WhatsAppRecoveryContext(Base):
 
     trip = relationship("Trip")
     disruption = relationship("DisruptionEvent")
+
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_number = Column(String, unique=True, index=True) # e.g. TRV-10482
+    user_id = Column(String, ForeignKey("users.id"), index=True, nullable=False)
+    journey_id = Column(Integer, ForeignKey("trips.id"), nullable=True, index=True)
+    category = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    attachment_url = Column(String, nullable=True)
+    status = Column(String, default="OPEN", index=True)  # OPEN, IN_PROGRESS, RESOLVED, CLOSED
+    priority = Column(String, default="MEDIUM")          # LOW, MEDIUM, HIGH
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+    trip = relationship("Trip")
+
+
+class Feedback(Base):
+    __tablename__ = "feedbacks"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), index=True, nullable=False)
+    journey_id = Column(Integer, ForeignKey("trips.id"), nullable=True, index=True)
+    event_type = Column(String, nullable=False, index=True) # JOURNEY_CREATED, DISRUPTION_INFORMATION, RECOVERY_RECOMMENDATION, JOURNEY_COMPLETED
+    rating = Column(Integer, nullable=True) # 1-5
+    response_type = Column(String, nullable=True) # RATING, YES_NO, MULTI_OPTION
+    response_value = Column(String, nullable=True) # HELPFUL, NOT_HELPFUL, etc.
+    message = Column(String, nullable=True)
+    context = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    trip = relationship("Trip")
+
+

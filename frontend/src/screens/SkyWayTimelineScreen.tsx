@@ -20,6 +20,7 @@ import {
   resetTripDisruptions,
   getSelectedRecoveryPlanWithMeta
 } from '../store/journeyStore';
+import { triggerMicroFeedback } from '../services/feedbackService';
 
 export default function SkyWayTimelineScreen() {
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ export default function SkyWayTimelineScreen() {
   const [activeDisruptions, setActiveDisruptions] = useState<any[]>([]);
   const [hasRecoverySelected, setHasRecoverySelected] = useState<boolean>(false);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isTripCompleted, setIsTripCompleted] = useState(false);
 
   useEffect(() => {
     if (journey?.id) {
@@ -48,6 +50,25 @@ export default function SkyWayTimelineScreen() {
   }, [journey?.id]);
 
   const hasDisruption = activeDisruptions.length > 0;
+
+  const handleCompleteJourney = () => {
+    setIsTripCompleted(true);
+    triggerMicroFeedback({
+      eventType: 'JOURNEY_COMPLETED',
+      journeyId: journey?.id || 1,
+      title: '🎉 Journey completed!',
+      question: 'How was your Travora experience overall?',
+      responseType: 'RATING',
+      options: [
+        { label: 'Journey tracking', value: 'JOURNEY_TRACKING' },
+        { label: 'Disruption alerts', value: 'DISRUPTION_ALERTS' },
+        { label: 'Recovery', value: 'RECOVERY' },
+        { label: 'Notifications', value: 'NOTIFICATIONS' },
+        { label: 'Easy planning', value: 'EASY_PLANNING' },
+      ],
+      delayMs: 800,
+    });
+  };
 
   const handleSimulateDisruption = async () => {
     if (!journey?.id) return;
@@ -335,6 +356,19 @@ export default function SkyWayTimelineScreen() {
                 <RefreshCw className="w-4 h-4" />
               </button>
             )}
+
+            <button
+              onClick={handleCompleteJourney}
+              disabled={isTripCompleted}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                isTripCompleted
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                  : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 shadow-sm'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span>{isTripCompleted ? 'Completed' : 'Complete Journey'}</span>
+            </button>
           </div>
         </div>
 

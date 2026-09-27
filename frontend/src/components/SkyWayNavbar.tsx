@@ -10,7 +10,8 @@ import {
   Settings,
   LogOut,
   Bell,
-  Sparkles
+  Sparkles,
+  LifeBuoy
 } from 'lucide-react';
 import { getStoredUser, clearAuth } from '../services/auth';
 import type { UserProfile } from '../services/auth';
@@ -45,12 +46,15 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
     { label: 'Packages', path: '/#search-packages' },
     { label: 'My Trips', path: '/my-trips', hasDisruption: hasActiveDisruption },
     { label: 'Digital Twin', path: '/digital-twin', isTwin: true },
-    { label: 'Support', path: '#support' },
+    { label: 'Support', path: '/support' },
   ];
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     if (path.startsWith('/#')) return false;
+    if (path === '/support') {
+      return location.pathname.startsWith('/support');
+    }
     if (path === '/digital-twin') {
       return location.pathname === '/digital-twin' || location.pathname.includes('/digital-twin');
     }
@@ -61,17 +65,15 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
         location.pathname === '/timeline' ||
         location.pathname === '/disruption' ||
         location.pathname === '/itinerary') &&
-        !location.pathname.includes('/digital-twin')
+        !location.pathname.includes('/digital-twin') &&
+        !location.pathname.startsWith('/support')
       );
     }
     return location.pathname.startsWith(path);
   };
 
   const handleNavClick = (e: React.MouseEvent, path: string) => {
-    if (path === '#support') {
-      e.preventDefault();
-      const event = new CustomEvent('skyway_open_support');
-      window.dispatchEvent(event);
+    if (path === '/support') {
       setIsMobileMenuOpen(false);
       return;
     }
@@ -90,6 +92,7 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
       setIsMobileMenuOpen(false);
     }
   };
+
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,6 +281,14 @@ export const SkyWayNavbar: React.FC<SkyWayNavbarProps> = ({ hasActiveDisruption 
                       <User className="w-4 h-4 text-slate-500" />
                       <span>Profile & Travel Preferences</span>
                     </button>
+                    <Link
+                      to="/support"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition-colors"
+                    >
+                      <LifeBuoy className="w-4 h-4 text-emerald-600" />
+                      <span>Support & Help Desk</span>
+                    </Link>
                     <Link
                       to="/admin"
                       onClick={() => setIsUserMenuOpen(false)}

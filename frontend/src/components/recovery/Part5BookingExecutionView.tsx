@@ -23,6 +23,7 @@ import type {
   Part5ExecutionStatus
 } from '../../types';
 import { revalidatePart5Recovery, executePart5Recovery } from '../../services/recoveryApi';
+import { triggerMicroFeedback } from '../../services/feedbackService';
 
 interface Part5BookingExecutionViewProps {
   tripId: number;
@@ -111,6 +112,28 @@ export const Part5BookingExecutionView: React.FC<Part5BookingExecutionViewProps>
       setStatus(res.status);
 
       if (res.status === 'COMPLETED' || res.status === 'PARTIALLY_COMPLETED') {
+        // Trigger Event 3: Recovery Recommendation Used
+        triggerMicroFeedback({
+          eventType: 'RECOVERY_RECOMMENDATION',
+          journeyId: tripId,
+          title: 'Was this recovery recommendation helpful?',
+          question: 'Did this recovery option meet your travel needs?',
+          responseType: 'YES_NO',
+          options: [
+            { label: "Options weren't useful", value: 'OPTIONS_NOT_USEFUL' },
+            { label: 'Too expensive', value: 'TOO_EXPENSIVE' },
+            { label: 'Timing wasn\'t suitable', value: 'TIMING_NOT_SUITABLE' },
+            { label: 'Information was unclear', value: 'INFORMATION_UNCLEAR' },
+            { label: 'Other', value: 'OTHER' },
+          ],
+          context: {
+            plan_id: selectedPlan.id,
+            strategy_type: (selectedPlan as any).strategy_type || (selectedPlan as any).strategy || 'RECOVERY',
+            execution_status: res.status,
+          },
+          delayMs: 1500,
+        });
+
         onExecutionCompleted(res);
       } else if (res.status === 'STALE_PLAN' || res.status === 'FAILED') {
         setErrorMessage(res.message || 'Booking execution failed');

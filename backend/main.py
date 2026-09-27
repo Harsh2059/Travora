@@ -100,12 +100,18 @@ import routers.auth as auth
 import routers.weather as weather_router
 import routers.social as social_router
 import routers.digital_twin as digital_twin_router
+import routers.support as support_router
+import routers.feedback as feedback_router
 from services.weather.weather_service import LiveWeatherService
 app = FastAPI(title="Travel Recovery Engine API")
 app.include_router(auth.router)
 app.include_router(weather_router.router)
 app.include_router(social_router.router)
 app.include_router(digital_twin_router.router)
+app.include_router(support_router.router)
+app.include_router(feedback_router.router)
+
+
 
 
 @app.get("/api/journeys/{trip_id}/weather")

@@ -26,6 +26,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Plane } from 'lucide-react';
+import { MicroFeedbackCard } from './components/MicroFeedbackCard';
 
 // SkyWay Redesigned 5-Page Journey Experience
 const SkyWayHomeScreen       = lazy(() => import('./screens/SkyWayHomeScreen.tsx'));
@@ -37,8 +38,17 @@ const SkyWayItineraryScreen  = lazy(() => import('./screens/SkyWayItineraryScree
 // HackCelestial 3.0 Digital Twin Screen
 const DigitalTwinScreen      = lazy(() => import('./screens/DigitalTwinScreen.tsx'));
 
+// Support System Screens
+const SkyWaySupportScreen        = lazy(() => import('./screens/SkyWaySupportScreen.tsx'));
+const SkyWaySupportHelpScreen    = lazy(() => import('./screens/SkyWaySupportHelpScreen.tsx'));
+const SkyWayReportIssueScreen    = lazy(() => import('./screens/SkyWayReportIssueScreen.tsx'));
+const SkyWayFaqScreen            = lazy(() => import('./screens/SkyWayFaqScreen.tsx'));
+const SkyWayContactSupportScreen = lazy(() => import('./screens/SkyWayContactSupportScreen.tsx'));
+const SkyWaySupportRequestsScreen = lazy(() => import('./screens/SkyWaySupportRequestsScreen.tsx'));
+
 // Builder & Admin screens
 const TripBuilderScreen      = lazy(() => import('./screens/TripBuilderScreen.tsx'));
+
 const ReviewJourneyScreen    = lazy(() => import('./screens/ReviewJourneyScreen.tsx'));
 const HomeScreen             = lazy(() => import('./screens/HomeScreen.tsx'));
 const AdminConsoleScreen     = lazy(() => import('./screens/AdminConsoleScreen.tsx'));
@@ -84,7 +94,16 @@ export default function App() {
           <Route path="/digital-twin"               element={<DigitalTwinScreen />} />
           <Route path="/trip/:tripId/digital-twin"  element={<DigitalTwinScreen />} />
 
+          {/* Travora Support System */}
+          <Route path="/support"                    element={<SkyWaySupportScreen />} />
+          <Route path="/support/help"               element={<SkyWaySupportHelpScreen />} />
+          <Route path="/support/report-issue"       element={<SkyWayReportIssueScreen />} />
+          <Route path="/support/faqs"               element={<SkyWayFaqScreen />} />
+          <Route path="/support/contact"            element={<SkyWayContactSupportScreen />} />
+          <Route path="/support/requests"           element={<SkyWaySupportRequestsScreen />} />
+
           {/* Builder, Workspace & Admin */}
+
           <Route path="/build"                      element={<TripBuilderScreen />} />
           <Route path="/review"                     element={<ReviewJourneyScreen />} />
           <Route path="/workspace"                  element={<HomeScreen />} />
@@ -100,7 +119,9 @@ export default function App() {
           {/* Catch-all -> Home */}
           <Route path="*"                           element={<Navigate to="/" replace />} />
         </Routes>
+        <MicroFeedbackCard />
       </Suspense>
     </BrowserRouter>
   );
 }
+

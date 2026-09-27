@@ -16,6 +16,7 @@ import {
   saveSelectedRecoveryPlan
 } from '../store/journeyStore';
 import { analyzePart4Recovery, executePart5Recovery } from '../services/recoveryApi';
+import { triggerMicroFeedback } from '../services/feedbackService';
 
 export default function SkyWayDisruptionScreen() {
   const navigate = useNavigate();
@@ -29,6 +30,27 @@ export default function SkyWayDisruptionScreen() {
       // Attempt querying real recovery engine
       analyzePart4Recovery(journey.id).catch((err) => {
         console.warn('Backend recovery query fallback:', err?.message);
+      });
+
+      // Trigger Event 2: Disruption Information Shown (after 2.5s delay to let user digest alert)
+      triggerMicroFeedback({
+        eventType: 'DISRUPTION_INFORMATION',
+        journeyId: journey.id,
+        title: 'Was this information helpful?',
+        question: 'Did this disruption update clearly explain the impact on your journey?',
+        responseType: 'YES_NO',
+        options: [
+          { label: 'Information was unclear', value: 'INFORMATION_UNCLEAR' },
+          { label: 'Information came too late', value: 'TIMING_NOT_SUITABLE' },
+          { label: 'Missing information', value: 'MISSING_INFORMATION' },
+          { label: 'Other', value: 'OTHER' },
+        ],
+        context: {
+          flight_number: 'AI-129',
+          disruption_type: 'FLIGHT_DELAYED',
+          delay_minutes: 390,
+        },
+        delayMs: 2500,
       });
     }
   }, [journey?.id]);
@@ -137,6 +159,30 @@ export default function SkyWayDisruptionScreen() {
       await refresh();
       saveSelectedRecoveryPlan(tripId, planPayload, 'fingerprint_delay_6h30m', false);
       setIsProcessing(false);
+
+      // Trigger Event 3: Recovery Recommendation Used
+      triggerMicroFeedback({
+        eventType: 'RECOVERY_RECOMMENDATION',
+        journeyId: tripId,
+        title: 'Was this recovery recommendation helpful?',
+        question: 'Did this recovery option meet your travel needs?',
+        responseType: 'YES_NO',
+        options: [
+          { label: "Options weren't useful", value: 'OPTIONS_NOT_USEFUL' },
+          { label: 'Too expensive', value: 'TOO_EXPENSIVE' },
+          { label: 'Timing wasn\'t suitable', value: 'TIMING_NOT_SUITABLE' },
+          { label: 'Information was unclear', value: 'INFORMATION_UNCLEAR' },
+          { label: 'Other', value: 'OTHER' },
+        ],
+        context: {
+          option_id: option.id,
+          strategy_type: option.isRecommended ? 'REROUTE' : 'REBOOK',
+          flight_number: option.replacementFlight.flightNumber,
+          impact: option.impact,
+        },
+        delayMs: 1400,
+      });
+
       navigate('/itinerary');
     } catch (err) {
       console.error('Failed to apply recovery:', err);
