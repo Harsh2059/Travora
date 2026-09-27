@@ -786,7 +786,7 @@ def test_16_flight_disruption_produces_flight_specific_options():
     assert "Schedule: 20:15 → 22:20 (2h 5m)" in msg
     assert "Stops: Non-stop" in msg
     assert "Price: ₹4,850" in msg
-    assert "Note: Recommended • Priority-Preserving" in msg
+    assert "Note: Later departure at 20:15, but direct and available." in msg
     assert "Reply 1 to select this option." in msg
     assert "Reply 0 to cancel." in msg
 
@@ -843,7 +843,7 @@ def test_17_hotel_cancellation_produces_hotel_specific_options():
     assert "Rating: 4.5★" in msg
     assert "Dates: 2026-09-20 → 2026-09-22 (2 nights)" in msg
     assert "Total Price: ₹14,200" in msg
-    assert "Note: Recommended • Priority-Preserving • 0.5 km from original" in msg
+    assert "Note: Same area and check-in date; closest available alternative." in msg
     assert "✈️" not in msg
     assert "flight" not in msg.lower()
     assert "non-stop" not in msg.lower()
@@ -1100,4 +1100,336 @@ def test_23_option_numbering_maps_to_correct_plan_ids(db_session):
     assert ctx.get_plan(ctx.options["1"])["id"] == plans[0]["id"]
     assert ctx.get_plan(ctx.options["2"])["id"] == plans[1]["id"]
     assert ctx.get_plan(ctx.options["3"])["id"] == plans[2]["id"]
+
+
+# 24. (A & B) Flight route resolution: Original BOM -> DEL displays BOM -> DEL and never BOM -> BOM
+def test_24_flight_route_resolution_bom_del_never_bom_bom():
+    disruption = {
+        "event_type": "FLIGHT_CANCELLED",
+        "item": {
+            "type": "FLIGHT",
+            "provider": "Vistara",
+            "flight_number": "UK-901",
+            "origin": "Mumbai (BOM)",
+            "destination": "Delhi (DEL)",
+            "start_time": "2026-09-22T09:00:00",
+        },
+    }
+    # Even if replacement candidate mistakenly has origin == destination or missing destination
+    broken_candidate_plan_1 = {
+        "id": "rec_fl_1",
+        "title": "Vistara UK-901",
+        "estimated_additional_cost": 5000.0,
+        "is_recommended": True,
+        "changes": [{
+            "type": "FLIGHT",
+            "provider": "Vistara",
+            "new_title": "Vistara UK-901",
+            "new_details": {
+                "airline": "Vistara",
+                "flight_number": "UK-901",
+                "origin": "Mumbai (BOM)",
+                "destination": "Mumbai (BOM)",  # Bogus identical destination
+                "departure_time": "09:00",
+                "arrival_time": "11:30",
+                "cost": 5000,
+                "is_direct": True,
+            },
+        }],
+    }
+    broken_candidate_plan_2 = {
+        "id": "rec_fl_2",
+        "title": "Air India Express IX-202",
+        "estimated_additional_cost": 8500.0,
+        "changes": [{
+            "type": "FLIGHT",
+            "provider": "Air India Express",
+            "new_title": "Air India Express IX-202",
+            "new_details": {
+                "airline": "Air India Express",
+                "flight_number": "IX-202",
+                "origin": "Mumbai (BOM)",
+                "destination": None,  # Missing destination
+                "departure_time": "14:00",
+                "arrival_time": "16:30",
+                "cost": 8500,
+                "is_direct": True,
+            },
+        }],
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [broken_candidate_plan_1, broken_candidate_plan_2])
+
+    # Disruption summary must show BOM -> DEL
+    assert "Route: Mumbai (BOM) → Delhi (DEL)" in msg
+    # Neither disruption nor options may show BOM -> BOM
+    assert "Mumbai (BOM) → Mumbai (BOM)" not in msg
+    assert "BOM → BOM" not in msg
+
+    # Recovery options must resolve to BOM -> DEL
+    assert "1️⃣ ✈️ Vistara UK-901" in msg
+    assert "2️⃣ ✈️ Air India Express IX-202" in msg
+
+
+# 25. (C) Useful flight notes: meaningful plan-derived information, not generic labels
+def test_25_useful_flight_notes_derived_from_plan_data():
+    disruption = {
+        "event_type": "FLIGHT_CANCELLED",
+        "item": {
+            "type": "FLIGHT",
+            "provider": "Vistara",
+            "flight_number": "UK-901",
+            "origin": "Mumbai (BOM)",
+            "destination": "Delhi (DEL)",
+            "start_time": "2026-09-22T09:00:00",
+        },
+    }
+    plan_1 = {
+        "id": "opt_1",
+        "estimated_additional_cost": 5000.0,
+        "is_recommended": True,
+        "changes": [{
+            "type": "FLIGHT",
+            "provider": "Vistara",
+            "new_title": "Vistara UK-901",
+            "new_details": {
+                "flight_number": "UK-901",
+                "origin": "Mumbai (BOM)",
+                "destination": "Delhi (DEL)",
+                "departure_time": "09:00",
+                "arrival_time": "11:30",
+                "cost": 5000,
+                "is_direct": True,
+            },
+        }],
+    }
+    plan_2 = {
+        "id": "opt_2",
+        "estimated_additional_cost": 8500.0,
+        "changes": [{
+            "type": "FLIGHT",
+            "provider": "Air India Express",
+            "new_title": "Air India Express IX-202",
+            "new_details": {
+                "flight_number": "IX-202",
+                "origin": "Mumbai (BOM)",
+                "destination": "Delhi (DEL)",
+                "departure_time": "14:00",
+                "arrival_time": "16:30",
+                "cost": 8500,
+                "is_direct": True,
+            },
+        }],
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [plan_1, plan_2])
+
+    # Must NOT contain bare generic notes
+    lines = msg.split("\n")
+    note_lines = [l.strip() for l in lines if l.strip().startswith("Note:")]
+    assert len(note_lines) == 2
+    for nl in note_lines:
+        assert nl not in ("Note: Recommended", "Note: Premium")
+        assert len(nl) > len("Note: ")
+
+    # Plan 1 is cheaper / preserves timing; Plan 2 is later departure
+    assert any("Lower fare" in nl or "minimizes disruption" in nl or "journey timing" in nl for nl in note_lines)
+    assert any("14:00" in nl or "Higher fare" in nl for nl in note_lines)
+
+
+# 26. (D) Missing optional data does not output None, null, undefined, or empty lines
+def test_26_missing_optional_data_no_null_none_undefined():
+    disruption = {
+        "event_type": "FLIGHT_CANCELLED",
+        "item": {
+            "type": "FLIGHT",
+            "provider": None,
+            "flight_number": None,
+            "origin": None,
+            "destination": None,
+        },
+    }
+    sparse_plan = {
+        "id": "sparse_fl",
+        "changes": [{
+            "type": "FLIGHT",
+            "new_title": "Recovery Flight",
+            "new_details": {
+                "flight_number": None,
+                "airline": None,
+                "origin": None,
+                "destination": None,
+                "departure_time": None,
+                "arrival_time": None,
+                "cost": None,
+            },
+        }],
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [sparse_plan])
+    for line in msg.split("\n"):
+        assert "None" not in line
+        assert "null" not in line
+        assert "undefined" not in line
+        assert line.strip() != ":"
+    assert "\n\n\n" not in msg
+
+
+# 27. (E) Hotel recovery does not incorrectly display a flight route
+def test_27_hotel_recovery_uses_hotel_location_not_flight_route():
+    disruption = {
+        "event_type": "HOTEL_BOOKING_CANCELLED",
+        "item": {
+            "type": "HOTEL",
+            "provider": "The Grand Hotel",
+            "location": "Bengaluru Central",
+            "startDate": "2026-10-01",
+            "endDate": "2026-10-03",
+        },
+    }
+    hotel_plan = {
+        "id": "hotel_rec_1",
+        "changes": [{
+            "type": "HOTEL",
+            "provider": "ITC Gardenia",
+            "new_title": "ITC Gardenia",
+            "new_details": {
+                "hotel_name": "ITC Gardenia",
+                "location": "Bengaluru Central",
+                "cost": 9500,
+                "distance_from_original": "0.8 km",
+                "startDate": "2026-10-01",
+                "endDate": "2026-10-03",
+            },
+        }],
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [hotel_plan])
+
+    assert "🏨 Hotel Booking Disrupted" in msg
+    assert "Location: Bengaluru Central" in msg
+    assert "Route:" not in msg  # Must NOT display a route line
+    assert "✈️" not in msg
+    assert "flight" not in msg.lower()
+    assert "ITC Gardenia" in msg
+
+
+# 28. (F) Train recovery uses actual origin and destination
+def test_28_train_recovery_uses_actual_route():
+    disruption = {
+        "event_type": "TRAIN_CANCELLED",
+        "item": {
+            "type": "TRAIN",
+            "provider": "Indian Railways",
+            "train_number": "12951",
+            "origin": "Mumbai Central (MMCT)",
+            "destination": "New Delhi (NDLS)",
+        },
+    }
+    train_plan = {
+        "id": "train_rec_1",
+        "changes": [{
+            "type": "TRAIN",
+            "provider": "Tejas Rajdhani",
+            "new_title": "Tejas Rajdhani Express (12953)",
+            "new_details": {
+                "train_name": "Tejas Rajdhani Express",
+                "train_number": "12953",
+                "origin": "Mumbai Central (MMCT)",
+                "destination": "New Delhi (NDLS)",
+                "departure_time": "17:05",
+                "arrival_time": "08:35",
+                "cost": 2800,
+                "is_direct": True,
+            },
+        }],
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [train_plan])
+
+    assert "🚆 Train Disrupted" in msg
+    assert "Route: Mumbai Central (MMCT) → New Delhi (NDLS)" in msg
+    assert "1️⃣ 🚆 Tejas Rajdhani Express (12953)" in msg
+    assert "Mumbai Central (MMCT) → Mumbai Central (MMCT)" not in msg
+
+
+# 29. (G) Cab / transport recovery route is correct
+def test_29_transport_recovery_uses_correct_route():
+    disruption = {
+        "event_type": "CAB_CANCELLED",
+        "item": {
+            "type": "CAB",
+            "provider": "Uber",
+            "origin": "Mumbai Airport",
+            "destination": "Pune Central",
+        },
+    }
+    cab_plan = {
+        "id": "cab_rec_1",
+        "changes": [{
+            "type": "CAB",
+            "provider": "Ola Outstation",
+            "new_title": "Ola Prime Sedan",
+            "new_details": {
+                "provider": "Ola Outstation",
+                "origin": "Mumbai Airport",
+                "destination": "Pune Central",
+                "pickup_time": "10:00",
+                "arrival_time": "13:00",
+                "cost": 1200,
+            },
+        }],
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [cab_plan])
+
+    assert "🚕 Transport Disrupted" in msg
+    assert "Route: Mumbai Airport → Pune Central" in msg
+    assert "1️⃣ 🚕 Ola Outstation" in msg
+    assert "Mumbai Airport → Mumbai Airport" not in msg
+
+
+# 30. (H) Option 1 still maps to same plan ID and execution path
+def test_30_option_1_execution_mapping_preserved(db_session, monkeypatch):
+    user, trip, item = _make_traveler_and_trip(db_session)
+    plans = _make_sample_plans(trip.id)
+
+    # Store context
+    ctx = store_recovery_context(
+        db=db_session,
+        sender=user.whatsapp_phone,
+        trip_id=trip.id,
+        disruption_id=777,
+        disruption_fingerprint="777",
+        plans=plans,
+    )
+    assert ctx.options["1"] == plans[0]["id"]
+    assert ctx.options["2"] == plans[1]["id"]
+
+    executed = []
+    def fake_execute(**kwargs):
+        executed.append(kwargs)
+        return {
+            "status": "COMPLETED",
+            "confirmed_bookings": [{"status": "BOOKED", "provider": "IndiGo"}],
+        }
+
+    monkeypatch.setattr("services.whatsapp.handler.execute_plan", fake_execute)
+    client = FakeWhatsAppClient()
+    handler = WhatsAppWebhookHandler(client)
+
+    reply_res = handler.handle(db_session, user.whatsapp_phone, "1")
+    assert reply_res["action"] == "SELECT_OPTION"
+    assert len(executed) == 1
+    assert executed[0]["plan"]["id"] == plans[0]["id"]
+    assert executed[0]["trip_id"] == trip.id
+
+
+# 31. Fallback note when insufficient comparative data is neutral
+def test_31_fallback_neutral_note():
+    disruption = {"event_type": "UNKNOWN"}
+    sparse_plan = {
+        "id": "sparse_neutral",
+        "changes": [{
+            "type": "UNKNOWN",
+            "new_title": "Option A",
+            "new_details": {},
+        }],
+    }
+    msg = format_whatsapp_recovery_options(1, disruption, [sparse_plan])
+    assert "Note: Available recovery option." in msg
 

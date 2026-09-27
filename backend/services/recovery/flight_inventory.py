@@ -239,6 +239,18 @@ def search_route_inventory(
     origin_code = resolve_airport_code(origin, journey_nodes, role="origin") or origin
     dest_code = resolve_airport_code(destination, journey_nodes, role="destination") or destination
 
+    if same_airport(origin_code, dest_code) and (journey_nodes or disrupted_node):
+        nodes_to_search = (journey_nodes or []) + ([disrupted_node] if disrupted_node else [])
+        for other in nodes_to_search:
+            for fld in ("destination", "destination_airport", "location"):
+                val = other.get(fld)
+                code = resolve_airport_code(val, role="destination")
+                if code and not same_airport(origin_code, code):
+                    dest_code = code
+                    break
+            if not same_airport(origin_code, dest_code):
+                break
+
     rows = list(inventory) if inventory is not None else FLIGHT_INVENTORY
     matched: List[Dict[str, Any]] = []
     for row in rows:

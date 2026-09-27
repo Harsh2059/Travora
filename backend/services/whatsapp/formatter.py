@@ -3,6 +3,7 @@ WhatsApp message formatting module.
 Provides mode-aware recovery options, disruption alerts, and confirmation messages.
 """
 
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -17,6 +18,33 @@ def _get_keycap(num: int) -> str:
     return _KEYCAPS.get(num, f"{num}️⃣")
 
 
+def _same_endpoint(a: Optional[str], b: Optional[str]) -> bool:
+    """Check if two location/airport/station endpoints refer to the same place."""
+    if not a or not b:
+        return False
+    sa = str(a).strip().lower()
+    sb = str(b).strip().lower()
+    if sa == sb:
+        return True
+
+    base_a = sa.split("(")[0].strip()
+    base_b = sb.split("(")[0].strip()
+    if base_a and base_b and base_a == base_b:
+        return True
+
+    pa = re.search(r"\(([A-Za-z0-9]{3,4})\)", sa)
+    pb = re.search(r"\(([A-Za-z0-9]{3,4})\)", sb)
+    ca = pa.group(1).upper() if pa else (sa.upper() if len(sa) in (3, 4) else None)
+    cb = pb.group(1).upper() if pb else (sb.upper() if len(sb) in (3, 4) else None)
+    if ca and cb and ca == cb:
+        return True
+    if ca and ca.lower() in sb:
+        return True
+    if cb and cb.lower() in sa:
+        return True
+    return False
+
+
 def _adapt_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
     """
     Adapter to normalize RecoveryPlanModel output (which uses added_items)
@@ -27,6 +55,8 @@ def _adapt_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
 
     adapted = plan.copy()
     changes = []
+    removed = adapted.get("removed_items") or []
+    orig_item = removed[0] if (removed and isinstance(removed[0], dict)) else {}
 
     for item in adapted.get("added_items") or []:
         start = item.get("start_time") or item.get("departure_time")
@@ -43,6 +73,12 @@ def _adapt_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:
                 pass
 
+        item_orig = item.get("origin") or orig_item.get("origin")
+        item_dest = item.get("destination") or orig_item.get("destination")
+        if item_orig and item_dest and _same_endpoint(item_orig, item_dest):
+            if orig_item.get("destination") and not _same_endpoint(item_orig, orig_item.get("destination")):
+                item_dest = orig_item.get("destination")
+
         new_details = {
             "type": str(item.get("type", "FLIGHT")).upper(),
             "provider": item.get("provider") or item.get("airline"),
@@ -50,8 +86,8 @@ def _adapt_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
             "flight_number": item.get("flight_number"),
             "train_number": item.get("train_number"),
             "booking_id": item.get("booking_id"),
-            "origin": item.get("origin"),
-            "destination": item.get("destination"),
+            "origin": item_orig,
+            "destination": item_dest,
             "departure_time": start,
             "arrival_time": end,
             "duration": dur,
@@ -71,7 +107,10 @@ def _adapt_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
         changes.append({
             "type": new_details.get("type"),
             "action": "REPLACE",
-            "new_details": new_details
+            "new_details": new_details,
+            "original_details": orig_item,
+            "origin": new_details.get("origin"),
+            "destination": new_details.get("destination"),
         })
 
     adapted["changes"] = changes
@@ -232,40 +271,276 @@ def _get_plan_cost_string(
     return _format_cost(cost, currency)
 
 
+def _resolve_option_route(
+    new_details: Dict[str, Any],
+    change: Dict[str, Any],
+    orig_item: Optional[Dict[str, Any]],
+) -> Tuple[Optional[str], Optional[str]]:
+    orig_item = orig_item or {}
+    orig_details = change.get("original_details") or {}
+
+    auth_orig = _clean_str(
+        orig_item.get("origin")
+        or orig_details.get("origin")
+    )
+    auth_dest = _clean_str(
+        orig_item.get("destination")
+        or orig_details.get("destination")
+    )
+    if _same_endpoint(auth_orig, auth_dest):
+        loc = _clean_str(orig_item.get("location") or orig_details.get("location"))
+        if loc and not _same_endpoint(auth_orig, loc):
+            auth_dest = loc
+        else:
+            auth_dest = None
+
+    cand_orig = _clean_str(new_details.get("origin") or change.get("origin"))
+    cand_dest = _clean_str(new_details.get("destination") or change.get("destination"))
+
+    is_cand_valid = (
+        cand_orig is not None
+        and cand_dest is not None
+        and not _same_endpoint(cand_orig, cand_dest)
+    )
+
+    if is_cand_valid:
+        return cand_orig, cand_dest
+
+    resolved_orig = cand_orig
+    resolved_dest = cand_dest
+
+    if not resolved_orig or _same_endpoint(resolved_orig, resolved_dest):
+        if auth_orig:
+            resolved_orig = auth_orig
+
+    if not resolved_dest or _same_endpoint(resolved_orig, resolved_dest):
+        if auth_dest and not _same_endpoint(resolved_orig, auth_dest):
+            resolved_dest = auth_dest
+
+    if _same_endpoint(resolved_orig, resolved_dest):
+        if auth_dest and not _same_endpoint(resolved_orig, auth_dest):
+            resolved_dest = auth_dest
+        else:
+            resolved_dest = None
+
+    return resolved_orig, resolved_dest
+
+
+def _get_numeric_cost(plan: Dict[str, Any], change: Dict[str, Any], new_details: Dict[str, Any]) -> Optional[float]:
+    raw = (
+        new_details.get("fare")
+        or new_details.get("price")
+        or new_details.get("cost")
+        or change.get("estimated_cost")
+        or plan.get("estimated_additional_cost")
+    )
+    if raw is None:
+        raw = (plan.get("cost_estimate") or {}).get("estimated_additional_cost")
+    if raw is not None:
+        try:
+            return float(raw)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _get_numeric_duration(new_details: Dict[str, Any], change: Dict[str, Any]) -> Optional[int]:
+    raw = (
+        new_details.get("duration_minutes")
+        or new_details.get("duration")
+        or change.get("duration")
+    )
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s.isdigit():
+            return int(s)
+        if "h" in s or "m" in s:
+            try:
+                mins = 0
+                parts = s.split()
+                for p in parts:
+                    if p.endswith("h"):
+                        mins += int(p[:-1]) * 60
+                    elif p.endswith("m"):
+                        mins += int(p[:-1])
+                if mins > 0:
+                    return mins
+            except Exception:
+                pass
+    return None
+
+
 def _get_differentiator(
     plan: Dict[str, Any],
     change: Dict[str, Any],
     new_details: Dict[str, Any],
     mode: str,
-) -> Optional[str]:
-    tags: List[str] = []
+    orig_item: Optional[Dict[str, Any]] = None,
+    all_plans: Optional[List[Dict[str, Any]]] = None,
+    opt_idx: int = 1,
+) -> str:
+    orig_item = orig_item or {}
+    all_plans = all_plans or []
 
-    tier = str(new_details.get("quality_tier") or change.get("quality_tier") or "").upper()
+    # Comparisons across all plans
+    other_plans = [p for i, p in enumerate(all_plans, start=1) if i != opt_idx]
+
+    my_cost = _get_numeric_cost(plan, change, new_details)
+    other_costs = []
+    for op in other_plans:
+        ochanges = op.get("changes") or []
+        och = ochanges[0] if ochanges else {}
+        ond = och.get("new_details") or {}
+        c = _get_numeric_cost(op, och, ond)
+        if c is not None:
+            other_costs.append(c)
+
+    is_lowest_fare = (my_cost is not None and len(other_costs) > 0 and all(my_cost < oc for oc in other_costs))
+    is_highest_fare = (my_cost is not None and len(other_costs) > 0 and all(my_cost > oc for oc in other_costs))
+
+    my_dep = _format_time_hhmm(new_details.get("departure_time") or new_details.get("start_time") or change.get("start_time"))
+    my_arr = _format_time_hhmm(new_details.get("arrival_time") or new_details.get("end_time") or change.get("end_time"))
+
+    other_deps = []
+    other_arrs = []
+    other_durs = []
+    for op in other_plans:
+        ochanges = op.get("changes") or []
+        och = ochanges[0] if ochanges else {}
+        ond = och.get("new_details") or {}
+        d = _format_time_hhmm(ond.get("departure_time") or ond.get("start_time") or och.get("start_time"))
+        a = _format_time_hhmm(ond.get("arrival_time") or ond.get("end_time") or och.get("end_time"))
+        dur = _get_numeric_duration(ond, och)
+        if d:
+            other_deps.append(d)
+        if a:
+            other_arrs.append(a)
+        if dur:
+            other_durs.append(dur)
+
+    my_dur = _get_numeric_duration(new_details, change)
+    is_fastest = (my_dur is not None and len(other_durs) > 0 and all(my_dur < od for od in other_durs))
+    is_longer_travel_time = (my_dur is not None and len(other_durs) > 0 and all(my_dur > od for od in other_durs))
+
+    is_earliest_arrival = (my_arr is not None and len(other_arrs) > 0 and all(my_arr < oa for oa in other_arrs))
+
+    orig_dep = _format_time_hhmm(orig_item.get("start_time") or orig_item.get("departure_time")) if orig_item else None
+    is_later_departure = False
+    if my_dep and other_deps and all(my_dep > od for od in other_deps):
+        is_later_departure = True
+    elif my_dep and orig_dep and my_dep > orig_dep:
+        is_later_departure = True
+
+    is_direct = new_details.get("is_direct")
+    if is_direct is None and "is_direct" in change:
+        is_direct = change.get("is_direct")
+    if is_direct is None:
+        is_direct = plan.get("is_direct")
+
     cat = str(plan.get("category") or "").upper()
-    is_rec = plan.get("is_recommended") or tier == "RECOMMENDED"
+    tier = str(new_details.get("quality_tier") or change.get("quality_tier") or "").upper()
+    delay_mins = plan.get("additional_delay_minutes")
+    is_rec = bool(plan.get("is_recommended") or tier == "RECOMMENDED")
+    preserves_sched = (cat == "PRIORITY_PRESERVING" or delay_mins == 0)
 
-    if is_rec:
-        tags.append("Recommended")
-    if tier == "PREMIUM" and "Recommended" not in tags:
-        tags.append("Premium")
-    elif tier == "BUDGET":
-        tags.append("Budget-Friendly")
-    elif tier == "ECO_PREMIUM":
-        tags.append("Eco-Friendly")
-
-    if cat == "PRIORITY_PRESERVING":
-        tags.append("Priority-Preserving")
-
-    dist = _clean_str(new_details.get("distance_from_original") or new_details.get("distance"))
-    if dist:
-        tags.append(f"{dist} from original")
-
-    if not tags:
+    # 1. FLIGHT
+    if mode == "FLIGHT":
+        if is_later_departure and is_direct is True and my_dep:
+            return f"Later departure at {my_dep}, but direct and available."
+        if is_highest_fare and preserves_sched:
+            return "Higher fare, but preserves the preferred travel schedule."
+        if is_lowest_fare:
+            return "Lower fare than the other options."
+        if is_earliest_arrival:
+            other_lbl = "the other available option" if len(all_plans) == 2 else "the other available options"
+            return f"Arrives earlier than {other_lbl}."
+        if is_rec and preserves_sched:
+            return "Recommended because it preserves the original journey timing."
+        if is_direct is True:
+            return "Direct flight with no stops; minimizes disruption."
+        if is_rec:
+            return "Recommended because it preserves the original journey timing."
         expl = _clean_str(change.get("explanation") or new_details.get("explanation") or plan.get("explanation"))
         if expl and len(expl) <= 70 and not expl.lower().startswith("replacement candidate"):
-            tags.append(expl)
+            return expl
+        return "Available recovery option."
 
-    return " • ".join(tags) if tags else None
+    # 2. TRAIN
+    elif mode == "TRAIN":
+        if is_later_departure and is_lowest_fare:
+            return "Later departure, but lower fare."
+        if is_lowest_fare:
+            return "Lower fare than the other options."
+        if is_rec and preserves_sched:
+            return "Recommended because it preserves the original journey timing."
+        if is_direct is True:
+            return "Direct service with no transfers."
+        if is_rec:
+            return "Recommended because it preserves the original journey timing."
+        expl = _clean_str(change.get("explanation") or new_details.get("explanation") or plan.get("explanation"))
+        if expl and len(expl) <= 70 and not expl.lower().startswith("replacement candidate"):
+            return expl
+        return "Available recovery option."
+
+    # 3. CAB / TRANSPORT
+    elif mode == "CAB":
+        if is_fastest:
+            return "Fastest available transfer."
+        if is_lowest_fare and is_longer_travel_time:
+            return "Lower fare, but longer travel time."
+        if is_lowest_fare:
+            return "Lower fare than the other options."
+        if is_rec and preserves_sched:
+            return "Recommended because it preserves the original journey timing."
+        if is_rec:
+            return "Recommended because it preserves the original journey timing."
+        expl = _clean_str(change.get("explanation") or new_details.get("explanation") or plan.get("explanation"))
+        if expl and len(expl) <= 70 and not expl.lower().startswith("replacement candidate"):
+            return expl
+        return "Available recovery option."
+
+    # 4. HOTEL
+    elif mode == "HOTEL":
+        dist = _clean_str(new_details.get("distance_from_original") or new_details.get("distance"))
+        cin = _format_date(new_details.get("check_in") or new_details.get("startDate") or new_details.get("start_date") or change.get("start_time"))
+        orig_cin = _format_date(orig_item.get("check_in") or orig_item.get("startDate") or orig_item.get("start_time")) if orig_item else None
+
+        has_other_dists = any(
+            _clean_str((op.get("changes") or [{}])[0].get("new_details", {}).get("distance_from_original"))
+            for op in other_plans
+        )
+        if dist and is_lowest_fare and has_other_dists:
+            return "Lower price, but farther from the original hotel."
+        if dist:
+            same_date = (cin and orig_cin and cin == orig_cin) or (cin is not None)
+            if same_date:
+                return "Same area and check-in date; closest available alternative."
+            return f"{dist} from original hotel."
+        if is_lowest_fare:
+            return "Lower fare than the other options."
+        if is_rec and preserves_sched:
+            return "Recommended because it preserves the original journey timing."
+        if is_rec:
+            return "Recommended because it preserves the original journey timing."
+        expl = _clean_str(change.get("explanation") or new_details.get("explanation") or plan.get("explanation"))
+        if expl and len(expl) <= 70 and not expl.lower().startswith("replacement candidate"):
+            return expl
+        return "Available recovery option."
+
+    # 5. GENERIC
+    else:
+        if is_lowest_fare:
+            return "Lower fare than the other options."
+        if is_rec and preserves_sched:
+            return "Recommended because it preserves the original journey timing."
+        if is_rec:
+            return "Recommended because it preserves the original journey timing."
+        expl = _clean_str(change.get("explanation") or new_details.get("explanation") or plan.get("explanation"))
+        if expl and len(expl) <= 70 and not expl.lower().startswith("replacement candidate"):
+            return expl
+        return "Available recovery option."
 
 
 def _detect_disrupted_info(
@@ -274,11 +549,33 @@ def _detect_disrupted_info(
     plans: List[Dict[str, Any]],
 ) -> Tuple[str, Dict[str, Any]]:
     disr = disruption or {}
-    item = original_item or disr.get("item") or {}
+    item = dict(original_item or disr.get("item") or {})
     if not item and plans:
         changes = plans[0].get("changes") or []
         if changes:
-            item = changes[0].get("original_details") or {}
+            item = dict(changes[0].get("original_details") or {})
+        if not item and plans[0].get("removed_items"):
+            item = dict(plans[0]["removed_items"][0])
+
+    orig = _clean_str(item.get("origin"))
+    dest = _clean_str(item.get("destination"))
+    if not dest or _same_endpoint(orig, dest):
+        candidate_dest = _clean_str(
+            disr.get("destination")
+            or (disr.get("event_metadata") or {}).get("destination")
+        )
+        if candidate_dest and not _same_endpoint(orig, candidate_dest):
+            item["destination"] = candidate_dest
+        elif plans:
+            for p in plans:
+                for ch in (p.get("changes") or []):
+                    od = ch.get("original_details") or {}
+                    d = _clean_str(od.get("destination"))
+                    if d and not _same_endpoint(orig, d):
+                        item["destination"] = d
+                        break
+                if item.get("destination") and not _same_endpoint(orig, item.get("destination")):
+                    break
 
     raw_mode = (
         _clean_str(item.get("type"))
@@ -343,7 +640,7 @@ def _format_disruption_summary(
         elif provider:
             lines.append(f"Airline: {provider}")
 
-        if origin and dest:
+        if origin and dest and not _same_endpoint(origin, dest):
             lines.append(f"Route: {origin} → {dest}")
         elif origin:
             lines.append(f"From: {origin}")
@@ -370,7 +667,7 @@ def _format_disruption_summary(
         lines.append(f"{icon} Transport Disrupted")
         if provider:
             lines.append(f"Provider: {provider}")
-        if origin and dest:
+        if origin and dest and not _same_endpoint(origin, dest):
             lines.append(f"Route: {origin} → {dest}")
         elif origin:
             lines.append(f"Pickup: {origin}")
@@ -385,7 +682,7 @@ def _format_disruption_summary(
             lines.append(f"Train: {provider}")
         elif service_no:
             lines.append(f"Train Number: {service_no}")
-        if origin and dest:
+        if origin and dest and not _same_endpoint(origin, dest):
             lines.append(f"Route: {origin} → {dest}")
         if dep:
             lines.append(f"Departure: {dep}")
@@ -396,7 +693,7 @@ def _format_disruption_summary(
             lines.append(f"Booking: {title}")
         elif provider:
             lines.append(f"Service: {provider}")
-        if origin and dest:
+        if origin and dest and not _same_endpoint(origin, dest):
             lines.append(f"Route: {origin} → {dest}")
         elif loc:
             lines.append(f"Location: {loc}")
@@ -451,6 +748,7 @@ def _format_flight_option(
     change: Dict[str, Any],
     new_details: Dict[str, Any],
     orig_item: Dict[str, Any],
+    all_plans: Optional[List[Dict[str, Any]]] = None,
 ) -> List[str]:
     lines: List[str] = []
     keycap = _get_keycap(idx)
@@ -481,10 +779,13 @@ def _format_flight_option(
 
     lines.append(f"{keycap} ✈️ {header_text}")
 
-    origin = _clean_str(new_details.get("origin") or change.get("origin"))
-    dest = _clean_str(new_details.get("destination") or change.get("destination"))
-    if origin and dest:
+    origin, dest = _resolve_option_route(new_details, change, orig_item)
+    if origin and dest and not _same_endpoint(origin, dest):
         lines.append(f"   Route: {origin} → {dest}")
+    elif origin:
+        lines.append(f"   From: {origin}")
+    elif dest:
+        lines.append(f"   To: {dest}")
 
     dep = _format_time_hhmm(new_details.get("departure_time") or new_details.get("start_time") or change.get("start_time"))
     arr = _format_time_hhmm(new_details.get("arrival_time") or new_details.get("end_time") or change.get("end_time"))
@@ -515,7 +816,7 @@ def _format_flight_option(
         currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
         lines.append(f"   Price: {_format_cost(fare, currency)}")
 
-    diff = _get_differentiator(plan, change, new_details, "FLIGHT")
+    diff = _get_differentiator(plan, change, new_details, "FLIGHT", orig_item=orig_item, all_plans=all_plans, opt_idx=idx)
     if diff:
         lines.append(f"   Note: {diff}")
 
@@ -528,6 +829,7 @@ def _format_hotel_option(
     change: Dict[str, Any],
     new_details: Dict[str, Any],
     orig_item: Dict[str, Any],
+    all_plans: Optional[List[Dict[str, Any]]] = None,
 ) -> List[str]:
     lines: List[str] = []
     keycap = _get_keycap(idx)
@@ -549,8 +851,10 @@ def _format_hotel_option(
     loc = _clean_str(
         new_details.get("location")
         or change.get("location")
+        or orig_item.get("location")
         or new_details.get("destination")
         or change.get("destination")
+        or orig_item.get("destination")
     )
     if loc:
         lines.append(f"   Location: {loc}")
@@ -592,7 +896,7 @@ def _format_hotel_option(
         currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
         lines.append(f"   Total Price: {_format_cost(fare, currency)}")
 
-    diff = _get_differentiator(plan, change, new_details, "HOTEL")
+    diff = _get_differentiator(plan, change, new_details, "HOTEL", orig_item=orig_item, all_plans=all_plans, opt_idx=idx)
     if diff:
         lines.append(f"   Note: {diff}")
 
@@ -605,6 +909,7 @@ def _format_cab_option(
     change: Dict[str, Any],
     new_details: Dict[str, Any],
     orig_item: Dict[str, Any],
+    all_plans: Optional[List[Dict[str, Any]]] = None,
 ) -> List[str]:
     lines: List[str] = []
     keycap = _get_keycap(idx)
@@ -622,9 +927,8 @@ def _format_cab_option(
 
     lines.append(f"{keycap} 🚕 {provider}")
 
-    pickup = _clean_str(new_details.get("origin") or change.get("origin"))
-    dropoff = _clean_str(new_details.get("destination") or change.get("destination"))
-    if pickup and dropoff:
+    pickup, dropoff = _resolve_option_route(new_details, change, orig_item)
+    if pickup and dropoff and not _same_endpoint(pickup, dropoff):
         lines.append(f"   Route: {pickup} → {dropoff}")
     elif pickup:
         lines.append(f"   Pickup: {pickup}")
@@ -667,7 +971,7 @@ def _format_cab_option(
         currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
         lines.append(f"   Price: {_format_cost(fare, currency)}")
 
-    diff = _get_differentiator(plan, change, new_details, "CAB")
+    diff = _get_differentiator(plan, change, new_details, "CAB", orig_item=orig_item, all_plans=all_plans, opt_idx=idx)
     if diff:
         lines.append(f"   Note: {diff}")
 
@@ -680,6 +984,7 @@ def _format_train_option(
     change: Dict[str, Any],
     new_details: Dict[str, Any],
     orig_item: Dict[str, Any],
+    all_plans: Optional[List[Dict[str, Any]]] = None,
 ) -> List[str]:
     lines: List[str] = []
     keycap = _get_keycap(idx)
@@ -712,10 +1017,13 @@ def _format_train_option(
 
     lines.append(f"{keycap} 🚆 {header_text}")
 
-    origin = _clean_str(new_details.get("origin") or change.get("origin"))
-    dest = _clean_str(new_details.get("destination") or change.get("destination"))
-    if origin and dest:
+    origin, dest = _resolve_option_route(new_details, change, orig_item)
+    if origin and dest and not _same_endpoint(origin, dest):
         lines.append(f"   Route: {origin} → {dest}")
+    elif origin:
+        lines.append(f"   From: {origin}")
+    elif dest:
+        lines.append(f"   To: {dest}")
 
     dep = _format_time_hhmm(new_details.get("departure_time") or new_details.get("start_time") or change.get("start_time"))
     arr = _format_time_hhmm(new_details.get("arrival_time") or new_details.get("end_time") or change.get("end_time"))
@@ -740,7 +1048,7 @@ def _format_train_option(
         currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
         lines.append(f"   Price: {_format_cost(fare, currency)}")
 
-    diff = _get_differentiator(plan, change, new_details, "TRAIN")
+    diff = _get_differentiator(plan, change, new_details, "TRAIN", orig_item=orig_item, all_plans=all_plans, opt_idx=idx)
     if diff:
         lines.append(f"   Note: {diff}")
 
@@ -754,6 +1062,7 @@ def _format_generic_option(
     new_details: Dict[str, Any],
     orig_item: Dict[str, Any],
     mode: str,
+    all_plans: Optional[List[Dict[str, Any]]] = None,
 ) -> List[str]:
     lines: List[str] = []
     keycap = _get_keycap(idx)
@@ -773,11 +1082,10 @@ def _format_generic_option(
 
     lines.append(f"{keycap} {icon} {title}")
 
-    origin = _clean_str(new_details.get("origin") or change.get("origin"))
-    dest = _clean_str(new_details.get("destination") or change.get("destination"))
+    origin, dest = _resolve_option_route(new_details, change, orig_item)
     loc = _clean_str(new_details.get("location") or change.get("location"))
 
-    if origin and dest:
+    if origin and dest and not _same_endpoint(origin, dest):
         lines.append(f"   Route: {origin} → {dest}")
     elif loc:
         lines.append(f"   Location: {loc}")
@@ -803,7 +1111,7 @@ def _format_generic_option(
         currency = _clean_str(new_details.get("currency") or plan.get("currency")) or "INR"
         lines.append(f"   Price: {_format_cost(fare, currency)}")
 
-    diff = _get_differentiator(plan, change, new_details, "GENERIC")
+    diff = _get_differentiator(plan, change, new_details, mode, orig_item=orig_item, all_plans=all_plans, opt_idx=idx)
     if diff:
         lines.append(f"   Note: {diff}")
 
@@ -836,7 +1144,8 @@ def format_whatsapp_recovery_options(
         "🚨 TRAVEL DISRUPTION",
     ]
 
-    disrupted_mode, item = _detect_disrupted_info(disruption, original_item, plans)
+    adapted_plans = [_adapt_plan(p) for p in (plans or [])]
+    disrupted_mode, item = _detect_disrupted_info(disruption, original_item, adapted_plans)
 
     summary_lines = _format_disruption_summary(disrupted_mode, item, disruption)
     if summary_lines:
@@ -854,7 +1163,6 @@ def format_whatsapp_recovery_options(
         return "\n".join(lines)
 
     option_modes = []
-    adapted_plans = [_adapt_plan(p) for p in plans]
     for plan in adapted_plans:
         changes = plan.get("changes") or []
         change = changes[0] if changes else {}
@@ -890,15 +1198,15 @@ def format_whatsapp_recovery_options(
         new_details = change.get("new_details") or {}
 
         if opt_mode == "FLIGHT":
-            opt_lines = _format_flight_option(idx, plan, change, new_details, item)
+            opt_lines = _format_flight_option(idx, plan, change, new_details, item, all_plans=adapted_plans)
         elif opt_mode == "HOTEL":
-            opt_lines = _format_hotel_option(idx, plan, change, new_details, item)
+            opt_lines = _format_hotel_option(idx, plan, change, new_details, item, all_plans=adapted_plans)
         elif opt_mode == "CAB":
-            opt_lines = _format_cab_option(idx, plan, change, new_details, item)
+            opt_lines = _format_cab_option(idx, plan, change, new_details, item, all_plans=adapted_plans)
         elif opt_mode == "TRAIN":
-            opt_lines = _format_train_option(idx, plan, change, new_details, item)
+            opt_lines = _format_train_option(idx, plan, change, new_details, item, all_plans=adapted_plans)
         else:
-            opt_lines = _format_generic_option(idx, plan, change, new_details, item, opt_mode)
+            opt_lines = _format_generic_option(idx, plan, change, new_details, item, opt_mode, all_plans=adapted_plans)
 
         lines.extend(opt_lines)
 
