@@ -174,7 +174,7 @@ def run_digital_twin_simulation(
                     "id": it.id,
                     "backendId": it.id,
                     "type": it.type,
-                    "title": f"{it.provider or it.type} ({it.origin or ''} → {it.destination or it.location or ''})".strip(),
+                    "title": f"{it.provider or it.type} ({it.origin or ''} -> {it.destination or it.location or ''})".strip(),
                     "provider": it.provider,
                     "origin": it.origin,
                     "destination": it.destination,
