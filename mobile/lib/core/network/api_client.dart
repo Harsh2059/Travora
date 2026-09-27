@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'api_endpoints.dart';
 
@@ -15,36 +14,38 @@ class ApiException implements Exception {
 
 class ApiClient {
   final http.Client _client = http.Client();
-  final Duration _timeout = const Duration(seconds: 15);
-  final _storage = const FlutterSecureStorage();
+  final Duration _defaultTimeout = const Duration(seconds: 15);
 
-  Future<dynamic> get(String endpoint, {Map<String, String>? queryParams}) async {
+  Future<dynamic> get(String endpoint, {Map<String, String>? queryParams, Duration? timeout}) async {
     final uri = Uri.parse('${ApiEndpoints.baseUrl}$endpoint').replace(queryParameters: queryParams);
     final hdrs = await _headers();
-    return _request(() => _client.get(uri, headers: hdrs));
+    return _request(() => _client.get(uri, headers: hdrs), timeout ?? _defaultTimeout);
   }
 
-  Future<dynamic> post(String endpoint, {Map<String, dynamic>? body}) async {
+  Future<dynamic> post(String endpoint, {Map<String, dynamic>? body, Duration? timeout}) async {
     final uri = Uri.parse('${ApiEndpoints.baseUrl}$endpoint');
     final hdrs = await _headers();
-    return _request(() => _client.post(uri, headers: hdrs, body: jsonEncode(body ?? {})));
+    return _request(() => _client.post(uri, headers: hdrs, body: jsonEncode(body ?? {})), timeout ?? _defaultTimeout);
   }
 
-  Future<dynamic> patch(String endpoint, {Map<String, dynamic>? body}) async {
+  Future<dynamic> patch(String endpoint, {Map<String, dynamic>? body, Duration? timeout}) async {
     final uri = Uri.parse('${ApiEndpoints.baseUrl}$endpoint');
     final hdrs = await _headers();
-    return _request(() => _client.patch(uri, headers: hdrs, body: jsonEncode(body ?? {})));
+    return _request(() => _client.patch(uri, headers: hdrs, body: jsonEncode(body ?? {})), timeout ?? _defaultTimeout);
   }
 
-  Future<dynamic> _request(Future<http.Response> Function() requestFunc) async {
+  Future<dynamic> _request(Future<http.Response> Function() requestFunc, Duration timeout) async {
     try {
-      final response = await requestFunc().timeout(_timeout);
+      final response = await requestFunc().timeout(timeout);
       if (kDebugMode) {
         debugPrint('API RESPONSE [${response.statusCode}] ${response.request?.url}');
       }
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (response.body.isEmpty) return {};
         return jsonDecode(response.body);
+      } else if (response.statusCode == 401) {
+        // Token expired or invalid - trigger auth state change
+        throw ApiException(response.statusCode, 'Session expired. Please log in again.');
       } else {
         throw ApiException(response.statusCode, response.body);
       }

@@ -41,7 +41,22 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   TripProvider() {
     WidgetsBinding.instance.addObserver(this);
-    _startPolling();
+    // Don't start polling or fetch data until auth is established
+    // _startPolling() will be called when auth is authenticated
+  }
+
+  // Clear all data when user logs out or session expires
+  void clearData() {
+    _pollingTimer?.cancel();
+    currentUser = null;
+    userTrips = [];
+    activeTrip = null;
+    activeDisruptions = [];
+    impactResult = null;
+    recoveryOptions = [];
+    lastExecution = null;
+    defaultTripId = null;
+    _setState(ProviderState.initial);
   }
 
   @override
@@ -72,15 +87,22 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // Load all user trips
   Future<void> fetchDashboardData() async {
+    // Don't fetch if no authenticated user
+    if (AppConfig.currentUserId == null) {
+      _setState(ProviderState.error);
+      return;
+    }
+    
+    _startPolling();
     _setState(ProviderState.loading);
     try {
       try {
-        currentUser = await _userService.getUserProfile(AppConfig.currentUserId);
+        currentUser = await _userService.getUserProfile(AppConfig.currentUserId!);
       } catch (e) {
         // Fallback gracefully since live backend might not have this endpoint yet
         final prefs = await SharedPreferences.getInstance();
         currentUser = User(
-          id: AppConfig.currentUserId,
+          id: AppConfig.currentUserId!,
           name: prefs.getString('user_name') ?? 'Traveler',
           email: prefs.getString('user_email') ?? 'traveler@example.com',
           whatsappPhone: prefs.getString('user_phone') ?? '',
@@ -88,7 +110,7 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
           whatsappEnabled: prefs.getBool('user_whatsapp') ?? false,
         );
       }
-      userTrips = await _tripService.getUserTrips(AppConfig.currentUserId);
+      userTrips = await _tripService.getUserTrips(AppConfig.currentUserId!);
       final prefs = await SharedPreferences.getInstance();
       defaultTripId = prefs.getInt('defaultTripId');
 
@@ -127,7 +149,7 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> createNewTrip(String title, List<Map<String, dynamic>> items) async {
     _setState(ProviderState.loading);
     try {
-      final newTrip = await _tripService.createTrip(AppConfig.currentUserId, title);
+      final newTrip = await _tripService.createTrip(AppConfig.currentUserId!, title);
       for (var item in items) {
         await _tripService.addTripItem(newTrip.id, item);
       }
@@ -241,7 +263,7 @@ class TripProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<bool> updateUserProfile(Map<String, dynamic> updates) async {
     try {
-      currentUser = await _userService.updateUserProfile(AppConfig.currentUserId, updates);
+      currentUser = await _userService.updateUserProfile(AppConfig.currentUserId!, updates);
       notifyListeners();
       return true;
     } catch (e) {

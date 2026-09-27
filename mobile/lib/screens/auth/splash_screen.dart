@@ -14,17 +14,20 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _checkAuth();
+    _waitForAuth();
   }
 
-  void _checkAuth() async {
-    // Artificial delay for splash branding
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-
+  void _waitForAuth() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
-    // AuthProvider initSession already checks secure storage
+    // Wait for auth state to finish checking
+    while (authProvider.state == AuthState.checkingSession) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (!mounted) return;
+    }
+    
+    if (!mounted) return;
+
     if (authProvider.state == AuthState.authenticated) {
       context.go('/');
     } else {
@@ -45,6 +48,8 @@ class _SplashScreenState extends State<SplashScreen> {
             Text('Travora', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             SizedBox(height: 12),
             Text('Your journey, recovered.', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 16)),
+            SizedBox(height: 24),
+            CircularProgressIndicator(color: Colors.white),
           ],
         ),
       ),

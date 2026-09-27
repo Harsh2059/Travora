@@ -32,13 +32,23 @@ class AuthProvider extends ChangeNotifier {
 
     final result = await _authService.verifySession();
     if (result['valid'] == true) {
-      _userId = result['userId'];
-      if (_userId != null) AppConfig.currentUserId = _userId!;
-      _state = AuthState.authenticated;
+      final user = result['user'];
+      if (user != null && user['id'] != null) {
+        _userId = user['id'] as String;
+        if (_userId != null) AppConfig.currentUserId = _userId!;
+        _state = AuthState.authenticated;
+      } else {
+        _state = AuthState.unauthenticated;
+      }
     } else {
       _state = AuthState.unauthenticated;
     }
     notifyListeners();
+  }
+
+  // Called during app startup to ensure session is initialized before other providers
+  Future<void> initSessionForStartup() async {
+    await _initSession();
   }
 
   Future<bool> login(String email, String password) async {

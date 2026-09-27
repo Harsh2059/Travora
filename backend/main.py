@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, Depends, HTTPException, Body, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Body, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
@@ -1613,11 +1613,13 @@ def execute_recovery_endpoint(
     trip_id: int,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+    current_user: Optional[models.User] = Depends(auth.get_optional_user),
+    background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     """
     Executes booking replacements through provider abstraction after explicit user confirmation.
     Enforces idempotency and stale plan protection. Updates itinerary DB upon success.
+    Notifications are sent asynchronously in background to avoid blocking the response.
     """
     trip_rec = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
     if not trip_rec:
@@ -1646,41 +1648,6 @@ def execute_recovery_endpoint(
             trip_rec.view_mode = "RECOVERED"
             db.commit()
 
-        # Send WhatsApp Notification
-        try:
-            NotificationService().send_recovery_notification(
-                db=db,
-                channel=NotificationChannel.WHATSAPP,
-                trip_id=trip_id,
-                plan=selected_plan,
-                disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
-            )
-        except Exception as exc:
-            logger.warning(
-                "Recovery WhatsApp alert failed: %s",
-                type(exc).__name__,
-            )
-
-        # Send SMS Notification - fresh session state after WhatsApp path
-        try:
-            try:
-                db.rollback()  # Safety: ensure clean session state before SMS commit
-            except Exception:
-                pass
-            NotificationService().send_recovery_notification(
-                db=db,
-                channel=NotificationChannel.SMS,
-                trip_id=trip_id,
-                plan=selected_plan,
-                disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
-            )
-        except Exception as exc:
-            logger.warning(
-                "Recovery SMS queueing failed: %s",
-                type(exc).__name__,
-            )
-
-
         # Fetch complete updated journey details to return complete state payload
         trip_details = get_trip_details(trip_id=trip_id, admin=True, db=db, current_user=None)
         exec_res["originalJourney"] = {
@@ -1704,6 +1671,47 @@ def execute_recovery_endpoint(
         exec_res["viewMode"] = "RECOVERED"
         exec_res["recoveryHistory"] = trip_details.get("recovery_history")
         exec_res["activeDisruptions"] = trip_details.get("active_disruptions")
+
+        # Schedule notifications in background (non-blocking)
+        # Use a new DB session in the background task to avoid session conflicts
+        def send_recovery_notifications_background():
+            from database import SessionLocal
+            bg_db = SessionLocal()
+            try:
+                # Send WhatsApp Notification
+                try:
+                    NotificationService().send_recovery_notification(
+                        db=bg_db,
+                        channel=NotificationChannel.WHATSAPP,
+                        trip_id=trip_id,
+                        plan=selected_plan,
+                        disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Recovery WhatsApp alert failed: %s",
+                        type(exc).__name__,
+                    )
+                
+                # Send SMS Notification
+                try:
+                    NotificationService().send_recovery_notification(
+                        db=bg_db,
+                        channel=NotificationChannel.SMS,
+                        trip_id=trip_id,
+                        plan=selected_plan,
+                        disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Recovery SMS queueing failed: %s",
+                        type(exc).__name__,
+                    )
+            finally:
+                bg_db.close()
+
+        background_tasks.add_task(send_recovery_notifications_background)
+
         return exec_res
     except Exception as e:
         print(f"ERROR in execute_recovery_endpoint: {e}")

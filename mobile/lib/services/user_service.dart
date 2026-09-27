@@ -1,28 +1,20 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../core/config/app_config.dart';
 import '../models/user.dart';
+import '../core/network/api_client.dart';
+import '../core/network/api_endpoints.dart';
 
 class UserService {
+  final ApiClient _apiClient = ApiClient();
+
   Future<User> getUserProfile(String userId) async {
-    final response = await http.get(Uri.parse('${AppConfig.apiBaseUrl}/api/users/$userId/profile'));
-    if (response.statusCode == 200) {
-      return User.fromJson(json.decode(response.body));
-    } else {
-      throw Exception('Failed to load user profile');
-    }
+    final response = await _apiClient.get(ApiEndpoints.userProfile(userId));
+    return User.fromJson(response);
   }
 
   Future<User> updateUserProfile(String userId, Map<String, dynamic> updates) async {
-    final response = await http.put(
-      Uri.parse('${AppConfig.apiBaseUrl}/api/users/$userId/profile'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(updates),
+    final response = await _apiClient.patch(
+      ApiEndpoints.userProfile(userId),
+      body: updates,
     );
-    if (response.statusCode == 200) {
-      return User.fromJson(json.decode(response.body));
-    } else {
-      throw Exception('Failed to update user profile');
-    }
+    return User.fromJson(response);
   }
 }

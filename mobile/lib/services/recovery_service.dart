@@ -4,6 +4,7 @@ import '../models/recovery_option.dart';
 
 class RecoveryService {
   final ApiClient _apiClient = ApiClient();
+  static const Duration _recoveryExecutionTimeout = Duration(seconds: 45);
 
   Future<List<RecoveryOption>> getRecoveryOptions(int tripId) async {
     final response = await _apiClient.post(ApiEndpoints.tripRecoveryOptions(tripId));
@@ -22,7 +23,8 @@ class RecoveryService {
   Future<RecoveryExecution> executeRecovery(int tripId, RecoveryOption option) async {
     final response = await _apiClient.post(
       ApiEndpoints.executeRecovery(tripId),
-      body: {'selectedPlan': option.metadata}
+      body: {'selectedPlan': option.metadata},
+      timeout: _recoveryExecutionTimeout,
     );
     return RecoveryExecution.fromJson(response);
   }

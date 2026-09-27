@@ -1,6 +1,7 @@
 class AppConfig {
   static const String apiBaseUrl = 'https://travora-dqgn.onrender.com';
   
-  // Simulated Authentication state
-  static String currentUserId = 'mock_uuid_will_be_set_after_login'; 
+  // Authentication state - set after successful authentication
+  // NEVER use the placeholder for authenticated API requests
+  static String? currentUserId;
 }
