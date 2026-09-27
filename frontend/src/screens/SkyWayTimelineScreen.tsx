@@ -18,7 +18,8 @@ import {
   useJourney,
   fetchTripDisruptions,
   resetTripDisruptions,
-  getSelectedRecoveryPlanWithMeta
+  getSelectedRecoveryPlanWithMeta,
+  triggerTripDisruption
 } from '../store/journeyStore';
 import { triggerMicroFeedback } from '../services/feedbackService';
 
@@ -50,7 +51,6 @@ export default function SkyWayTimelineScreen() {
 
   const [activeDisruptions, setActiveDisruptions] = useState<any[]>([]);
   const [hasRecoverySelected, setHasRecoverySelected] = useState<boolean>(false);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [isTripCompleted, setIsTripCompleted] = useState(false);
 
   useEffect(() => {
@@ -91,32 +91,6 @@ export default function SkyWayTimelineScreen() {
       ],
       delayMs: 800,
     });
-  };
-
-  const handleSimulateDisruption = async () => {
-    if (!journey?.id) return;
-    setIsSimulating(true);
-    try {
-      const affectedNode = journey.nodes?.[0];
-      const payload = {
-        trip_id: journey.id,
-        affected_node_id: affectedNode?.backendId || 1,
-        entity_id: affectedNode?.backendId || 1,
-        type: 'FLIGHT_DELAYED',
-        event_type: 'FLIGHT_DELAYED',
-        detected_at: new Date().toISOString(),
-        reason: 'Technical issue with aircraft avionics system',
-        delay_minutes: 390,
-      };
-      await triggerTripDisruption(journey.id, payload);
-      await refresh();
-      navigate('/disruption');
-    } catch (err) {
-      console.error('Failed to trigger simulation:', err);
-      navigate('/disruption');
-    } finally {
-      setIsSimulating(false);
-    }
   };
 
   const handleReset = async () => {
