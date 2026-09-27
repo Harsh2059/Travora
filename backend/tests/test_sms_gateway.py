@@ -32,6 +32,9 @@ client = TestClient(app)
 @pytest.fixture(scope="module")
 def setup_db():
     app.dependency_overrides[get_db] = override_get_db
+    # This module uses a file-backed SQLite database. Clear an interrupted
+    # prior run before seeding so duplicate test data cannot leak into a new run.
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     

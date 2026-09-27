@@ -385,13 +385,15 @@ def _get_differentiator(
     all_plans = all_plans or []
 
     # Comparisons across all plans
-    other_plans = [p for i, p in enumerate(all_plans, start=1) if i != opt_idx]
+    other_plans = [
+        p for i, p in enumerate(all_plans, start=1)
+        if i != opt_idx and isinstance(p, dict)
+    ]
 
     my_cost = _get_numeric_cost(plan, change, new_details)
     other_costs = []
     for op in other_plans:
-        ochanges = op.get("changes") or []
-        och = ochanges[0] if ochanges else {}
+        och = _get_replacement_change(op)
         ond = och.get("new_details") or {}
         c = _get_numeric_cost(op, och, ond)
         if c is not None:
@@ -407,8 +409,7 @@ def _get_differentiator(
     other_arrs = []
     other_durs = []
     for op in other_plans:
-        ochanges = op.get("changes") or []
-        och = ochanges[0] if ochanges else {}
+        och = _get_replacement_change(op)
         ond = och.get("new_details") or {}
         d = _format_time_hhmm(ond.get("departure_time") or ond.get("start_time") or och.get("start_time"))
         a = _format_time_hhmm(ond.get("arrival_time") or ond.get("end_time") or och.get("end_time"))
@@ -508,7 +509,7 @@ def _get_differentiator(
         orig_cin = _format_date(orig_item.get("check_in") or orig_item.get("startDate") or orig_item.get("start_time")) if orig_item else None
 
         has_other_dists = any(
-            _clean_str((op.get("changes") or [{}])[0].get("new_details", {}).get("distance_from_original"))
+            _clean_str(((_get_replacement_change(op).get("new_details") or {}).get("distance_from_original")))
             for op in other_plans
         )
         if dist and is_lowest_fare and has_other_dists:
@@ -750,7 +751,10 @@ def _get_replacement_change(plan: Dict[str, Any]) -> Dict[str, Any]:
     change can otherwise produce a generic "Flight Option" header (and omit
     the carrier and flight number) when another booking is merely preserved.
     """
-    changes = plan.get("changes") or []
+    changes = [
+        change for change in (plan.get("changes") or [])
+        if isinstance(change, dict)
+    ]
     return next(
         (
             change for change in changes

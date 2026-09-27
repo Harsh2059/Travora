@@ -830,6 +830,49 @@ def test_flight_option_uses_replacement_not_a_preceding_preserved_change():
     assert "Flight Option" not in msg
 
 
+def test_hotel_options_ignore_preserved_changes_when_comparing_alternatives():
+    """KEEP changes have ``new_details=None`` and must not break hotel messages."""
+    def plan(option_id, hotel_name, cost, distance):
+        return {
+            "id": option_id,
+            "estimated_additional_cost": cost,
+            "changes": [
+                {
+                    "node_id": "flight-1",
+                    "action": "KEEP",
+                    "type": "FLIGHT",
+                    "new_details": None,
+                },
+                {
+                    "node_id": "hotel-1",
+                    "action": "REPLACE",
+                    "type": "HOTEL",
+                    "provider": hotel_name,
+                    "new_details": {
+                        "hotel_name": hotel_name,
+                        "location": "Jodhpur",
+                        "cost": cost,
+                        "distance_from_original": distance,
+                    },
+                },
+            ],
+        }
+
+    msg = format_whatsapp_recovery_options(
+        1,
+        {"event_type": "HOTEL_BOOKING_CANCELLED", "item": {"type": "HOTEL"}},
+        [
+            plan("hotel-1", "Courtyard Convention Hotel", 4400, "0.5 km"),
+            plan("hotel-2", "Heritage Grand Palace", 6000, "1.2 km"),
+            plan("hotel-3", "Marriott Business Hotel", 8800, "2.0 km"),
+        ],
+    )
+
+    assert "1️⃣ 🏨 Courtyard Convention Hotel" in msg
+    assert "2️⃣ 🏨 Heritage Grand Palace" in msg
+    assert "3️⃣ 🏨 Marriott Business Hotel" in msg
+
+
 # 17. Hotel cancellation produces hotel-specific options
 def test_17_hotel_cancellation_produces_hotel_specific_options():
     plan = {
