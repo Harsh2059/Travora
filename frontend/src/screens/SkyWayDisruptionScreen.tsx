@@ -52,6 +52,46 @@ function fmtTime(isoStr?: string | null): string {
   }
 }
 
+/**
+ * Ensures checkout date string YYYY-MM-DD is AT LEAST equal to or after check-in date YYYY-MM-DD.
+ * If checkOut is in the past relative to checkIn (e.g. 2026-09-22 vs 2026-09-28), returns checkIn + 2 days!
+ */
+function ensureValidCheckOutDate(checkInDateStr: string, checkOutDateStr?: string | null): string {
+  try {
+    const rawIn = checkInDateStr.includes('T') ? checkInDateStr.split('T')[0] : checkInDateStr;
+    const inParts = rawIn.split('-').map((p) => parseInt(p, 10));
+    const inDate = new Date(inParts[0], inParts[1] - 1, inParts[2]);
+
+    if (isNaN(inDate.getTime())) return checkInDateStr;
+
+    if (checkOutDateStr) {
+      const rawOut = checkOutDateStr.includes('T') ? checkOutDateStr.split('T')[0] : checkOutDateStr;
+      const outParts = rawOut.split('-').map((p) => parseInt(p, 10));
+      const outDate = new Date(outParts[0], outParts[1] - 1, outParts[2]);
+
+      if (!isNaN(outDate.getTime()) && outDate >= inDate) {
+        return rawOut;
+      }
+    }
+
+    const validOutDate = new Date(inDate);
+    validOutDate.setDate(validOutDate.getDate() + 2);
+    const yyyy = validOutDate.getFullYear();
+    const mm = String(validOutDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(validOutDate.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  } catch {
+    return checkInDateStr;
+  }
+}
+
+function cleanCheckOutTime(tStr?: string | null): string {
+  if (!tStr) return '11:00';
+  const cleaned = tStr.replace(/^Check-out\s*/i, '').trim();
+  if (cleaned === '00:00' || cleaned === '00:00:00' || !cleaned) return '11:00';
+  return cleaned;
+}
+
 export default function SkyWayDisruptionScreen() {
   const navigate = useNavigate();
   const { journey, refresh } = useJourney();
@@ -101,8 +141,11 @@ export default function SkyWayDisruptionScreen() {
   const delayMinutes = activeDisp?.delay_minutes || 390;
   const delayStr = `${Math.floor(delayMinutes / 60)}h ${delayMinutes % 60}m`;
 
-  const disruptedNodeStartDate = disruptedNode?.startDate || (disruptedNode?.startTime ? disruptedNode.startTime.split('T')[0] : '2026-09-28');
-  const disruptedNodeEndDate = disruptedNode?.endDate || (disruptedNode?.endTime ? disruptedNode.endTime.split('T')[0] : '2026-09-30');
+  const rawStartDate = disruptedNode?.startDate || (disruptedNode?.startTime ? disruptedNode.startTime.split('T')[0] : '2026-09-28');
+  const rawEndDate = disruptedNode?.endDate || (disruptedNode?.endTime ? disruptedNode.endTime.split('T')[0] : undefined);
+
+  const disruptedNodeStartDate = rawStartDate;
+  const disruptedNodeEndDate = ensureValidCheckOutDate(rawStartDate, rawEndDate);
 
   // Default fallback recovery options
   const defaultRecoveryOptions = [
@@ -113,9 +156,9 @@ export default function SkyWayDisruptionScreen() {
       badgeColor: 'bg-slate-100 text-slate-700',
       isRecommended: false,
       isHotel: isHotelDisruption,
-      departs: isHotelDisruption ? '08:00' : '14:30',
+      departs: isHotelDisruption ? '14:00' : '14:30',
       departsSub: isHotelDisruption ? fmtDate(disruptedNodeStartDate) : '(6h 30m delay)',
-      arrives: isHotelDisruption ? '12:00' : '16:50',
+      arrives: isHotelDisruption ? '11:00' : '16:50',
       arrivesSub: isHotelDisruption ? fmtDate(disruptedNodeEndDate) : '',
       travelTime: isHotelDisruption ? destStr : '2h 20m',
       stops: isHotelDisruption ? 'Guaranteed Late Hold' : 'Non-stop',
@@ -186,8 +229,14 @@ export default function SkyWayDisruptionScreen() {
   const recoveryOptions = dynamicOptions && dynamicOptions.length > 0
     ? dynamicOptions.map((plan: any, idx: number) => {
         const isHotelPlan = Boolean(plan.replacement_hotel) || isHotelDisruption;
-        const checkInTime = plan.replacement_hotel?.check_in || (disruptedNode?.startTime ? fmtTime(disruptedNode.startTime) : '14:00');
-        const checkOutTime = plan.replacement_hotel?.check_out || (disruptedNode?.endTime ? fmtTime(disruptedNode.endTime) : '11:00');
+        const rawCheckInTime = plan.replacement_hotel?.check_in || (disruptedNode?.startTime ? fmtTime(disruptedNode.startTime) : '14:00');
+        const rawCheckOutTime = plan.replacement_hotel?.check_out || (disruptedNode?.endTime ? fmtTime(disruptedNode.endTime) : '11:00');
+
+        const cleanCheckIn = rawCheckInTime.replace(/^Check-in\s*/i, '').trim();
+        const cleanCheckOut = cleanCheckOutTime(rawCheckOutTime);
+
+        const planHotelDate = plan.replacement_hotel?.date || disruptedNodeStartDate;
+        const validCheckOutDate = ensureValidCheckOutDate(planHotelDate, disruptedNodeEndDate);
 
         return {
           id: plan.id || `opt_${idx + 1}`,
@@ -196,10 +245,10 @@ export default function SkyWayDisruptionScreen() {
           badgeColor: plan.is_recommended ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700',
           isRecommended: Boolean(plan.is_recommended),
           isHotel: isHotelPlan,
-          departs: isHotelPlan ? checkInTime.replace(/^Check-in\s*/i, '') : (plan.replacement_flight?.departure_time || '14:30'),
-          departsSub: isHotelPlan ? fmtDate(plan.replacement_hotel?.date || disruptedNodeStartDate) : (plan.replacement_flight?.date || fmtDate(disruptedNodeStartDate)),
-          arrives: isHotelPlan ? checkOutTime.replace(/^Check-out\s*/i, '') : (plan.replacement_flight?.arrival_time || '16:50'),
-          arrivesSub: isHotelPlan ? fmtDate(disruptedNodeEndDate) : '',
+          departs: isHotelPlan ? (cleanCheckIn || '14:00') : (plan.replacement_flight?.departure_time || '14:30'),
+          departsSub: isHotelPlan ? fmtDate(planHotelDate) : (plan.replacement_flight?.date || fmtDate(disruptedNodeStartDate)),
+          arrives: isHotelPlan ? cleanCheckOut : (plan.replacement_flight?.arrival_time || '16:50'),
+          arrivesSub: isHotelPlan ? fmtDate(validCheckOutDate) : '',
           travelTime: isHotelPlan ? (plan.replacement_hotel?.location || destStr) : (plan.travel_time || '2h 20m'),
           stops: isHotelPlan ? (plan.replacement_hotel?.room_type || 'Guaranteed Room Hold') : (plan.stops || 'Non-stop'),
           impact: plan.impact || 'Confirmed schedule',

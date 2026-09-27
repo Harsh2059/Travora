@@ -413,6 +413,25 @@ export async function fetchTripById(tripId: number, adminMode = false): Promise<
       }
     }
 
+    // Ensure hotel check-out date is never in the past relative to check-in date
+    if (startDateStr && (it.type === 'HOTEL' || it.type === 'hotel' || it.type === 'stay')) {
+      if (!endDateStr || endDateStr <= startDateStr) {
+        try {
+          const d = new Date(`${startDateStr}T00:00:00`);
+          if (!isNaN(d.getTime())) {
+            d.setDate(d.getDate() + 2);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            endDateStr = `${yyyy}-${mm}-${dd}`;
+            if (endTimeIso && String(endTimeIso).includes('T')) {
+              endTimeIso = `${endDateStr}T${String(endTimeIso).split('T')[1]}`;
+            }
+          }
+        } catch {}
+      }
+    }
+
     const hasExactStart = meta.hasExactStartTime ?? (Boolean(startTimeIso) && !String(startTimeIso).endsWith('T00:00:00'));
     const hasExactEnd = meta.hasExactEndTime ?? (Boolean(endTimeIso) && !String(endTimeIso).endsWith('T23:59:59'));
     const isMetro = meta.transportMode === 'METRO' || (it.provider && it.provider.toLowerCase() === 'metro');
