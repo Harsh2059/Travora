@@ -791,6 +791,45 @@ def test_16_flight_disruption_produces_flight_specific_options():
     assert "Reply 0 to cancel." in msg
 
 
+def test_flight_option_uses_replacement_not_a_preceding_preserved_change():
+    """A preserved hotel must not hide the selected flight's carrier/name."""
+    plan = {
+        "id": "plan_flight_after_hotel",
+        "title": "Priority-Preserving (Air India SIM-AI-441)",
+        "estimated_additional_cost": 6800,
+        "changes": [
+            {
+                "node_id": "hotel-1",
+                "action": "KEEP",
+                "type": "HOTEL",
+                "original_title": "Courtyard Convention Hotel",
+            },
+            {
+                "node_id": "flight-1",
+                "action": "REPLACE",
+                "type": "FLIGHT",
+                "provider": "Air India",
+                "new_title": "Air India SIM-AI-441",
+                "new_details": {
+                    "provider": "Air India",
+                    "flight_number": "SIM-AI-441",
+                    "origin": "Mumbai (BOM)",
+                    "destination": "Jaipur (JAI)",
+                    "departure_time": "2026-09-21T08:45:00",
+                    "arrival_time": "2026-09-21T10:35:00",
+                    "cost": 6800,
+                },
+            },
+        ],
+    }
+    disruption = {"event_type": "FLIGHT_CANCELLED", "item": {"type": "FLIGHT"}}
+
+    msg = format_whatsapp_recovery_options(1, disruption, [plan])
+
+    assert "1️⃣ ✈️ Air India SIM-AI-441" in msg
+    assert "Flight Option" not in msg
+
+
 # 17. Hotel cancellation produces hotel-specific options
 def test_17_hotel_cancellation_produces_hotel_specific_options():
     plan = {

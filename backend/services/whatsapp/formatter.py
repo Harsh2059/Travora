@@ -742,6 +742,25 @@ def _resolve_option_mode(
     return "UNKNOWN"
 
 
+def _get_replacement_change(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the booking being replaced, never an unrelated preserved item.
+
+    Recovery plans include ``KEEP`` changes before their replacement changes.  A
+    WhatsApp option describes the selected replacement, so taking the first
+    change can otherwise produce a generic "Flight Option" header (and omit
+    the carrier and flight number) when another booking is merely preserved.
+    """
+    changes = plan.get("changes") or []
+    return next(
+        (
+            change for change in changes
+            if isinstance(change, dict)
+            and str(change.get("action") or "").upper() in ("REPLACE", "MODIFY")
+        ),
+        changes[0] if changes else {},
+    )
+
+
 def _format_flight_option(
     idx: int,
     plan: Dict[str, Any],
@@ -1164,8 +1183,7 @@ def format_whatsapp_recovery_options(
 
     option_modes = []
     for plan in adapted_plans:
-        changes = plan.get("changes") or []
-        change = changes[0] if changes else {}
+        change = _get_replacement_change(plan)
         new_details = change.get("new_details") or {}
         opt_mode = _resolve_option_mode(change, new_details, plan, disrupted_mode)
         option_modes.append(opt_mode)
@@ -1193,8 +1211,7 @@ def format_whatsapp_recovery_options(
 
     for idx, (plan, opt_mode) in enumerate(zip(adapted_plans, option_modes), start=1):
         lines.append("")
-        changes = plan.get("changes") or []
-        change = changes[0] if changes else {}
+        change = _get_replacement_change(plan)
         new_details = change.get("new_details") or {}
 
         if opt_mode == "FLIGHT":
@@ -1230,8 +1247,7 @@ def format_recovery_confirmation(
 
     confirmed = (execution_result or {}).get("confirmed_bookings") or []
     booking = confirmed[0] if confirmed else {}
-    changes = plan.get("changes") or []
-    change = changes[0] if changes else {}
+    change = _get_replacement_change(plan)
     new_details = change.get("new_details") or {}
     orig_details = change.get("original_details") or {}
 
