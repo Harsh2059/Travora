@@ -97,8 +97,33 @@ with engine.connect() as conn:
         pass
 
 import routers.auth as auth
+import routers.weather as weather_router
+import routers.social as social_router
+import routers.digital_twin as digital_twin_router
+from services.weather.weather_service import LiveWeatherService
 app = FastAPI(title="Travel Recovery Engine API")
 app.include_router(auth.router)
+app.include_router(weather_router.router)
+app.include_router(social_router.router)
+app.include_router(digital_twin_router.router)
+
+
+@app.get("/api/journeys/{trip_id}/weather")
+@app.get("/api/trips/{trip_id}/weather")
+def get_trip_weather_endpoint(trip_id: int, db: Session = Depends(get_db)):
+    """Fetch live weather data for a specific trip's primary departure airport/city."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        return LiveWeatherService.get_current_weather(location="Mumbai")
+
+    items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id
+    ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    first_flight = next((it for it in items if it.type == "FLIGHT"), items[0] if items else None)
+    loc_name = first_flight.origin if first_flight else "Mumbai"
+    return LiveWeatherService.get_current_weather(location=loc_name)
+
 
 @app.on_event("startup")
 def startup_event():
