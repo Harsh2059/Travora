@@ -18,8 +18,7 @@ import {
   useJourney,
   fetchTripDisruptions,
   resetTripDisruptions,
-  getSelectedRecoveryPlanWithMeta,
-  triggerTripDisruption
+  getSelectedRecoveryPlanWithMeta
 } from '../store/journeyStore';
 import { triggerMicroFeedback } from '../services/feedbackService';
 
