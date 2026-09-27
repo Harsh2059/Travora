@@ -232,7 +232,7 @@ export function generateMockSimulation(
       rainfall,
       wind,
       visibility,
-      condition: rainfall > 50 ? 'Severe Storm' : 'Moderate Weather',
+      condition: rainfall > 50 ? 'Severe Storm' : rainfall > 15 || wind > 25 || visibility < 5 ? 'Moderate Weather' : 'Clear / Mild Weather',
       source: 'Digital Twin What-If Simulator',
     },
     prediction: {

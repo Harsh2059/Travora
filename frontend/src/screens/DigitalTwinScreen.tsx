@@ -24,8 +24,9 @@ import { ImpactPropagationPipeline } from '../components/digitalTwin/ImpactPropa
 import { BeforeAfterComparison } from '../components/digitalTwin/BeforeAfterComparison';
 import { NugenExplanationCard } from '../components/digitalTwin/NugenExplanationCard';
 import { PublicSignalsSection } from '../components/digitalTwin/PublicSignalsSection';
+import { WhatIfController } from '../components/digitalTwin/WhatIfController';
 
-import { useJourney, triggerTripDisruption, fetchTripDisruptions, getActiveTripId, fetchTripById } from '../store/journeyStore';
+import { useJourney, triggerTripDisruption, getActiveTripId, fetchTripById } from '../store/journeyStore';
 import { subscribeToTripUpdates } from '../store/tripSync';
 import {
   fetchCurrentWeather,
@@ -40,43 +41,7 @@ import type {
   SocialSignalsResponse,
 } from '../types/digitalTwin';
 
-function extractWeatherFromDisruption(disruption: any): {
-  rainfall: number;
-  wind: number;
-  visibility: number;
-  temperature: number;
-} | null {
-  if (!disruption) return null;
-
-  const meta = disruption.event_metadata || {};
-  if (meta.rainfall !== undefined || meta.wind !== undefined) {
-    return {
-      rainfall: Number(meta.rainfall ?? 150),
-      wind: Number(meta.wind ?? 55),
-      visibility: Number(meta.visibility ?? 1.0),
-      temperature: Number(meta.temperature ?? 31.0),
-    };
-  }
-
-  const reasonText = String(disruption.reason || meta.reason || '');
-  if (!reasonText) return null;
-
-  const rainMatch = reasonText.match(/(\d+(?:\.\d+)?)\s*mm/i);
-  const windMatch = reasonText.match(/(\d+(?:\.\d+)?)\s*km\/h/i);
-  const visMatch = reasonText.match(/Vis(?:ibility)?:?\s*(\d+(?:\.\d+)?)\s*km/i);
-  const tempMatch = reasonText.match(/Temp(?:erature)?:?\s*(\d+(?:\.\d+)?)\s*°?C/i);
-
-  if (rainMatch || windMatch || visMatch || tempMatch) {
-    return {
-      rainfall: rainMatch ? parseFloat(rainMatch[1]) : 150,
-      wind: windMatch ? parseFloat(windMatch[1]) : 55,
-      visibility: visMatch ? parseFloat(visMatch[1]) : 1.0,
-      temperature: tempMatch ? parseFloat(tempMatch[1]) : 31.0,
-    };
-  }
-
-  return null;
-}
+const NOMINAL_WEATHER = { rainfall: 0, wind: 10, visibility: 10, temperature: 28 };
 
 export default function DigitalTwinScreen() {
   const navigate = useNavigate();
@@ -84,12 +49,13 @@ export default function DigitalTwinScreen() {
   const { journey } = useJourney();
 
   // ── Meteorological Parameters ───────────────────────────────────────────────
-  const [rainfall, setRainfall] = useState<number>(150);
-  const [wind, setWind] = useState<number>(55);
-  const [visibility, setVisibility] = useState<number>(1.0);
-  const [temperature, setTemperature] = useState<number>(31.0);
+  const [rainfall, setRainfall] = useState<number>(NOMINAL_WEATHER.rainfall);
+  const [wind, setWind] = useState<number>(NOMINAL_WEATHER.wind);
+  const [visibility, setVisibility] = useState<number>(NOMINAL_WEATHER.visibility);
+  const [temperature, setTemperature] = useState<number>(NOMINAL_WEATHER.temperature);
 
-  const [isSimulatedMode, setIsSimulatedMode] = useState<boolean>(true);
+  const [isSimulatedMode, setIsSimulatedMode] = useState<boolean>(false);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,6 +74,7 @@ export default function DigitalTwinScreen() {
   // ── Execute Simulation Function ─────────────────────────────────────────────
   const executeSimulation = useCallback(
     async (r: number, w: number, v: number, t: number) => {
+      setIsSimulating(true);
       try {
         const sim = await simulateDigitalTwin(
           {
@@ -126,6 +93,8 @@ export default function DigitalTwinScreen() {
         setSimulationResult(
           generateMockSimulation(activeTripId, { rainfall: r, wind: w, visibility: v, temperature: t }, journey?.nodes)
         );
+      } finally {
+        setIsSimulating(false);
       }
     },
     [activeTripId, journey?.nodes]
@@ -149,12 +118,6 @@ export default function DigitalTwinScreen() {
       const signals = await fetchSocialSignals('Mumbai');
       setSocialSignals(signals);
 
-      // 3. Fetch Active Disruptions for Trip & Parse Simulated Weather
-      let r = 150;
-      let w = 55;
-      let v = 1.0;
-      let t = 31.0;
-
       let currentJourney = journey;
       if (!currentJourney || currentJourney.id !== targetTripId) {
         try {
@@ -164,55 +127,18 @@ export default function DigitalTwinScreen() {
         }
       }
 
-      try {
-        const disruptions = await fetchTripDisruptions(targetTripId);
-        const activeDisp = (disruptions || [])
-          .slice()
-          .reverse()
-          .find(
-            (d: any) =>
-              (d.status || 'ACTIVE') === 'ACTIVE' &&
-              (d.event_type === 'WEATHER_CONVECTIVE_DELAY' ||
-                d.type === 'WEATHER_CONVECTIVE_DELAY' ||
-                extractWeatherFromDisruption(d) !== null)
-          ) || (disruptions || []).slice().reverse().find((d: any) => (d.status || 'ACTIVE') === 'ACTIVE');
-
-        if (activeDisp) {
-          const extracted = extractWeatherFromDisruption(activeDisp);
-          if (extracted) {
-            r = extracted.rainfall;
-            w = extracted.wind;
-            v = extracted.visibility;
-            t = extracted.temperature;
-          }
-        }
-      } catch (dispErr) {
-        console.warn('Unable to fetch disruptions for simulated weather:', dispErr);
-      }
-
-      setRainfall(r);
-      setWind(w);
-      setVisibility(v);
-      setTemperature(t);
-      setIsSimulatedMode(true);
-
-      // 4. Run Simulation with dynamic weather parameters and journey nodes
-      const sim = await simulateDigitalTwin(
-        {
-          journey_id: targetTripId,
-          location: 'Mumbai',
-          rainfall: r,
-          wind: w,
-          visibility: v,
-          temperature: t,
-        },
-        currentJourney?.nodes
-      );
-      setSimulationResult(sim);
+      // Start in a nominal, non-simulated state. Existing disruptions must not
+      // pre-populate this what-if tool with a severe synthetic weather scenario.
+      setRainfall(NOMINAL_WEATHER.rainfall);
+      setWind(NOMINAL_WEATHER.wind);
+      setVisibility(NOMINAL_WEATHER.visibility);
+      setTemperature(NOMINAL_WEATHER.temperature);
+      setIsSimulatedMode(false);
+      setSimulationResult(generateMockSimulation(targetTripId, NOMINAL_WEATHER, currentJourney?.nodes));
     } catch (err: any) {
       console.warn('Initial telemetry error, using contract fallback:', err?.message);
       setSimulationResult(
-        generateMockSimulation(targetTripId, { rainfall: 150, wind: 55, visibility: 1.0, temperature: 31.0 }, journey?.nodes)
+        generateMockSimulation(targetTripId, NOMINAL_WEATHER, journey?.nodes)
       );
     } finally {
       setLoading(false);
@@ -227,17 +153,39 @@ export default function DigitalTwinScreen() {
     return () => unsubscribe();
   }, [loadInitialData]);
 
-  // ── Reactive Simulation Trigger with 350ms Debounce ────────────────────────
+  // ── Reactive simulation only after the traveler changes a weather control ──
   useEffect(() => {
+    if (!isSimulatedMode) return;
     const timeout = setTimeout(() => {
       executeSimulation(rainfall, wind, visibility, temperature);
     }, 350);
 
     return () => clearTimeout(timeout);
-  }, [rainfall, wind, visibility, temperature, executeSimulation]);
+  }, [rainfall, wind, visibility, temperature, executeSimulation, isSimulatedMode]);
+
+  const updateWeather = (setter: (value: number) => void, value: number) => {
+    setter(value);
+    setIsSimulatedMode(true);
+  };
+
+  const resetToNominal = () => {
+    setRainfall(NOMINAL_WEATHER.rainfall);
+    setWind(NOMINAL_WEATHER.wind);
+    setVisibility(NOMINAL_WEATHER.visibility);
+    setTemperature(NOMINAL_WEATHER.temperature);
+    setIsSimulatedMode(false);
+    setSimulationResult(generateMockSimulation(activeTripId, NOMINAL_WEATHER, journey?.nodes));
+  };
+
+  const runSimulation = () => {
+    setIsSimulatedMode(true);
+    void executeSimulation(rainfall, wind, visibility, temperature);
+  };
 
   // ── Connect to Existing Recovery Screen ────────────────────────────────────
   const handleViewRecoveryOptions = async () => {
+    const risk = simulationResult?.prediction.disruption_probability ?? 0;
+    if (risk < 0.4) return;
     const tripToDisrupt = journey?.id || 7;
 
     try {
@@ -320,6 +268,7 @@ export default function DigitalTwinScreen() {
 
   const liveWeatherToUse = weatherData?.current || BASELINE_LIVE_WEATHER;
   const forecastToUse = weatherData?.forecast || [];
+  const hasActionableDisruption = simulationResult.prediction.disruption_probability >= 0.4;
 
   return (
     <div className="min-h-screen bg-[#f8fbff] text-slate-900 font-sans flex flex-col">
@@ -336,6 +285,7 @@ export default function DigitalTwinScreen() {
           wind={wind}
           visibility={visibility}
           onViewRecovery={handleViewRecoveryOptions}
+          canViewRecovery={hasActionableDisruption}
         />
 
         {/* ── PHASE 5: WEATHER PANEL (LIVE vs SIMULATED) ── */}
@@ -345,6 +295,21 @@ export default function DigitalTwinScreen() {
           forecast={forecastToUse}
           locationName="Mumbai Airport Area (BOM)"
           isSimulatedMode={isSimulatedMode}
+        />
+
+        <WhatIfController
+          rainfall={rainfall}
+          wind={wind}
+          visibility={visibility}
+          temperature={temperature}
+          onRainfallChange={(value) => updateWeather(setRainfall, value)}
+          onWindChange={(value) => updateWeather(setWind, value)}
+          onVisibilityChange={(value) => updateWeather(setVisibility, value)}
+          onTemperatureChange={(value) => updateWeather(setTemperature, value)}
+          onSimulate={runSimulation}
+          onResetToLive={resetToNominal}
+          isSimulating={isSimulating}
+          isCustomSimulated={isSimulatedMode}
         />
 
         {/* ── PHASE 4: LEAFLET + OPENSTREETMAP MAP VISUALIZATION ── */}
@@ -373,6 +338,7 @@ export default function DigitalTwinScreen() {
           disruptionProb={simulationResult.prediction.disruption_probability}
           transportImpact={simulationResult.prediction.transport_impact}
           hotelImpact={simulationResult.prediction.hotel_impact}
+          isSimulated={isSimulatedMode}
         />
 
         {/* ── PHASE 6: NUGEN AI EXPLANATION CARD ── */}
@@ -391,27 +357,31 @@ export default function DigitalTwinScreen() {
         />
 
         {/* ── BOTTOM ACTION BAR: DIRECT LINK TO EXISTING RECOVERY ── */}
-        <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-slate-800">
+        <div className={`text-white rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border ${hasActionableDisruption ? 'bg-gradient-to-r from-slate-900 to-indigo-950 border-slate-800' : 'bg-gradient-to-r from-emerald-800 to-teal-900 border-emerald-800'}`}>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+              <span className={`w-2.5 h-2.5 rounded-full ${hasActionableDisruption ? 'bg-rose-500 animate-ping' : 'bg-emerald-300'}`} />
               <h3 className="text-lg font-black tracking-tight text-white">
-                Disruption Propagation Detected
+                {hasActionableDisruption ? 'Disruption Propagation Detected' : 'Journey Monitoring Normal'}
               </h3>
             </div>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
-              Simulated weather results in a {Math.round(simulationResult.prediction.disruption_probability * 100)}% disruption probability with an estimated {simulationResult.prediction.estimated_delay_minutes} min departure shift. Proceed to Recovery Engine to evaluate multi-modal rerouting.
+              {hasActionableDisruption
+                ? `The selected scenario has a ${Math.round(simulationResult.prediction.disruption_probability * 100)}% disruption probability and an estimated ${simulationResult.prediction.estimated_delay_minutes} min departure shift. Recovery options are available.`
+                : 'Your itinerary is within operational limits. Adjust the weather controls to evaluate a what-if scenario; recovery is only offered when a disruption is likely.'}
             </p>
           </div>
 
           <div className="shrink-0 flex items-center gap-3 w-full md:w-auto">
-            <button
-              onClick={handleViewRecoveryOptions}
-              className="w-full md:w-auto px-6 py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-sm shadow-lg shadow-rose-600/30 transition-all flex items-center justify-center gap-2.5"
-            >
-              <span>VIEW RECOVERY OPTIONS</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {hasActionableDisruption && (
+              <button
+                onClick={handleViewRecoveryOptions}
+                className="w-full md:w-auto px-6 py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-sm shadow-lg shadow-rose-600/30 transition-all flex items-center justify-center gap-2.5"
+              >
+                <span>VIEW RECOVERY OPTIONS</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </main>

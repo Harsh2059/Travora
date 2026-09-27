@@ -40,6 +40,7 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
 }) => {
   // Dynamic weather condition status string
   const getWeatherStatusText = () => {
+    if (!isSimulatedMode) return 'No weather scenario selected — journey monitoring normal';
     const vis = simulatedWeather.visibility;
     const rain = simulatedWeather.rainfall;
     const wind = simulatedWeather.wind;
@@ -55,6 +56,7 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
 
   // Dynamic multi-metric What-If Delta badge
   const getWhatIfDeltaBadge = () => {
+    if (!isSimulatedMode) return 'No scenario selected';
     const rainDiff = simulatedWeather.rainfall - liveWeather.rainfall_mm;
     const visDiff = simulatedWeather.visibility - liveWeather.visibility_km;
     const windDiff = simulatedWeather.wind - liveWeather.wind_kmh;
@@ -247,37 +249,37 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
                   ? '25.0°C'
                   : '28.5°C'}
               </div>
-              <div className="text-xs font-bold text-rose-700">
+              <div className={`text-xs font-bold ${isSimulatedMode ? 'text-rose-700' : 'text-emerald-700'}`}>
                 {getWeatherStatusText()}
               </div>
             </div>
             <div className="text-right text-xs text-slate-500">
               <span className="font-bold text-slate-700">What-If Delta</span>
-              <div className="text-[10px] text-rose-600 font-bold">
+              <div className={`text-[10px] font-bold ${isSimulatedMode ? 'text-rose-600' : 'text-emerald-600'}`}>
                 {getWhatIfDeltaBadge()}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-rose-100 text-xs">
-            <div className="bg-white/90 p-2 rounded-xl border border-rose-100 shadow-2xs">
+          <div className={`grid grid-cols-3 gap-2 pt-2 border-t text-xs ${isSimulatedMode ? 'border-rose-100' : 'border-emerald-100'}`}>
+            <div className={`bg-white/90 p-2 rounded-xl border shadow-2xs ${isSimulatedMode ? 'border-rose-100' : 'border-emerald-100'}`}>
               <div className="text-[10px] font-bold text-slate-400 uppercase">Rainfall</div>
-              <div className="text-sm font-black text-rose-700 mt-0.5 flex items-center gap-1">
-                <CloudRain className="w-3.5 h-3.5 text-rose-500" />
+              <div className={`text-sm font-black mt-0.5 flex items-center gap-1 ${isSimulatedMode ? 'text-rose-700' : 'text-emerald-700'}`}>
+                <CloudRain className={`w-3.5 h-3.5 ${isSimulatedMode ? 'text-rose-500' : 'text-emerald-500'}`} />
                 <span>{simulatedWeather.rainfall} mm</span>
               </div>
             </div>
-            <div className="bg-white/90 p-2 rounded-xl border border-rose-100 shadow-2xs">
+            <div className={`bg-white/90 p-2 rounded-xl border shadow-2xs ${isSimulatedMode ? 'border-rose-100' : 'border-emerald-100'}`}>
               <div className="text-[10px] font-bold text-slate-400 uppercase">Wind</div>
-              <div className="text-sm font-black text-amber-700 mt-0.5 flex items-center gap-1">
-                <Wind className="w-3.5 h-3.5 text-amber-500" />
+              <div className={`text-sm font-black mt-0.5 flex items-center gap-1 ${isSimulatedMode ? 'text-amber-700' : 'text-emerald-700'}`}>
+                <Wind className={`w-3.5 h-3.5 ${isSimulatedMode ? 'text-amber-500' : 'text-emerald-500'}`} />
                 <span>{simulatedWeather.wind} km/h</span>
               </div>
             </div>
-            <div className="bg-white/90 p-2 rounded-xl border border-rose-100 shadow-2xs">
+            <div className={`bg-white/90 p-2 rounded-xl border shadow-2xs ${isSimulatedMode ? 'border-rose-100' : 'border-emerald-100'}`}>
               <div className="text-[10px] font-bold text-slate-400 uppercase">Visibility</div>
-              <div className="text-sm font-black text-indigo-700 mt-0.5 flex items-center gap-1">
-                <Eye className="w-3.5 h-3.5 text-indigo-500" />
+              <div className={`text-sm font-black mt-0.5 flex items-center gap-1 ${isSimulatedMode ? 'text-indigo-700' : 'text-emerald-700'}`}>
+                <Eye className={`w-3.5 h-3.5 ${isSimulatedMode ? 'text-indigo-500' : 'text-emerald-500'}`} />
                 <span>{simulatedWeather.visibility} km</span>
               </div>
             </div>

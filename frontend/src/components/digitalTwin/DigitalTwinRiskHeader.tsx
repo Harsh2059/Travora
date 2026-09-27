@@ -32,6 +32,7 @@ interface DigitalTwinRiskHeaderProps {
   wind: number;
   visibility: number;
   onViewRecovery: () => void;
+  canViewRecovery: boolean;
 }
 
 export const DigitalTwinRiskHeader: React.FC<DigitalTwinRiskHeaderProps> = ({
@@ -43,6 +44,7 @@ export const DigitalTwinRiskHeader: React.FC<DigitalTwinRiskHeaderProps> = ({
   wind,
   visibility,
   onViewRecovery,
+  canViewRecovery,
 }) => {
   const probPercent = Math.round(prediction.disruption_probability * 100);
   const delayMinutes = prediction.estimated_delay_minutes;
@@ -98,7 +100,7 @@ export const DigitalTwinRiskHeader: React.FC<DigitalTwinRiskHeaderProps> = ({
 
           {/* Right Column: Prominent "VIEW RECOVERY OPTIONS" Button */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-            <button
+            {canViewRecovery && <button
               onClick={onViewRecovery}
               className={`px-6 py-3.5 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2.5 shadow-lg group ${
                 isCritical || isHigh
@@ -109,7 +111,12 @@ export const DigitalTwinRiskHeader: React.FC<DigitalTwinRiskHeaderProps> = ({
               <AlertTriangle className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
               <span>VIEW RECOVERY OPTIONS</span>
               <ArrowRight className="w-4 h-4 text-white/80 group-hover:translate-x-1 transition-transform" />
-            </button>
+            </button>}
+            {!canViewRecovery && (
+              <span className="px-5 py-3 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-sm font-black">
+                ✓ JOURNEY ON SCHEDULE
+              </span>
+            )}
           </div>
         </div>
 

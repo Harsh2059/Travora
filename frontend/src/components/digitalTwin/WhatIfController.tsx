@@ -110,10 +110,10 @@ export const WhatIfController: React.FC<WhatIfControllerProps> = ({
           <button
             onClick={onResetToLive}
             className="px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1"
-            title="Reset to live weather observation"
+            title="Reset the Digital Twin to its nominal baseline"
           >
             <RefreshCw className="w-3 h-3" />
-            <span className="hidden sm:inline">Reset Live</span>
+            <span className="hidden sm:inline">Reset Baseline</span>
           </button>
         </div>
       </div>

@@ -24,6 +24,7 @@ interface BeforeAfterComparisonProps {
   disruptionProb: number;
   transportImpact: number;
   hotelImpact: number;
+  isSimulated: boolean;
 }
 
 export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
@@ -34,6 +35,7 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
   disruptionProb,
   transportImpact,
   hotelImpact,
+  isSimulated,
 }) => {
   const isSeverelyDisrupted = disruptionProb > 0.5 || estimatedDelayMinutes > 40;
 
@@ -143,7 +145,7 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
                 }`}
               />
               <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">
-                Simulated Weather Impact
+                {isSimulated ? 'Simulated Weather Impact' : 'Baseline Journey Status'}
               </h3>
             </div>
             <span
@@ -153,16 +155,16 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
                   : 'bg-emerald-100 text-emerald-800 border-emerald-200'
               }`}
             >
-              {isSeverelyDisrupted ? 'SIMULATION ESTIMATE — DELAY LIKELY' : 'FEASIBLE'}
+              {isSeverelyDisrupted ? 'SIMULATION ESTIMATE — DELAY LIKELY' : isSimulated ? 'FEASIBLE' : 'NORMAL'}
             </span>
           </div>
 
           <div className="space-y-3 text-xs">
             {/* Weather Stress */}
             <div className="bg-white/95 p-3 rounded-xl border border-rose-100 shadow-2xs flex items-center justify-between">
-              <span className="font-bold text-slate-500">Simulated Weather</span>
-              <span className="font-black text-rose-700">
-                Rain: {rainfall} mm • Wind: {wind} km/h • Vis: {visibility} km
+              <span className="font-bold text-slate-500">{isSimulated ? 'Simulated Weather' : 'Baseline Weather'}</span>
+              <span className={`font-black ${isSeverelyDisrupted ? 'text-rose-700' : 'text-emerald-700'}`}>
+                {isSimulated ? `Rain: ${rainfall} mm • Wind: ${wind} km/h • Vis: ${visibility} km` : 'Normal operating conditions'}
               </span>
             </div>
 
@@ -221,9 +223,9 @@ export const BeforeAfterComparison: React.FC<BeforeAfterComparisonProps> = ({
             {/* Risk Score */}
             <div className="pt-2 flex items-center justify-between text-xs font-bold">
               <span className="text-slate-700">Likelihood of Delay:</span>
-              <span className="text-rose-700 font-black text-sm flex items-center gap-1">
+              <span className={`font-black text-sm flex items-center gap-1 ${isSeverelyDisrupted ? 'text-rose-700' : 'text-emerald-700'}`}>
                 <TrendingUp className="w-4 h-4" />
-                {Math.round(disruptionProb * 100)}% chance (+{Math.round(disruptionProb * 100) - 8}% higher)
+                {Math.round(disruptionProb * 100)}% chance {isSimulated && `(+${Math.round(disruptionProb * 100) - 8}% vs baseline)`}
               </span>
             </div>
           </div>
