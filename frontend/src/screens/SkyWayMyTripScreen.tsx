@@ -13,7 +13,9 @@ import {
   Users,
   Settings,
   RefreshCw,
-  ArrowRight
+  ArrowRight,
+  Sparkles,
+  CloudRain
 } from 'lucide-react';
 import { SkyWayNavbar } from '../components/SkyWayNavbar';
 import { SkyWaySupportModal } from '../components/SkyWaySupportModal';
@@ -174,6 +176,13 @@ export default function SkyWayMyTripScreen() {
 
             {/* Actions Buttons */}
             <div className="flex items-center gap-2.5 shrink-0">
+              <Link
+                to={`/trip/${journey?.id || 7}/digital-twin`}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:to-indigo-500 shadow-md shadow-indigo-500/20 transition-all flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-sky-200 animate-pulse" />
+                <span>Digital Twin (Weather What-If)</span>
+              </Link>
               <button
                 onClick={() => setActiveTab('manage')}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 shadow-2xs transition-colors"
@@ -203,6 +212,14 @@ export default function SkyWayMyTripScreen() {
                     <div className="px-3 py-1.5 font-bold text-slate-400 uppercase tracking-wider text-[10px]">
                       Disruption & Simulation
                     </div>
+                    <Link
+                      to={`/trip/${journey?.id || 7}/digital-twin`}
+                      onClick={() => setIsActionsMenuOpen(false)}
+                      className="w-full text-left px-3.5 py-2 hover:bg-indigo-50 text-indigo-700 font-bold flex items-center gap-2"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Weather Digital Twin (What-If)</span>
+                    </Link>
                     <button
                       onClick={handleSimulateDelay}
                       disabled={isSimulating}
@@ -273,6 +290,16 @@ export default function SkyWayMyTripScreen() {
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
               )}
             </Link>
+            <Link
+              to={`/trip/${journey?.id || 7}/digital-twin`}
+              className="py-3.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-indigo-600 hover:text-indigo-800 transition-colors shrink-0 flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+              <span>Digital Twin (Weather What-If)</span>
+              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-white">
+                SIMULATE
+              </span>
+            </Link>
             <button
               onClick={() => setActiveTab('passengers')}
               className={`py-3.5 text-xs sm:text-sm font-bold border-b-2 transition-colors shrink-0 ${
@@ -304,6 +331,37 @@ export default function SkyWayMyTripScreen() {
               Manage
             </button>
           </div>
+        </div>
+
+        {/* ── WEATHER-DRIVEN DIGITAL TWIN BANNER CARD (HackCelestial 3.0 Demo) ── */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0 shadow-inner">
+              <CloudRain className="w-6 h-6 text-sky-400" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-extrabold tracking-wider uppercase px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/20">
+                  HackCelestial 3.0 Demo
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Journey #7 (Mumbai → Jaipur)
+                </span>
+                <h3 className="text-sm sm:text-base font-bold text-white">Weather-Driven Digital Twin & What-If Simulation</h3>
+              </div>
+              <p className="text-xs text-slate-300 mt-1.5 max-w-2xl leading-relaxed">
+                Experience the live Digital Twin: simulate severe weather stress-tests (rainfall, wind, visibility, temp), observe AI delay predictions, map cascading impacts across Flight AI-441 → Uber → Hotel, and review domain reasoning & recovery plans.
+              </p>
+            </div>
+          </div>
+          <Link
+            to={`/trip/${journey?.id || 7}/digital-twin`}
+            className="px-5 py-3 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-600 hover:from-sky-400 hover:to-indigo-400 text-white font-extrabold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 shrink-0 group hover:scale-[1.02]"
+          >
+            <Sparkles className="w-4 h-4 text-sky-200 group-hover:rotate-12 transition-transform" />
+            <span>Launch Digital Twin</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
         </div>
 
         {/* ── DISRUPTION ALERT BANNER (If Active) ── */}

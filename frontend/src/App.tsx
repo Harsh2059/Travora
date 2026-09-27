@@ -34,6 +34,9 @@ const SkyWayTimelineScreen   = lazy(() => import('./screens/SkyWayTimelineScreen
 const SkyWayDisruptionScreen = lazy(() => import('./screens/SkyWayDisruptionScreen.tsx'));
 const SkyWayItineraryScreen  = lazy(() => import('./screens/SkyWayItineraryScreen.tsx'));
 
+// HackCelestial 3.0 Digital Twin Screen
+const DigitalTwinScreen      = lazy(() => import('./screens/DigitalTwinScreen.tsx'));
+
 // Builder & Admin screens
 const TripBuilderScreen      = lazy(() => import('./screens/TripBuilderScreen.tsx'));
 const ReviewJourneyScreen    = lazy(() => import('./screens/ReviewJourneyScreen.tsx'));
@@ -76,6 +79,10 @@ export default function App() {
           <Route path="/trip/:tripId/disruption"    element={<SkyWayDisruptionScreen />} />
           <Route path="/itinerary"                  element={<SkyWayItineraryScreen />} />
           <Route path="/trip/:tripId/itinerary"     element={<SkyWayItineraryScreen />} />
+
+          {/* HackCelestial 3.0 Digital Twin Weather Simulation */}
+          <Route path="/digital-twin"               element={<DigitalTwinScreen />} />
+          <Route path="/trip/:tripId/digital-twin"  element={<DigitalTwinScreen />} />
 
           {/* Builder, Workspace & Admin */}
           <Route path="/build"                      element={<TripBuilderScreen />} />

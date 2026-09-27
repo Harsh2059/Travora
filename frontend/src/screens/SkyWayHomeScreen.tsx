@@ -27,7 +27,8 @@ import {
   Bed,
   Check,
   Loader2,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import { SkyWayNavbar } from '../components/SkyWayNavbar';
 import { SkyWaySupportModal } from '../components/SkyWaySupportModal';
@@ -453,6 +454,13 @@ export default function SkyWayHomeScreen() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Link
+                to={`/trip/${journey?.id || 7}/digital-twin`}
+                className="px-3 py-1 text-xs font-bold text-white bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 hover:opacity-95 rounded-lg shadow-xs transition-all flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-sky-200 animate-pulse" />
+                <span>Weather Digital Twin</span>
+              </Link>
               {hasDisruption ? (
                 <Link
                   to="/disruption"
