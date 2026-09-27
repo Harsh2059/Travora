@@ -28,6 +28,7 @@ import {
   getSelectedRecoveryPlanWithMeta
 } from '../store/journeyStore';
 import { getStoredUser } from '../services/auth';
+import { triggerMicroFeedback } from '../services/feedbackService';
 
 function fmtDateFull(isoStr?: string | null): string {
   if (!isoStr) return '12 Jun 2025';
@@ -150,6 +151,25 @@ export default function SkyWayMyTripScreen() {
     } catch (err) {
       console.error('Failed to reset disruptions:', err);
     }
+  };
+
+  const handleCompleteJourney = () => {
+    setIsActionsMenuOpen(false);
+    triggerMicroFeedback({
+      eventType: 'JOURNEY_COMPLETED',
+      journeyId: journey?.id || 1,
+      title: '🎉 Journey completed!',
+      question: 'How was your Travora experience overall?',
+      responseType: 'RATING',
+      options: [
+        { label: 'Journey tracking', value: 'JOURNEY_TRACKING' },
+        { label: 'Disruption alerts', value: 'DISRUPTION_ALERTS' },
+        { label: 'Recovery', value: 'RECOVERY' },
+        { label: 'Notifications', value: 'NOTIFICATIONS' },
+        { label: 'Easy planning', value: 'EASY_PLANNING' },
+      ],
+      delayMs: 600,
+    });
   };
 
   const handleDownloadItinerary = () => {
@@ -294,8 +314,15 @@ export default function SkyWayMyTripScreen() {
                       </Link>
                     )}
                     <button
+                      onClick={handleCompleteJourney}
+                      className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-emerald-700 font-bold flex items-center gap-2 border-t border-slate-100 mt-1 pt-2"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Mark Journey as Completed</span>
+                    </button>
+                    <button
                       onClick={handleResetTrip}
-                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2 border-t border-slate-100 mt-1 pt-2"
+                      className="w-full text-left px-3.5 py-2 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
                     >
                       <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
                       <span>Reset Disruption Simulation</span>

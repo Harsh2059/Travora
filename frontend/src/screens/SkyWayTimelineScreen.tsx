@@ -20,6 +20,7 @@ import {
   resetTripDisruptions,
   getSelectedRecoveryPlanWithMeta
 } from '../store/journeyStore';
+import { triggerMicroFeedback } from '../services/feedbackService';
 
 function fmtDate(isoStr?: string | null): string {
   if (!isoStr) return 'Sep 28';
@@ -49,6 +50,8 @@ export default function SkyWayTimelineScreen() {
 
   const [activeDisruptions, setActiveDisruptions] = useState<any[]>([]);
   const [hasRecoverySelected, setHasRecoverySelected] = useState<boolean>(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [isTripCompleted, setIsTripCompleted] = useState(false);
 
   useEffect(() => {
     if (journey?.id) {
@@ -69,6 +72,52 @@ export default function SkyWayTimelineScreen() {
   }, [journey?.id]);
 
   const hasDisruption = activeDisruptions.length > 0;
+
+
+  const handleCompleteJourney = () => {
+    setIsTripCompleted(true);
+    triggerMicroFeedback({
+      eventType: 'JOURNEY_COMPLETED',
+      journeyId: journey?.id || 1,
+      title: '🎉 Journey completed!',
+      question: 'How was your Travora experience overall?',
+      responseType: 'RATING',
+      options: [
+        { label: 'Journey tracking', value: 'JOURNEY_TRACKING' },
+        { label: 'Disruption alerts', value: 'DISRUPTION_ALERTS' },
+        { label: 'Recovery', value: 'RECOVERY' },
+        { label: 'Notifications', value: 'NOTIFICATIONS' },
+        { label: 'Easy planning', value: 'EASY_PLANNING' },
+      ],
+      delayMs: 800,
+    });
+  };
+
+  const handleSimulateDisruption = async () => {
+    if (!journey?.id) return;
+    setIsSimulating(true);
+    try {
+      const affectedNode = journey.nodes?.[0];
+      const payload = {
+        trip_id: journey.id,
+        affected_node_id: affectedNode?.backendId || 1,
+        entity_id: affectedNode?.backendId || 1,
+        type: 'FLIGHT_DELAYED',
+        event_type: 'FLIGHT_DELAYED',
+        detected_at: new Date().toISOString(),
+        reason: 'Technical issue with aircraft avionics system',
+        delay_minutes: 390,
+      };
+      await triggerTripDisruption(journey.id, payload);
+      await refresh();
+      navigate('/disruption');
+    } catch (err) {
+      console.error('Failed to trigger simulation:', err);
+      navigate('/disruption');
+    } finally {
+      setIsSimulating(false);
+    }
+  };
 
   const handleReset = async () => {
     if (!journey?.id) return;
@@ -248,13 +297,27 @@ export default function SkyWayTimelineScreen() {
               </Link>
             )}
 
+            {(hasDisruption || hasRecoverySelected) && (
+              <button
+                onClick={handleReset}
+                className="p-2 rounded-xl text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors"
+                title="Reset simulation to baseline"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
+
             <button
-              onClick={handleReset}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Reset simulation & recovery to clean baseline journey"
+              onClick={handleCompleteJourney}
+              disabled={isTripCompleted}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                isTripCompleted
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                  : 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm'
+              }`}
             >
-              <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
-              <span>Reset Journey</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span>{isTripCompleted ? 'Completed' : 'Complete Journey'}</span>
             </button>
           </div>
         </div>
