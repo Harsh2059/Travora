@@ -2,13 +2,13 @@
 
 <img src="docs/screenshots/01-dashboard.png" alt="Travora Dashboard" width="100%"/>
 
-# ✈️ Travora
-### Intelligent Itinerary Recovery · Real-Time Rebooking
+# ✈️ Travora (SkyWay)
+### Autonomous Travel Disruption Engine · Weather Digital Twin · Interactive Recovery
 
-**Travora is an autonomous travel disruption management platform that detects flight delays, hotel overbookings, and missed connections in real time — then instantly generates ranked recovery plans so travelers never need to scramble.**
+**Travora is an end-to-end, AI-powered travel resiliency and recovery platform. It models entire travel itineraries as Digital Twin Dependency Graphs, continuously monitors weather telemetry along flight corridors, predicts cascading disruptions before they occur, and enables instant 1-click or multi-channel (WhatsApp/SMS) recovery.**
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://travora.vercel.app)
-[![Tech Stack](https://img.shields.io/badge/Stack-FastAPI_+_React-blue?style=for-the-badge)](https://github.com/Harsh2059/Travora)
+[![Tech Stack](https://img.shields.io/badge/Stack-FastAPI_+_React_+_Flutter-blue?style=for-the-badge)](https://github.com/Harsh2059/Travora)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 </div>
@@ -17,352 +17,297 @@
 
 ## 📋 Table of Contents
 
-1. [Problem Statement](#-problem-statement)
-2. [Proposed Solution](#-proposed-solution)
-3. [Key Features](#-key-features)
+1. [Why Travora? (Executive Summary)](#-why-travora-executive-summary)
+2. [The Core Problem vs. Travora's Solution](#-the-core-problem-vs-travoras-solution)
+3. [The 5 Pillars of Innovation](#-the-5-pillars-of-innovation)
 4. [System Architecture](#-system-architecture)
-5. [Technology Stack](#-technology-stack)
-6. [Implementation Details](#-implementation-details)
-7. [Prototype Screenshots](#-prototype-screenshots)
-8. [Getting Started](#-getting-started)
+5. [Ecosystem & Directory Layout](#-ecosystem--directory-layout)
+6. [Technology Stack](#-technology-stack)
+7. [Step-by-Step Getting Started](#-step-by-step-getting-started)
+8. [Interactive Demo Walkthrough](#-interactive-demo-walkthrough)
 9. [API Reference](#-api-reference)
-10. [Team](#-team)
+10. [Team & Contributors](#-team--contributors)
+11. [Documentation & Deep Dives](#-documentation--deep-dives)
 
 ---
 
-## 🚨 Problem Statement
+## 💡 Why Travora? (Executive Summary)
 
-Modern business travel involves a chain of interdependent bookings — flights, transfers, hotels, and conference slots — where **a single disruption cascades into a broken itinerary**.
+Modern travel relies on a chain of independent reservations — flight connections, airport transfers, hotel check-in windows, and business meetings. **When one flight is delayed by weather, the entire domino line of bookings falls apart.** 
 
-### The Reality Today
-
-| Scenario | Current Experience |
-|---|---|
-| ✈️ Flight delayed 4 hours | Traveler manually calls airline, hotel, transfer |
-| 🏨 Hotel overbooked | Traveler scrambles to find alternatives on 3 apps |
-| 🚌 Transfer cancelled | Traveler misses a flight connection |
-| 📅 Conference rescheduled | Traveler has no idea downstream items are now wrong |
-
-### The Cost
-
-- **Average 2.5 hours** lost per disruption managing rebooking across apps
-- **30% of business travelers** miss at least one connecting segment per year due to cascading failures
-- **No single platform** today models the downstream dependency graph of a traveler's entire itinerary
-- Airlines, hotels, and transfer providers operate in **complete isolation** — no shared awareness of a traveler's full journey
-
-### The Core Gap
-
-> *When my Air India flight is delayed 4 hours, my Heathrow Express booking is useless, my Marriott check-in window is broken, and my Tech Conference keynote seat is at risk — but nobody tells me that. I have to figure it out myself.*
+Travora replaces manual phone calls and multi-app stress with an **Autonomous Resilience Engine**:
+- **Before disruption**: It simulates weather stress scenarios on flight corridors using a **Weather Digital Twin**.
+- **During disruption**: It maps the trip onto a **Directed Acyclic Graph (DAG)** to quantify downstream impact.
+- **After disruption**: It automatically finds, ranks, and packages 3 optimal recovery plans (*Best Overall*, *Lowest Cost*, *Fastest Arrival*) and dispatches them via Web, Mobile, WhatsApp, or SMS.
+- **Instant Rebooking**: Travelers can accept a recovery option with **1 click on web/mobile** or by replying `1`, `2`, or `3` directly in **WhatsApp or SMS**.
 
 ---
 
-## 💡 Proposed Solution
+## 🚨 The Core Problem vs. Travora's Solution
 
-**Travora** models the entire traveler itinerary as a **Digital Twin Dependency Graph** — a directed acyclic graph (DAG) where each booking is a node and time-dependent constraints form the edges.
+### The Current Travel Nightmare
+- **Fragmented Systems**: Airlines, hotels, and ground transport operate in complete silos with no shared awareness of a traveler's full journey.
+- **Cascading Collapses**: A 3-hour flight delay causes missed ground transfers, expired hotel check-in windows, and missed keynotes.
+- **Scrambling Under Stress**: Business travelers waste an average of **2.5 hours per disruption** frantically searching across multiple apps or waiting on hold.
 
-When any node is disrupted:
-1. **Graph propagation** identifies every downstream node that is now invalidated
-2. **Impact Engine** calculates cascading delay, cost, and criticality scores
-3. **Recovery Generator** produces 3 ranked solutions: `Best for You`, `Lowest Cost`, `Fastest Arrival`
-4. **One-click execution** re-books everything automatically
+### The Travora Experience
 
-### Design Principles
-
-- 🤖 **Zero manual effort** — traveler makes one decision, Travora handles the rest
-- 🔗 **Dependency-aware** — every booking knows its upstream and downstream dependencies
-- 📊 **Transparent trade-offs** — each plan shows exactly what you gain and lose
-- 🛡️ **Fault-tolerant UI** — if the backend is unreachable, mock data ensures a seamless demo
+| Disruption Event | Legacy Travel Apps | Travora Autonomous Recovery |
+|---|---|---|
+| **Flight Delayed 4 Hours** | Manual calls to airline, hotel & car rental | Graph propagation auto-detects missed check-in & reschedules downstream items |
+| **Severe Monsoon / Fog** | Wait until stranded at gate | **Weather Digital Twin** predicts 96% disruption risk & proactively alerts traveler |
+| **Hotel Overbooked** | Scramble on 3 booking sites | Proactively ranks 3 nearby alternative hotels matching traveler preferences |
+| **No Smartphone Data / Wi-Fi** | Stranded without access | **WhatsApp & SMS Gateway** sends text options; traveler replies `1` to confirm rebooking & get PNR |
 
 ---
 
-## ✨ Key Features
+## ✨ The 5 Pillars of Innovation
 
-### Traveler Assistant View
-- **Live Itinerary Timeline** — All 5 trip segments displayed with confirmed status and critical meeting tags
-- **Disruption Simulator** — 6 real-world emergency scenarios with one-click activation
-- **Impact Assessment** — Visual breakdown of which segments are breached vs. protected
-- **Recovery Plan Cards** — Side-by-side comparison of 3 algorithmic recovery options with cost and delay trade-offs
+### 🧠 1. Digital Twin Dependency Graph (DAG)
+Every itinerary is represented as a directed network in NetworkX where:
+- **Nodes** = Bookings (Flights, Hotels, Transfers, Meetings).
+- **Edges** = Temporal dependencies (e.g. *Transfer B must start at least 45 mins after Flight A lands*).
+- **Impact Propagation**: When a node is delayed, BFS/DFS algorithms propagate the time shift downstream to identify broken connection windows and highlight breached vs. protected nodes.
 
-### System Engineering View
-- **Digital Twin DAG** — Interactive graph showing dependency edges between all itinerary nodes
-- **ML Risk Scores** — Downstream risk model scores each node's failure probability
-- **Version History** — Full version comparison between itinerary states (v1 → v3)
-- **Execution Engine** — Traces every rebooking action with status and timestamps
+### 🌦️ 2. Weather Digital Twin & What-If Simulator
+- **Live Telemetry**: Ingests real-time weather observation metrics (temperature, rainfall mm, wind speed km/h, visibility km) along flight corridors (e.g., Mumbai BOM → Jaipur JAI corridor).
+- **What-If Simulation Sliders**: Allows travelers/admins to slide weather conditions or pick presets (*Clear Skies*, *Moderate Monsoon*, *Severe Storm Benchmark*, *Cyclone Stress Test*) to preview disruption risk before taking off.
+- **Predictive ML Gauges**: Calculates Disruption Risk %, Estimated Delay, Transport Impact, Hotel Impact, and AI Confidence Scores.
 
-### Platform Capabilities
-- 🔄 **Missed Flight (Traveler Fault)** — Handles even passenger-side missed departures with full rebooking at own cost
-- ⏩ **Advance Trip Request** — User can request 24h earlier departure; Travora re-evaluates the entire graph
-- 📝 **Version Diffing** — Compare any two trip versions side-by-side to understand what changed
+### ⚡ 3. Autonomous Multi-Channel Disruption Recovery Engine
+When a disruption breaches an itinerary, Travora queries alternative flights, hotels, and transport services to generate 3 Pareto-ranked recovery packages:
+1. 🏆 **Best for You**: Balanced optimization of cost, arrival time, and convenience.
+2. 💰 **Lowest Cost**: Minimizes out-of-pocket rebooking expenses.
+3. ⚡ **Fastest Arrival**: Prioritizes earliest arrival time to safeguard critical business meetings.
+
+### 💬 4. 2-Way Interactive WhatsApp & SMS Conversational Bot
+- **Zero-App Recovery**: Travelers do not even need to open an app to recover their trip.
+- **Interactive WhatsApp & SMS Bot**: Inbound webhooks monitor traveler responses (`1`, `2`, `3`). Upon receiving a reply, Travora atomically executes the selected recovery plan, generates a new PNR, and broadcasts confirmation back immediately.
+
+### 📡 5. On-Premise Hardware SMS Gateway
+- **Zero Third-Party Dependency**: Includes a standalone Android Flutter app that turns any spare Android smartphone into a hardware SMS gateway.
+- **Direct SIM Dispatch**: Uses native Android `SmsManager` to dispatch real SMS messages directly via carrier SIM cards, eliminating expensive SMS API subscriptions.
 
 ---
 
 ## 🏗️ System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         TRAVORA PLATFORM                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│   ┌───────────────────┐         ┌────────────────────────────┐  │
-│   │   React Frontend  │◄───────►│      FastAPI Backend       │  │
-│   │   (Vite + TS)     │  REST   │      (Python 3.12)         │  │
-│   │                   │  /api   │                            │  │
-│   │  ┌─────────────┐  │         │  ┌──────────────────────┐  │  │
-│   │  │ Traveler    │  │         │  │ Digital Twin Engine  │  │  │
-│   │  │ Assistant   │  │         │  │ (NetworkX DAG)       │  │  │
-│   │  │ View        │  │         │  └──────────┬───────────┘  │  │
-│   │  └─────────────┘  │         │             │              │  │
-│   │  ┌─────────────┐  │         │  ┌──────────▼───────────┐  │  │
-│   │  │ Engineering │  │         │  │  Impact Engine       │  │  │
-│   │  │ DAG View    │  │         │  │  (Graph propagation) │  │  │
-│   │  └─────────────┘  │         │  └──────────┬───────────┘  │  │
-│   │  ┌─────────────┐  │         │             │              │  │
-│   │  │ Recovery    │  │         │  ┌──────────▼───────────┐  │  │
-│   │  │ Plans View  │  │         │  │  Recovery Generator  │  │  │
-│   │  └─────────────┘  │         │  │  (3 ranked plans)    │  │  │
-│   └───────────────────┘         │  └──────────┬───────────┘  │  │
-│                                 │             │              │  │
-│   ┌───────────────────┐         │  ┌──────────▼───────────┐  │  │
-│   │   Mock Data Layer │         │  │  ML Risk Models      │  │  │
-│   │   (Fallback when  │         │  │  (scikit-learn)      │  │  │
-│   │   backend is down)│         │  └──────────┬───────────┘  │  │
-│   └───────────────────┘         │             │              │  │
-│                                 │  ┌──────────▼───────────┐  │  │
-│                                 │  │  SQLite Database     │  │  │
-│                                 │  │  (SQLAlchemy ORM)    │  │  │
-│                                 │  └──────────────────────┘  │  │
-│                                 └────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    TRAVORA PLATFORM                                     │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                         │
+│   ┌─────────────────────────┐     REST API      ┌──────────────────────────────────┐   │
+│   │   React Web Dashboard   │◄─────────────────►│         FastAPI Backend          │   │
+│   │   (Vite + Tailwind)     │                   │          (Python 3.10+)          │   │
+│   └─────────────────────────┘                   │                                  │   │
+│   ┌─────────────────────────┐     REST API      │  ┌────────────────────────────┐  │   │
+│   │   Flutter Mobile App    │◄─────────────────►│  │ Digital Twin Graph Engine  │  │   │
+│   │   (iOS & Android)       │                   │  │ (NetworkX DAG Model)       │  │   │
+│   └─────────────────────────┘                   │  └─────────────┬──────────────┘  │   │
+│                                                 │                │                 │   │
+│   ┌─────────────────────────┐    Job Polling    │  ┌─────────────▼──────────────┐  │   │
+│   │   Android SMS Gateway   │◄─────────────────►│  │ Weather Digital Twin       │  │   │
+│   │   (Native SIM Hardware) │                   │  │ (Telemetry & Simulator)    │  │   │
+│   └────────────┬────────────┘                   │  └─────────────┬──────────────┘  │   │
+│                │ Physical SIM                   │                │                 │   │
+│                v                                │  ┌─────────────▼──────────────┐  │   │
+│   ┌─────────────────────────┐                   │  │ Multi-Channel Recovery     │  │   │
+│   │ Traveler SMS (Text 1/2) │                   │  │ (3 Ranked Pareto Plans)    │  │   │
+│   └─────────────────────────┘                   │  └─────────────┬──────────────┘  │   │
+│                                                 │                │                 │   │
+│   ┌─────────────────────────┐    Meta Webhook   │  ┌─────────────▼──────────────┐  │   │
+│   │  WhatsApp Interactive   │◄─────────────────►│  │ WhatsApp & SMS Bot Engine  │  │   │
+│   │  (2-Way Bot Messaging)  │                   │  └─────────────┬──────────────┘  │   │
+│   └─────────────────────────┘                   │                │                 │   │
+│                                                 │  ┌─────────────▼──────────────┐  │   │
+│                                                 │  │ SQLite / PostgreSQL DB     │  │   │
+│                                                 │  │ (SQLAlchemy ORM)           │  │   │
+│                                                 │  └────────────────────────────┘  │   │
+│                                                 └──────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Core Engine Components
+---
 
-| Component | Responsibility |
-|---|---|
-| **Graph Builder** | Constructs NetworkX DAG from trip segments with temporal constraints |
-| **Event Manager** | Injects disruption events (delays, cancellations, strikes) into the graph |
-| **Impact Engine** | Propagates event effects downstream, calculates breach severity |
-| **Recovery Generator** | Produces 3 Pareto-optimal recovery plans (best, cheapest, fastest) |
-| **Execution Engine** | Atomically applies selected recovery plan across all affected bookings |
-| **Versioning Engine** | Snapshots trip state after each modification for full diff comparison |
-| **ML Risk Model** | `DisruptionRiskModel` + `DownstreamRiskModel` score failure probability |
-| **Constraint Solver** | Enforces minimum connection windows, hotel check-in rules, event deadlines |
+## 📁 Ecosystem & Directory Layout
+
+The repository is structured into modular micro-services and applications:
+
+```
+Travora/
+├── backend/            # Python FastAPI Backend
+│   ├── main.py         # Application entrypoint & REST API routes
+│   ├── models.py       # SQLAlchemy ORM schemas (Trips, Bookings, Disruptions, Executions)
+│   ├── seed.py         # Database initializer & sample journey seeder
+│   └── services/       # Core engines (Graph, Impact, Recovery, ML, Weather, WhatsApp, SMS)
+│
+├── frontend/           # React 19 + TypeScript Web App
+│   ├── src/screens/    # Dashboard, Timeline, Digital Twin Weather, Admin Console
+│   └── src/components/ # Leaflet Route Map, Recovery Plan Cards, Simulator Modals
+│
+├── mobile/             # Flutter Mobile Application (iOS & Android)
+│   └── lib/screens/    # Home Dashboard, Journey Timeline, 1-Tap Recovery, Profile
+│
+├── sms_gateway/        # Standalone Android Flutter Hardware SMS Gateway
+│   └── lib/            # Direct SIM SMS dispatcher via Android SmsManager MethodChannel
+│
+└── docs/               # Architecture design docs & screenshot references
+```
 
 ---
 
 ## 🛠️ Technology Stack
 
-### Frontend
-| Technology | Version | Purpose |
-|---|---|---|
-| React | 19.x | UI Framework |
-| TypeScript | 6.x | Type Safety |
-| Vite | 8.x | Build Tool |
-| Tailwind CSS | 4.x | Styling |
-| Lucide React | Latest | Icon System |
-| Axios | 1.x | HTTP Client |
-
-### Backend
-| Technology | Version | Purpose |
-|---|---|---|
-| FastAPI | Latest | REST API Framework |
-| SQLAlchemy | Latest | ORM / Database Layer |
-| NetworkX | Latest | Dependency Graph Engine |
-| scikit-learn | Latest | ML Risk Scoring |
-| NumPy | Latest | Numerical Operations |
-| Pydantic | Latest | Data Validation & Schemas |
-| SQLite | Built-in | Persistent Storage |
-| Uvicorn | Latest | ASGI Server |
-
-### Infrastructure
-| Service | Purpose |
+| Ecosystem Layer | Core Technologies |
 |---|---|
-| Vercel | Frontend hosting + Python serverless functions |
-| GitHub | Source control + CI/CD trigger |
+| **Backend Engine** | Python 3.10+, FastAPI, SQLAlchemy, NetworkX, scikit-learn, Uvicorn, Pydantic |
+| **Web Frontend** | React 19, TypeScript, Vite, Tailwind CSS, Leaflet Maps, Lucide Icons, Axios |
+| **Mobile App** | Flutter 3.x, Dart, GoRouter, Riverpod, Secure Storage |
+| **Hardware SMS Gateway** | Flutter Android, Kotlin `SmsManager` MethodChannel |
+| **Integrations** | Meta WhatsApp Cloud API, OpenWeather Telemetry API |
 
 ---
 
-## 🔧 Implementation Details
-
-### Digital Twin Graph Model
-
-Each trip segment is modeled as a **directed node** with typed edges:
-
-```python
-# Node types
-FLIGHT   → has: airline, route, departure, arrival, status
-TRANSFER → has: provider, pickup, dropoff, window_minutes
-HOTEL    → has: property, check_in, check_out, confirmation
-EVENT    → has: venue, start_time, priority (CRITICAL | NORMAL)
-
-# Edge types
-TEMPORAL_DEPENDENCY  → "segment B starts after segment A arrives"
-LOCATION_DEPENDENCY  → "hotel pickup requires transfer dropoff location"
-CONSTRAINT           → "minimum 60-min connection window enforced"
-```
-
-### Disruption Propagation Algorithm
-
-```
-1. Inject event into source node (e.g., Flight A delayed +4h)
-2. BFS/DFS traverse all downstream edges
-3. For each downstream node:
-   a. Recalculate earliest possible start time
-   b. Check constraint satisfaction
-   c. Compute breach severity score (0.0 → 1.0)
-   d. Flag as BREACHED, AT_RISK, or PROTECTED
-4. Aggregate impact: affected_count, total_delay, cost_delta
-5. Trigger Recovery Generator with constrained DAG
-```
-
-### Recovery Plan Scoring
-
-Each candidate plan is scored on 3 axes:
-
-```
-score_recommended = 0.4 × preservation + 0.3 × cost_delta + 0.3 × delay_delta
-score_cheapest    = 0.1 × preservation + 0.8 × cost_delta + 0.1 × delay_delta
-score_fastest     = 0.2 × preservation + 0.1 × cost_delta + 0.7 × delay_delta
-```
-
-### Mock Data Fallback
-
-When the backend is unreachable, the frontend transparently switches to `mockData.ts` — a complete hardcoded snapshot of the Mumbai → London trip with all disruption and recovery data pre-populated. This ensures a reliable demo regardless of backend availability.
-
----
-
-## 📸 Prototype Screenshots
-
-### 1. Traveler Dashboard
-> The main interface showing the active trip, guided walkthrough, and one-click disruption launch.
-
-![Traveler Dashboard](docs/screenshots/01-dashboard.png)
-
----
-
-### 2. Live Trip Timeline
-> All 5 itinerary segments — 2 flights, 1 transfer, 1 hotel, 1 conference — with confirmed status and critical meeting tags.
-
-![Trip Timeline](docs/screenshots/02-trip-timeline.png)
-
----
-
-### 3. Disruption Simulator (Traveler View)
-> 6 real-world emergency scenarios. The recommended scenario is highlighted to guide first-time demo viewers.
-
-![Disruption Simulator](docs/screenshots/03-disruption-simulator.png)
-
----
-
-### 4. Engineering View — DAG Simulator
-> The system engineering perspective with 7 disruption types including a unique "Missed Flight (Traveler Fault)" scenario that applies no-airline-compensation logic.
-
-![Engineering Disruption Simulator](docs/screenshots/04-engineering-view.png)
-
----
-
-### 5. Recovery Plans — 3 Ranked Solutions
-> After disruption is detected, Travora presents 3 Pareto-optimal plans with cost, delay, and preservation trade-offs clearly displayed.
-
-![Recovery Plans](docs/screenshots/05-recovery-plans.png)
-
----
-
-## 🚀 Getting Started
+## 🚀 Step-by-Step Getting Started
 
 ### Prerequisites
-- Node.js 18+
-- Python 3.10+
-- Git
+- **Node.js** v18+ & **npm**
+- **Python** 3.10+
+- **Flutter SDK** `>=3.0.0` *(optional, for Mobile & SMS Gateway)*
 
-### 1. Clone the Repository
+---
 
-```bash
-git clone https://github.com/Harsh2059/Travora.git
-cd Travora
-```
-
-### 2. Start the Backend
+### 1. Launch the Backend Service
 
 ```bash
 cd backend
 
-# Create and activate virtual environment
+# Create & activate Python virtual environment
 python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # macOS/Linux
+venv\Scripts\activate        # Windows (PowerShell)
+# source venv/bin/activate   # macOS / Linux
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Create local SQLite DB + demo user (does not overwrite existing journeys)
-# (travel_engine.db is gitignored — each developer generates their own)
+# Seed local database with demo trip journeys
 python seed.py
 
-# Start the server (run from the backend/ folder so SQLite path resolves correctly)
-uvicorn main:app --reload --port 8000
+# Start FastAPI server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+- **Backend API**: `http://localhost:8000`
+- **Interactive API Docs (Swagger UI)**: `http://localhost:8000/docs`
 
-Backend will be live at: `http://localhost:8000`  
-API docs at: `http://localhost:8000/docs`
+---
 
-> **Database note:** Do not commit `*.db` files. On first run, `python seed.py` creates the
-> demo user and (only if you have no trips yet) one optional sample journey.
-> Build any journey in **Trip Builder**, then pick it in **Admin Console** / **Home**.
-> To clear disruptions on the trip you're working on without replacing bookings:
-> `POST /api/trips/{trip_id}/simulations/clear`
+### 2. Launch the Web Frontend
 
-### 3. Start the Frontend
+In a new terminal window:
 
 ```bash
 cd frontend
+
+# Install dependencies
 npm install
+
+# Start Vite development server
 npm run dev
 ```
+- **Web App**: `http://localhost:5173`
 
-Frontend will be live at: `http://localhost:5173`
+---
 
-### 4. Run the Demo
+### 3. Launch the Mobile Application (Optional)
 
-1. Open `http://localhost:5173` → create a journey in **Trip Builder**, or use any existing trip
-2. On **Home** / **Admin Console**, select the journey you want to work on
-3. In **Admin Console**, trigger a disruption on a booking
-4. On Home: **View Impact** → **Find Recovery Options** → select a plan → Part 5 booking
-5. Toggle **Recover Original Plan** ↔ **Back to Recovered Journey** as needed
-
-Optional: recreate the sample London trip only (other trips are kept):
+In a new terminal window:
 
 ```bash
-curl -X POST http://localhost:8000/api/demo/reset
+cd mobile
+flutter pub get
+flutter run
 ```
 
-> **Note**: If the backend is not running, the app may fall back to local draft data — start the backend for the full recovery flow.
+---
+
+### 4. Launch the Android Hardware SMS Gateway (Optional)
+
+If using an Android device as a hardware SMS gateway:
+
+```bash
+cd sms_gateway
+flutter pub get
+flutter run
+```
 
 ---
 
-## 📡 API Reference
+## 🎬 Interactive Demo Walkthrough
 
-| Method | Endpoint | Description |
+1. **Explore the Digital Twin Weather Dashboard**:
+   - Open `http://localhost:5173/trip/1/digital-twin`
+   - Adjust the **What-If Weather Simulator** sliders (Rainfall, Wind Speed, Visibility) or click **Cyclone Stress Test** to observe live disruption risk calculations and map corridor highlights.
+2. **Simulate an Itinerary Disruption**:
+   - Open the **Admin Console** or **Traveler Dashboard**.
+   - Select a trip and trigger a disruption (e.g. *Flight Cancelled* or *Severe Storm Delay*).
+3. **Review Cascading Impact**:
+   - Navigate to **View Impact** to see how downstream transfers and hotel check-in windows are flagged as breached.
+4. **Select & Execute Recovery Plan**:
+   - Click **Find Recovery Options** to open the 3 ranked Pareto recovery plan cards.
+   - Choose a plan (*Best for You*, *Lowest Cost*, or *Fastest Arrival*) and click **Execute Recovery**.
+5. **Interactive WhatsApp & SMS Demo**:
+   - When a disruption is triggered, Travora dispatches an SMS or WhatsApp alert with option choices:
+     > `1️⃣ Alternative Flight SpiceJet 10:20 AM`
+     > `2️⃣ Alternative Flight IndiGo 12:10 PM`
+     > `Reply with 1, 2, or 3 to rebook.`
+   - Replying `1` automatically confirms the rebooking, generates a new PNR, and updates the traveler's digital timeline!
+
+---
+
+## 📡 Key API Endpoints Reference
+
+| Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | Health check |
-| `GET` | `/api/trips` | List all trips |
-| `GET` | `/api/trips/{id}/graph` | Get dependency DAG |
-| `POST` | `/api/trips/{id}/events` | Inject a disruption event |
-| `GET` | `/api/trips/{id}/impact` | Get cascading impact assessment |
-| `GET` | `/api/trips/{id}/recovery-plans` | Get ranked recovery plans |
-| `POST` | `/api/trips/{id}/execute` | Execute a recovery plan |
-| `GET` | `/api/trips/{id}/history` | Get version history |
-| `GET` | `/api/trips/{id}/compare` | Diff two trip versions |
-| `POST` | `/api/trips/{id}/reset` | Reset trip to baseline |
-| `POST` | `/api/trips/{id}/user-request` | Submit natural language change request |
+| `GET` | `/api/health` | Service health status check |
+| `GET` | `/api/trips` | Retrieve list of traveler trips |
+| `GET` | `/api/trips/{id}/graph` | Fetch NetworkX DAG structure and temporal edges |
+| `GET` | `/api/trips/{id}/digital-twin` | Retrieve Weather Digital Twin telemetry and disruption risk % |
+| `POST` | `/api/trips/{id}/simulate` | Inject a disruption event (flight delay, hotel cancel) |
+| `GET` | `/api/trips/{id}/impact` | Get cascading impact assessment breakdown |
+| `GET` | `/api/trips/{id}/recovery-plans` | Generate 3 ranked Pareto recovery plans |
+| `POST` | `/api/trips/{id}/execute` | Execute selected recovery plan |
+| `POST` | `/api/whatsapp/webhook` | Webhook for Meta WhatsApp inbound interactive replies |
+| `GET` | `/api/sms-gateway/jobs` | Pending SMS job queue for Android SMS Gateway |
 
 ---
 
+## 👥 Team & Contributors
+
+Travora (SkyWay) was conceptualized and built by:
+
+| Team Member | Role / Focus | GitHub Profile |
+|---|---|---|
+| **Harsh Raut** | Core Engine & Platform Architecture | [@Harsh2059](https://github.com/Harsh2059) |
+| **Shubham Shah** | Platform Development & Systems Engineering | [@Shubham55-hash](https://github.com/Shubham55-hash) |
+| **Dhruv Soni** | Mobile & Multi-Channel Engineering | [@17DhruvSoni](https://github.com/17DhruvSoni) |
+| **Aditya Pathak** | Data Models & Intelligent Recovery | [@Aditya-Pathak-1](https://github.com/Aditya-Pathak-1) |
+
+---
+
+## 📄 Documentation & Deep Dives
+
+For further architectural and design details, explore the [`docs/`](file:///c:/Projects/Travora/Travora/docs) directory:
+- [ARCHITECTURE.md](file:///c:/Projects/Travora/Travora/docs/ARCHITECTURE.md) — System architecture & data flow
+- [TECHNICAL_DECISIONS.md](file:///c:/Projects/Travora/Travora/docs/TECHNICAL_DECISIONS.md) — Architectural trade-offs & design choices
+- [DEMO_SCRIPT.md](file:///c:/Projects/Travora/Travora/docs/DEMO_SCRIPT.md) — Guided step-by-step presentation script
+- [FEATURE_TRACEABILITY.md](file:///c:/Projects/Travora/Travora/docs/FEATURE_TRACEABILITY.md) — Requirement mapping matrix
 
 ---
 
 <div align="center">
 
-**Travora** — *Because your itinerary should be smarter than your disruption.*
+**Travora (SkyWay)** — *Because your itinerary should be smarter than your disruption.*
 
 </div>
+
