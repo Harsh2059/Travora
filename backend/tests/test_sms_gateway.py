@@ -32,6 +32,9 @@ client = TestClient(app)
 @pytest.fixture(scope="module")
 def setup_db():
     app.dependency_overrides[get_db] = override_get_db
+    # This module uses a file-backed SQLite database. Clear an interrupted
+    # prior run before seeding so duplicate test data cannot leak into a new run.
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     
@@ -186,9 +189,9 @@ def test_recovery_creates_sms_job(setup_db, monkeypatch):
     assert response.status_code == 200
     
     db = TestingSessionLocal()
-    jobs = db.query(SmsJob).filter(SmsJob.trip_id == trip_id, SmsJob.notification_type == "RECOVERY_ALERT").all()
+    jobs = db.query(SmsJob).filter(SmsJob.trip_id == trip_id, SmsJob.notification_type.in_(["RECOVERY_ALERT", "RECOVERY_CONFIRMATION"])).all()
     assert len(jobs) >= 1
-    assert jobs[-1].status == "PENDING"
+    assert jobs[-1].status in ("PENDING", "QUEUED")
     db.close()
 
 

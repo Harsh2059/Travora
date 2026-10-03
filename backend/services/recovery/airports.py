@@ -200,11 +200,45 @@ def resolve_disrupted_route(
 ) -> Tuple[Optional[str], Optional[str]]:
     meta = node.get("item_metadata") if isinstance(node.get("item_metadata"), dict) else {}
     raw_origin = node.get("origin_airport") or node.get("origin") or meta.get("origin_airport") or meta.get("origin")
-    raw_dest = node.get("destination_airport") or node.get("destination") or node.get("location") or meta.get("destination_airport") or meta.get("destination")
+    raw_dest = node.get("destination_airport") or node.get("destination") or meta.get("destination_airport") or meta.get("destination")
 
     nodes = journey_nodes if journey_nodes is not None else [node]
     origin = resolve_airport_code(raw_origin, nodes, role="origin") or resolve_airport_code(node.get("title"), nodes, role="origin")
-    dest = resolve_airport_code(raw_dest, nodes, role="destination") or resolve_airport_code(node.get("title"), nodes, role="destination")
+    dest = resolve_airport_code(raw_dest, nodes, role="destination")
+
+    # If destination missing or identical to origin, attempt parsing title (e.g. "Air India (BOM → DEL)")
+    if (not dest or same_airport(origin, dest)) and node.get("title"):
+        title_str = str(node.get("title"))
+        sep = "→" if "→" in title_str else (" to " if " to " in title_str else None)
+        if sep:
+            parts = title_str.split(sep)
+            if len(parts) >= 2:
+                parsed_dest = resolve_airport_code(parts[1].strip(), nodes, role="destination")
+                if parsed_dest and not same_airport(origin, parsed_dest):
+                    dest = parsed_dest
+
+    # If still missing or identical to origin, check subsequent journey nodes
+    if (not dest or same_airport(origin, dest)) and journey_nodes:
+        for other in journey_nodes:
+            if other is node or other.get("id") == node.get("id"):
+                continue
+            for fld in ("destination_airport", "destination", "location", "origin_airport", "origin"):
+                val = other.get(fld)
+                code = resolve_airport_code(val, journey_nodes, role="destination")
+                if code and not same_airport(origin, code):
+                    dest = code
+                    break
+            if dest and not same_airport(origin, dest):
+                break
+
+    # If still identical to origin, fallback to location only if distinct from origin
+    if not dest or same_airport(origin, dest):
+        loc_code = resolve_airport_code(node.get("location"), nodes, role="destination")
+        if loc_code and not same_airport(origin, loc_code):
+            dest = loc_code
+        elif same_airport(origin, dest):
+            dest = None
+
     return origin, dest
 
 

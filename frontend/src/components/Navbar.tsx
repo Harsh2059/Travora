@@ -52,7 +52,10 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
 
         {/* ── Brand ── */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div
+          className="flex items-center gap-3 shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
+          onClick={() => { window.location.href = '/'; }}
+        >
           <div className="relative">
             {/* Outer gradient ring */}
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-400 via-blue-600 to-indigo-700 flex items-center justify-center shadow-md shadow-blue-500/25">

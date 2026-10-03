@@ -25,6 +25,7 @@ import {
 } from '../store/journeyStore';
 import { Part1JourneyView } from '../components/Part1JourneyView';
 import type { JourneyNode, TimeStatus, Journey } from '../types';
+import { getTodayDateString, validateDepartureDate, validateReturnDate } from '../utils/dateValidation';
 
 type NodeType = 'flight' | 'hotel' | 'train' | 'activity' | 'taxi';
 
@@ -197,7 +198,8 @@ export default function TripBuilderScreen() {
 
   const openEditModal = (node: JourneyNode) => {
     setEditingNodeId(node.id);
-    setSelectedType((node.type.toLowerCase() as NodeType) || 'flight');
+    const nodeType = node.type.toLowerCase() === 'cab' ? 'taxi' : node.type.toLowerCase();
+    setSelectedType((nodeType as NodeType) || 'flight');
     setTitle(node.title || '');
     setOrigin(node.origin || '');
     setDestination(node.destination || '');
@@ -207,7 +209,7 @@ export default function TripBuilderScreen() {
     setEndDate(node.endDate || '');
     setStartTime(node.startTime ? node.startTime.split('T')[1]?.substring(0, 5) || '' : '');
     setEndTime(node.endTime ? node.endTime.split('T')[1]?.substring(0, 5) || '' : '');
-    setTimeStatus(node.timeStatus || 'FIXED');
+    setTimeStatus(node.timeStatus || (nodeType === 'taxi' ? 'APPROXIMATE' : 'FIXED'));
     setFormError(null);
     setIsFormDirty(false);
     setIsModalOpen(true);
@@ -238,6 +240,18 @@ export default function TripBuilderScreen() {
           setFormError(`Please specify departure date and time for ${selectedType}`);
           return;
         }
+        const startCheck = validateDepartureDate(startDate);
+        if (!startCheck.isValid) {
+          setFormError(startCheck.error);
+          return;
+        }
+        if (endDate) {
+          const endCheck = validateReturnDate(endDate, startDate);
+          if (!endCheck.isValid) {
+            setFormError(endCheck.error);
+            return;
+          }
+        }
         finalStartTime = `${startDate}T${startTime}`;
         if (endTime) {
           finalEndTime = `${endDate || startDate}T${endTime}`;
@@ -249,6 +263,16 @@ export default function TripBuilderScreen() {
           setFormError('Please specify check-in and check-out dates');
           return;
         }
+        const startCheck = validateDepartureDate(startDate);
+        if (!startCheck.isValid) {
+          setFormError(startCheck.error);
+          return;
+        }
+        const endCheck = validateReturnDate(endDate, startDate);
+        if (!endCheck.isValid) {
+          setFormError(endCheck.error);
+          return;
+        }
         if (startTime) finalStartTime = `${startDate}T${startTime}`;
         if (endTime) finalEndTime = `${endDate}T${endTime}`;
       } else {
@@ -256,6 +280,28 @@ export default function TripBuilderScreen() {
         if (!startDate) {
           setFormError(`Please select a date for this ${selectedType}`);
           return;
+        }
+        if (selectedType === 'taxi') {
+          if (!origin.trim() || !destination.trim()) {
+            setFormError('Please enter both pickup and drop-off locations for the cab.');
+            return;
+          }
+          if (!startTime) {
+            setFormError('Please enter an approximate pickup time for the cab.');
+            return;
+          }
+        }
+        const startCheck = validateDepartureDate(startDate);
+        if (!startCheck.isValid) {
+          setFormError(startCheck.error);
+          return;
+        }
+        if (endDate) {
+          const endCheck = validateReturnDate(endDate, startDate);
+          if (!endCheck.isValid) {
+            setFormError(endCheck.error);
+            return;
+          }
         }
         if (startTime) finalStartTime = `${startDate}T${startTime}`;
         if (endTime) finalEndTime = `${startDate}T${endTime}`;
@@ -445,6 +491,17 @@ export default function TripBuilderScreen() {
           onDeleteNode={handleDeleteNode}
           onResetJourney={() => setNodes([])}
         />
+        {nodes.length > 0 && (
+          <div className="flex justify-center pb-4">
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold shadow-md shadow-sky-500/20 transition-colors"
+            >
+              + Add journey stage
+            </button>
+          </div>
+        )}
       </main>
 
       {/* COMPACT MODAL FOR ADDING / EDITING A TRAVEL LEG */}
@@ -495,7 +552,7 @@ export default function TripBuilderScreen() {
                           setSelectedType(t.type);
                           setIsFormDirty(true);
                           if (t.type === 'flight' || t.type === 'train') setTimeStatus('FIXED');
-                          else setTimeStatus('UNKNOWN');
+                          else setTimeStatus(t.type === 'taxi' ? 'APPROXIMATE' : 'UNKNOWN');
                         }}
                         className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                           isSelected
@@ -602,10 +659,18 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={getTodayDateString()}
                         value={startDate}
                         onChange={(e) => {
-                          setStartDate(e.target.value);
+                          const val = e.target.value;
+                          setStartDate(val);
                           setIsFormDirty(true);
+                          const check = validateDepartureDate(val);
+                          if (!check.isValid) {
+                            setFormError(check.error);
+                          } else {
+                            setFormError(null);
+                          }
                         }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
                       />
@@ -616,10 +681,18 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={startDate || getTodayDateString()}
                         value={endDate}
                         onChange={(e) => {
-                          setEndDate(e.target.value);
+                          const val = e.target.value;
+                          setEndDate(val);
                           setIsFormDirty(true);
+                          const check = validateReturnDate(val, startDate);
+                          if (!check.isValid) {
+                            setFormError(check.error);
+                          } else {
+                            setFormError(null);
+                          }
                         }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
                       />
@@ -635,10 +708,18 @@ export default function TripBuilderScreen() {
                       </label>
                       <input
                         type="date"
+                        min={getTodayDateString()}
                         value={startDate}
                         onChange={(e) => {
-                          setStartDate(e.target.value);
+                          const val = e.target.value;
+                          setStartDate(val);
                           setIsFormDirty(true);
+                          const check = validateDepartureDate(val);
+                          if (!check.isValid) {
+                            setFormError(check.error);
+                          } else {
+                            setFormError(null);
+                          }
                         }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
                       />
@@ -672,6 +753,7 @@ export default function TripBuilderScreen() {
                           className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
                         >
                           <option value="UNKNOWN">⚪ Time not decided</option>
+                          <option value="APPROXIMATE">~ Approximate time</option>
                           <option value="FLEXIBLE">🟡 Flexible timing</option>
                           <option value="FIXED">🟢 Set exact time</option>
                         </select>
@@ -679,10 +761,10 @@ export default function TripBuilderScreen() {
                     )}
                   </div>
 
-                  {timeStatus === 'FIXED' && selectedType !== 'flight' && selectedType !== 'train' && (
+                  {(selectedType === 'taxi' || timeStatus === 'FIXED' || timeStatus === 'APPROXIMATE') && selectedType !== 'flight' && selectedType !== 'train' && (
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        Pickup / Start Time
+                        {selectedType === 'taxi' ? 'Approximate Pickup Time *' : 'Pickup / Start Time'}
                       </label>
                       <input
                         type="time"

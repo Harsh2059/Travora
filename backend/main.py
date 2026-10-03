@@ -4,10 +4,11 @@ load_dotenv()
 from fastapi import FastAPI, Depends, HTTPException, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 import crud, models, schemas, seed
+import crypto as phone_crypto
 import hashlib
 import hmac
 from database import engine, get_db, SessionLocal
@@ -96,8 +97,39 @@ with engine.connect() as conn:
         pass
 
 import routers.auth as auth
+import routers.weather as weather_router
+import routers.social as social_router
+import routers.digital_twin as digital_twin_router
+import routers.support as support_router
+import routers.feedback as feedback_router
+from services.weather.weather_service import LiveWeatherService
 app = FastAPI(title="Travel Recovery Engine API")
 app.include_router(auth.router)
+app.include_router(weather_router.router)
+app.include_router(social_router.router)
+app.include_router(digital_twin_router.router)
+app.include_router(support_router.router)
+app.include_router(feedback_router.router)
+
+
+
+
+@app.get("/api/journeys/{trip_id}/weather")
+@app.get("/api/trips/{trip_id}/weather")
+def get_trip_weather_endpoint(trip_id: int, db: Session = Depends(get_db)):
+    """Fetch live weather data for a specific trip's primary departure airport/city."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        return LiveWeatherService.get_current_weather(location="Mumbai")
+
+    items = db.query(models.ItineraryItem).filter(
+        models.ItineraryItem.trip_id == trip_id
+    ).order_by(models.ItineraryItem.start_time.asc()).all()
+
+    first_flight = next((it for it in items if it.type == "FLIGHT"), items[0] if items else None)
+    loc_name = first_flight.origin if first_flight else "Mumbai"
+    return LiveWeatherService.get_current_weather(location=loc_name)
+
 
 @app.on_event("startup")
 def startup_event():
@@ -214,13 +246,41 @@ def register(payload: schemas.UserRegister, db: Session = Depends(get_db)):
         name=payload.name.strip(),
         email=email,
         hashed_password=auth.hash_password(payload.password),
-        phone_number=norm_phone,
+        phone_number=phone_crypto.encrypt_phone(norm_phone),
         whatsapp_phone=norm_wa,
         created_at=datetime.utcnow()
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    # Decrypt for the API response — the caller always sees plaintext
+    user.phone_number = phone_crypto.decrypt_phone(user.phone_number)
+
+    print(f"[AUTH] user created id={user.id} email={email}", flush=True)
+    logger.info("[AUTH] user created id=%s email=%s", user.id, email)
+
+    # ── Welcome notifications (non-critical — failures must NOT abort registration) ──
+    try:
+        NotificationService().send_welcome_notification(
+            db=db,
+            channel=NotificationChannel.WHATSAPP,
+            user=user,
+        )
+    except Exception as exc:
+        logger.warning("[AUTH] Welcome WhatsApp failed: %s", type(exc).__name__)
+
+    try:
+        try:
+            db.rollback()   # clean session state before the SMS commit
+        except Exception:
+            pass
+        NotificationService().send_welcome_notification(
+            db=db,
+            channel=NotificationChannel.SMS,
+            user=user,
+        )
+    except Exception as exc:
+        logger.warning("[AUTH] Welcome SMS queueing failed: %s", type(exc).__name__)
 
     token = auth.create_access_token({"sub": str(user.id), "email": user.email})
     return {
@@ -238,6 +298,7 @@ def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = auth.create_access_token({"sub": str(user.id), "email": user.email})
+    user.phone_number = phone_crypto.decrypt_phone(user.phone_number)
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -247,6 +308,7 @@ def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
 @app.get("/api/auth/me", response_model=schemas.UserResponse)
 def get_auth_me(current_user: models.User = Depends(auth.get_current_user)):
     """Get current authenticated user info. Protected route."""
+    current_user.phone_number = phone_crypto.decrypt_phone(current_user.phone_number)
     return current_user
 
 @app.put("/api/users/me", response_model=schemas.UserResponse)
@@ -268,7 +330,12 @@ def update_profile(
             current_user.email = new_email
 
     if payload.phone_number is not None:
-        current_user.phone_number = auth.normalize_phone(payload.phone_number)
+        next_phone = auth.normalize_phone(payload.phone_number)
+        current_user.phone_number = phone_crypto.encrypt_phone(next_phone)
+        # A mobile-only update keeps the shared WhatsApp contact current. An
+        # explicit WhatsApp value remains an intentional per-channel choice.
+        if payload.whatsapp_phone is None:
+            current_user.whatsapp_phone = next_phone
 
     if payload.whatsapp_phone is not None:
         norm_wa = auth.normalize_phone(payload.whatsapp_phone)
@@ -280,6 +347,8 @@ def update_profile(
 
     db.commit()
     db.refresh(current_user)
+    # Decrypt for the API response — the caller always sees plaintext
+    current_user.phone_number = phone_crypto.decrypt_phone(current_user.phone_number)
     return current_user
 
 @app.get("/api/users", response_model=List[schemas.User])
@@ -298,6 +367,7 @@ def read_user_profile(
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    db_user.phone_number = phone_crypto.decrypt_phone(db_user.phone_number)
     return db_user
 
 @app.put("/api/users/{user_id}/profile", response_model=schemas.User)
@@ -314,11 +384,19 @@ def update_user_profile(
         raise HTTPException(status_code=404, detail="User not found")
     
     update_data = profile.model_dump(exclude_unset=True)
+    if "phone_number" in update_data:
+        next_phone = auth.normalize_phone(update_data.pop("phone_number"))
+        db_user.phone_number = phone_crypto.encrypt_phone(next_phone)
+        if "whatsapp_phone" not in update_data:
+            db_user.whatsapp_phone = next_phone
+    if "whatsapp_phone" in update_data:
+        update_data["whatsapp_phone"] = auth.normalize_phone(update_data["whatsapp_phone"])
     for key, value in update_data.items():
         setattr(db_user, key, value)
     
     db.commit()
     db.refresh(db_user)
+    db_user.phone_number = phone_crypto.decrypt_phone(db_user.phone_number)
     return db_user
 
 @app.get("/api/users/{user_id}/trips", response_model=List[schemas.Trip])
@@ -327,7 +405,7 @@ def read_user_trips(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    if current_user.id != user_id and current_user.role != "admin":
+    if isinstance(current_user, models.User) and str(current_user.id) != str(user_id) and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="You do not have access to another user's trips")
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
@@ -362,7 +440,8 @@ def create_trip(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """Create a new trip for a user (journey builder flow)."""
-    if current_user.id != user_id and current_user.role != "admin":
+    effective_user_id = current_user.id if isinstance(current_user, models.User) else user_id
+    if isinstance(current_user, models.User) and str(current_user.id) != str(user_id) and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Cannot create trip for another user")
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
@@ -434,6 +513,46 @@ def add_trip_item(
         "flexibility": item.flexibility, "status": item.status, "booking_id": item.booking_id,
         "item_metadata": item.item_metadata or {}
     }
+
+
+@app.post("/api/trips/{trip_id}/notify-created")
+def notify_trip_created(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_optional_user)
+):
+    """Trigger the 'journey confirmed' notifications after all items are added."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if isinstance(current_user, models.User) and trip.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have access to this trip")
+
+    # ── Journey Created notifications (non-critical) ──
+    try:
+        NotificationService().send_journey_created_notification(
+            db=db,
+            channel=NotificationChannel.WHATSAPP,
+            trip=trip,
+        )
+    except Exception as exc:
+        logger.warning("[TRIP] Journey-created WhatsApp failed: %s", type(exc).__name__)
+
+    try:
+        try:
+            db.rollback()   # clean session state before the SMS commit
+        except Exception:
+            pass
+        NotificationService().send_journey_created_notification(
+            db=db,
+            channel=NotificationChannel.SMS,
+            trip=trip,
+        )
+    except Exception as exc:
+        logger.warning("[TRIP] Journey-created SMS queueing failed: %s", type(exc).__name__)
+
+    return {"status": "success", "message": "Notifications dispatched"}
+
 
 @app.put("/api/trips/{trip_id}/items/{item_id}")
 def update_trip_item(
@@ -532,23 +651,80 @@ def get_trip_details(
     if not admin and isinstance(current_user, models.User) and trip.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not have access to this trip")
 
-    active_items = db.query(models.ItineraryItem).filter(
+    active_items_raw = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.trip_id == trip_id,
         models.ItineraryItem.status.notin_(["CANCELLED", "REPLACED", "RESTORED_DEMO"])
     ).order_by(models.ItineraryItem.start_time.asc()).all()
 
-    all_trip_items = db.query(models.ItineraryItem).filter(
+    # Identify any item IDs that were replaced by a new replacement item
+    replaced_item_ids = set()
+    for it in active_items_raw:
+        meta = it.item_metadata or {}
+        if meta.get("replaced_item_id"):
+            try:
+                replaced_item_ids.add(int(meta["replaced_item_id"]))
+            except (ValueError, TypeError):
+                pass
+
+    seen_active_keys = set()
+    active_items = []
+    for it in active_items_raw:
+        if it.id in replaced_item_ids:
+            continue
+        meta = it.item_metadata or {}
+        n_type = (it.type or "").upper()
+        if n_type in ("HOTEL", "STAY"):
+            key = f"hotel_{(it.provider or '').lower()}_{(it.location or it.destination or '').lower()}"
+        elif n_type in ("CAB", "TAXI", "TRANSFER"):
+            key = f"cab_{(it.provider or '').lower()}_{(it.origin or '').lower()}_{(it.destination or '').lower()}"
+        elif it.booking_id:
+            key = f"booking_{it.booking_id}"
+        else:
+            key = f"{it.id}_{it.type}_{it.provider}"
+
+        if key not in seen_active_keys or meta.get("is_replacement"):
+            if key in seen_active_keys:
+                active_items = [x for x in active_items if getattr(x, "_dedup_key", None) != key]
+            setattr(it, "_dedup_key", key)
+            seen_active_keys.add(key)
+            active_items.append(it)
+
+    all_trip_items_raw = db.query(models.ItineraryItem).filter(
         models.ItineraryItem.trip_id == trip_id
     ).order_by(models.ItineraryItem.start_time.asc()).all()
 
+    seen_all_keys = set()
+    all_trip_items = []
+    for it in all_trip_items_raw:
+        key = it.booking_id if it.booking_id else f"{it.id}_{it.type}_{it.provider}"
+        if key not in seen_all_keys:
+            seen_all_keys.add(key)
+            all_trip_items.append(it)
+
+
+    def _sanitize_route_locations(orig: Optional[str], dest: Optional[str], item_type: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        if not orig and not dest:
+            return orig, dest
+        orig_str = (orig or "").strip()
+        dest_str = (dest or "").strip()
+
+        def _norm(s):
+            return "".join(c.lower() for c in s if c.isalnum())
+
+        if orig_str and dest_str and _norm(orig_str) == _norm(dest_str):
+            dest_str = f"{dest_str} (Arrival)"
+
+        return orig_str or orig, dest_str or dest
+
     def serialize_item(it):
+        clean_orig, clean_dest = _sanitize_route_locations(it.origin, it.destination, it.type)
         return {
             "id": it.id,
             "trip_id": it.trip_id,
             "type": it.type,
             "provider": it.provider,
-            "origin": it.origin,
-            "destination": it.destination,
+            "origin": clean_orig,
+            "destination": clean_dest,
             "location": it.location,
             "start_time": it.start_time.isoformat() if it.start_time else None,
             "end_time": it.end_time.isoformat() if it.end_time else None,
@@ -1551,42 +1727,65 @@ def execute_recovery_endpoint(
             db.commit()
 
         # Send WhatsApp Notification
+        wa_status = "not_configured"
+        wa_recipient = None
         try:
-            NotificationService().send_recovery_notification(
+            wa_res = NotificationService().send_recovery_notification(
                 db=db,
                 channel=NotificationChannel.WHATSAPP,
                 trip_id=trip_id,
                 plan=selected_plan,
                 disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
+                is_proposal=False,
+                execution_result=exec_res,
             )
+            if wa_res:
+                wa_status = wa_res.status.lower()
+                wa_recipient = wa_res.recipient
         except Exception as exc:
-            logger.warning(
-                "Recovery WhatsApp alert failed: %s",
-                type(exc).__name__,
-            )
+            logger.warning("Recovery WhatsApp alert failed: %s", type(exc).__name__)
+            wa_status = "not_configured" if any(k in str(exc).lower() for k in ("config", "missing", "not configured")) else "failed"
 
         # Send SMS Notification - fresh session state after WhatsApp path
+        sms_status = "failed"
+        sms_recipient = None
         try:
             try:
                 db.rollback()  # Safety: ensure clean session state before SMS commit
             except Exception:
                 pass
-            NotificationService().send_recovery_notification(
+            sms_res = NotificationService().send_recovery_notification(
                 db=db,
                 channel=NotificationChannel.SMS,
                 trip_id=trip_id,
                 plan=selected_plan,
                 disruption_id=(selected_plan.get("disruption_ids") or [None])[0],
+                is_proposal=False,
+                execution_result=exec_res,
             )
+            if sms_res:
+                sms_status = sms_res.status.lower()
+                sms_recipient = sms_res.recipient
         except Exception as exc:
-            logger.warning(
-                "Recovery SMS queueing failed: %s",
-                type(exc).__name__,
-            )
+            logger.warning("Recovery SMS queueing failed: %s", type(exc).__name__)
+            sms_status = "failed"
+
+        exec_res["success"] = True
+        exec_res["recovery_confirmed"] = True
+        exec_res["notifications"] = {
+            "sms": {
+                "status": sms_status,
+                "recipient": sms_recipient,
+            },
+            "whatsapp": {
+                "status": wa_status,
+                "recipient": wa_recipient,
+            }
+        }
 
 
         # Fetch complete updated journey details to return complete state payload
-        trip_details = get_trip_details(trip_id, db)
+        trip_details = get_trip_details(trip_id=trip_id, admin=True, db=db, current_user=None)
         exec_res["originalJourney"] = {
             "id": trip_id,
             "title": trip_details.get("title"),

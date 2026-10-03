@@ -118,7 +118,7 @@ def test_complete_parts1_to_5_end_to_end_flow(e2e_setup):
     db.commit()
 
     # Retrieve trip details via Part 1 API helper
-    trip_data = get_trip_details(trip.id, db)
+    trip_data = get_trip_details(trip_id=trip.id, db=db)
     assert len(trip_data["items"]) == 4, "Part 1: All 4 items must be retrieved"
     item1_id = item1.id
     item2_id = item2.id
@@ -139,7 +139,7 @@ def test_complete_parts1_to_5_end_to_end_flow(e2e_setup):
         "severity": "HIGH",
         "reason": "Technical failure"
     }
-    disr_res = trigger_disruption(trip.id, disr_payload, db)
+    disr_res = trigger_disruption(trip_id=trip.id, event_payload=disr_payload, db=db)
     assert disr_res["status"] == "ACTIVE", "Part 2: Disruption event must be ACTIVE"
     disruption_id = disr_res["id"]
 
@@ -182,7 +182,7 @@ def test_complete_parts1_to_5_end_to_end_flow(e2e_setup):
     assert exec_res["viewMode"] == "RECOVERED", "Part 5: viewMode must be set to RECOVERED"
 
     # Verify DB state after execution
-    updated_trip = get_trip_details(trip.id, db)
+    updated_trip = get_trip_details(trip_id=trip.id, db=db)
     assert updated_trip["view_mode"] == "RECOVERED", "Part 5 DB: Trip view_mode must be RECOVERED"
     
     # Check that active disruption is now RESOLVED

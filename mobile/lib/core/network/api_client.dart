@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'api_endpoints.dart';
 
@@ -16,7 +15,6 @@ class ApiException implements Exception {
 class ApiClient {
   final http.Client _client = http.Client();
   final Duration _timeout = const Duration(seconds: 15);
-  final _storage = const FlutterSecureStorage();
 
   Future<dynamic> get(String endpoint, {Map<String, String>? queryParams}) async {
     final uri = Uri.parse('${ApiEndpoints.baseUrl}$endpoint').replace(queryParameters: queryParams);

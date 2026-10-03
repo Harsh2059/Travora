@@ -17,6 +17,8 @@ import {
 import { Part1JourneyView } from '../components/Part1JourneyView';
 import type { JourneyNode, Journey } from '../types';
 
+import { triggerMicroFeedback } from '../services/feedbackService';
+
 export default function ReviewJourneyScreen() {
   const navigate = useNavigate();
   const [draftNodes] = useState<JourneyNode[]>(() => getDraftNodes());
@@ -61,10 +63,24 @@ export default function ReviewJourneyScreen() {
     setErrorMsg(null);
 
     try {
-      await persistJourneyToBackend(
+      const created = await persistJourneyToBackend(
         tripTitle.trim(),
         draftNodes
       );
+      // Trigger non-intrusive micro-feedback for Event 1 (Journey Created)
+      triggerMicroFeedback({
+        eventType: 'JOURNEY_CREATED',
+        journeyId: created.id,
+        title: 'How was your journey setup?',
+        question: 'How easy was it to plan and create your journey in Travora?',
+        responseType: 'RATING',
+        options: [
+          { label: 'Easy to use', value: 'EASY_TO_USE' },
+          { label: 'Too many steps', value: 'TOO_MANY_STEPS' },
+          { label: 'Something else', value: 'OTHER' },
+        ],
+        delayMs: 1800,
+      });
       navigate('/home');
     } catch (err: any) {
       console.warn('Backend unavailable, storing journey locally:', err);
@@ -75,6 +91,19 @@ export default function ReviewJourneyScreen() {
       };
       saveLocalJourney(localJourney);
       clearDraft();
+      triggerMicroFeedback({
+        eventType: 'JOURNEY_CREATED',
+        journeyId: undefined,
+        title: 'How was your journey setup?',
+        question: 'How easy was it to plan and create your journey in Travora?',
+        responseType: 'RATING',
+        options: [
+          { label: 'Easy to use', value: 'EASY_TO_USE' },
+          { label: 'Too many steps', value: 'TOO_MANY_STEPS' },
+          { label: 'Something else', value: 'OTHER' },
+        ],
+        delayMs: 1800,
+      });
       navigate('/home');
     } finally {
       setIsSaving(false);

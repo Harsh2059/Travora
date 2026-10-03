@@ -86,8 +86,9 @@ def test_recovery_lifecycle_state_machine():
 # F04 & F05: Execution Safety & Stale Plan Protection
 # ============================================================================
 def test_stale_plan_protection():
-    client.post("/api/seed")
-    trips = client.get("/api/users/1/trips").json()
+    res = client.post("/api/seed")
+    user_id = res.json()["user_id"]
+    trips = client.get(f"/api/users/{user_id}/trips").json()
     trip_id = trips[0]["id"]
 
     # Generate plan for v1
@@ -113,8 +114,9 @@ def test_stale_plan_protection():
 # F06: Idempotent Execution
 # ============================================================================
 def test_idempotent_execution():
-    client.post("/api/seed")
-    trip_id = client.get("/api/users/1/trips").json()[0]["id"]
+    res = client.post("/api/seed")
+    user_id = res.json()["user_id"]
+    trip_id = client.get(f"/api/users/{user_id}/trips").json()[0]["id"]
 
     rec_res = client.post(f"/api/trips/{trip_id}/recover", json={})
     plan = rec_res.json()["plans"][0]
@@ -140,8 +142,9 @@ def test_idempotent_execution():
 # F07 & F08: Transaction Safety & Mock Booking Execution
 # ============================================================================
 def test_mock_booking_execution():
-    client.post("/api/seed")
-    trip_id = client.get("/api/users/1/trips").json()[0]["id"]
+    res = client.post("/api/seed")
+    user_id = res.json()["user_id"]
+    trip_id = client.get(f"/api/users/{user_id}/trips").json()[0]["id"]
 
     rec_res = client.post(f"/api/trips/{trip_id}/recover", json={})
     plan = rec_res.json()["plans"][0]
@@ -152,8 +155,9 @@ def test_mock_booking_execution():
     assert "CONF-" in data["booking_confirmations"][0]["confirmation_code"]
 
 def test_transaction_rollback_on_infeasible_plan():
-    client.post("/api/seed")
-    trip_id = client.get("/api/users/1/trips").json()[0]["id"]
+    res = client.post("/api/seed")
+    user_id = res.json()["user_id"]
+    trip_id = client.get(f"/api/users/{user_id}/trips").json()[0]["id"]
 
     db = TestingSessionLocal()
     # Infeasible plan
@@ -172,8 +176,9 @@ def test_transaction_rollback_on_infeasible_plan():
 # F09 & F10: Recovery History & Version Comparison
 # ============================================================================
 def test_version_comparison_endpoint():
-    client.post("/api/seed")
-    trip_id = client.get("/api/users/1/trips").json()[0]["id"]
+    res = client.post("/api/seed")
+    user_id = res.json()["user_id"]
+    trip_id = client.get(f"/api/users/{user_id}/trips").json()[0]["id"]
 
     # Disruption -> Recover -> Execute -> Trip v2
     client.post(f"/api/trips/{trip_id}/simulate", json={"scenario_type": "FLIGHT_DELAY_4H"})
@@ -219,8 +224,9 @@ def test_advanced_traveler_preferences():
 # F34: Demo Reset
 # ============================================================================
 def test_demo_reset_endpoint():
-    client.post("/api/seed")
-    trip_id = client.get("/api/users/1/trips").json()[0]["id"]
+    res = client.post("/api/seed")
+    user_id = res.json()["user_id"]
+    trip_id = client.get(f"/api/users/{user_id}/trips").json()[0]["id"]
 
     # Simulate disruption and execute recovery to reach v2
     client.post(f"/api/trips/{trip_id}/simulate", json={"scenario_type": "FLIGHT_DELAY_4H"})

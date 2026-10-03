@@ -243,13 +243,21 @@ def filter_flight_candidates(
     return kept
 
 
-def rank_flight_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def rank_flight_candidates(
+    candidates: List[Dict[str, Any]],
+    disrupted_node: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    orig_start = node_start(disrupted_node) if isinstance(disrupted_node, dict) else None
+
     def sort_key(c: Dict[str, Any]):
         arr = candidate_arrival(c) or datetime.max
+        dep = candidate_departure(c)
         cost = c.get("cost") if c.get("cost") is not None else c.get("price") or 0
         duration = c.get("duration_minutes") or c.get("duration") or 0
         transfers = 0 if c.get("is_direct", True) else 1
-        return (transfers, arr, float(cost), int(duration))
+        # Prioritize flights departing at or after the disrupted flight departure time over flights departing before
+        is_earlier = 1 if (dep and orig_start and dep < orig_start) else 0
+        return (transfers, is_earlier, arr, float(cost), int(duration))
 
     ranked = sorted(candidates, key=sort_key)
     seen = set()

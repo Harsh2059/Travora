@@ -47,7 +47,7 @@ def db_session_fixture(tmp_path):
     session.add(trip)
     session.commit()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time()).replace(tzinfo=timezone.utc)
     items = [
         models.ItineraryItem(
             id=1001,
@@ -57,8 +57,8 @@ def db_session_fixture(tmp_path):
             origin="Mumbai Airport (BOM)",
             destination="Jaipur Airport (JAI)",
             location="Mumbai Airport (BOM)",
-            start_time=now + timedelta(hours=2),
-            end_time=now + timedelta(hours=4),
+            start_time=now + timedelta(hours=6),
+            end_time=now + timedelta(hours=8),
             cost=4500.0,
             status="CONFIRMED",
             booking_id="6E-204",
@@ -72,8 +72,8 @@ def db_session_fixture(tmp_path):
             origin="Jaipur Airport (JAI)",
             destination="Hotel Ram Jaipur",
             location="Jaipur Airport (JAI)",
-            start_time=now + timedelta(hours=4, minutes=30),
-            end_time=now + timedelta(hours=5, minutes=30),
+            start_time=now + timedelta(hours=8, minutes=30),
+            end_time=now + timedelta(hours=9, minutes=30),
             cost=600.0,
             status="CONFIRMED",
             booking_id="OLA-99",
@@ -87,7 +87,7 @@ def db_session_fixture(tmp_path):
             origin="Hotel Ram Jaipur",
             destination="Hotel Ram Jaipur",
             location="Jaipur City",
-            start_time=now + timedelta(hours=6),
+            start_time=now + timedelta(hours=10),
             end_time=now + timedelta(days=2),
             cost=7000.0,
             status="CONFIRMED",

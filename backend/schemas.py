@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 
 class ItineraryItemBase(BaseModel):
@@ -83,7 +83,7 @@ class TripCreate(TripBase):
 
 class Trip(TripBase):
     id: int
-    user_id: str
+    user_id: Union[int, str]
     items: List[ItineraryItem] = []
     
     model_config = ConfigDict(from_attributes=True)
@@ -145,7 +145,7 @@ class UserProfileUpdate(BaseModel):
     whatsapp_enabled: Optional[bool] = None
 
 class UserResponse(UserBase):
-    id: str
+    id: Union[int, str]
     created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -156,7 +156,7 @@ class TokenResponse(BaseModel):
 
 
 class User(UserBase):
-    id: str
+    id: Union[int, str]
     trips: List[Trip] = []
     model_config = ConfigDict(from_attributes=True)
 
@@ -218,3 +218,70 @@ class TicketResponse(TicketBase):
     id: int
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class SupportTicketCreate(BaseModel):
+    category: str
+    description: str
+    journey_id: Optional[int] = None
+    attachment_url: Optional[str] = None
+    priority: Optional[str] = "MEDIUM"
+
+class SupportTicketResponse(BaseModel):
+    id: int
+    ticket_number: str
+    user_id: str
+    journey_id: Optional[int] = None
+    category: str
+    description: str
+    attachment_url: Optional[str] = None
+    status: str
+    priority: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class SupportFaqItem(BaseModel):
+    id: str
+    category: str
+    question: str
+    answer: str
+
+class SupportContactInfo(BaseModel):
+    support_email: Optional[str] = None
+    support_phone: Optional[str] = None
+    whatsapp_helpline: Optional[str] = None
+    operating_hours: str
+    note: str
+
+
+class FeedbackCreate(BaseModel):
+    journey_id: Optional[int] = None
+    event_type: str # JOURNEY_CREATED, DISRUPTION_INFORMATION, RECOVERY_RECOMMENDATION, JOURNEY_COMPLETED
+    rating: Optional[int] = None
+    response_type: Optional[str] = None
+    response_value: Optional[str] = None
+    message: Optional[str] = None
+    context: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+class FeedbackResponse(BaseModel):
+    id: int
+    user_id: str
+    journey_id: Optional[int] = None
+    event_type: str
+    rating: Optional[int] = None
+    response_type: Optional[str] = None
+    response_value: Optional[str] = None
+    message: Optional[str] = None
+    context: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class FeedbackCheckResponse(BaseModel):
+    has_feedback: bool
+    feedback: Optional[FeedbackResponse] = None
+
+

@@ -399,7 +399,7 @@ export type JourneyNodeType =
  * The frontend MUST populate backendId from the returned `id`.
  * Do NOT generate or guess backend IDs on the frontend.
  */
-export type TimeStatus = 'FIXED' | 'FLEXIBLE' | 'UNKNOWN';
+export type TimeStatus = 'FIXED' | 'APPROXIMATE' | 'FLEXIBLE' | 'UNKNOWN';
 export type TravelerPriority = 'MUST_PRESERVE' | 'PREFER_TO_PRESERVE' | 'OPTIMIZE';
 
 export interface JourneyNode {

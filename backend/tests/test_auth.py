@@ -7,9 +7,15 @@ from main import app, get_db
 from database import Base
 import models
 import auth
+import crypto
+import routers.auth as supabase_auth
+from fastapi import HTTPException
 from services.whatsapp.client import MetaWhatsAppClient
 from services.whatsapp.handler import WhatsAppWebhookHandler
 from services.whatsapp.context import store_recovery_context
+from services.whatsapp.service import WhatsAppService
+from services.notifications.service import NotificationService
+from services.notifications.contracts import NotificationChannel
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test_auth.db"
 
@@ -56,6 +62,53 @@ def test_phone_normalization_formats():
     assert p4 == "+917710989533"
     assert p5 == "+917710989533"
     assert p1 == p2 == p3 == p4 == p5
+
+
+def test_supabase_provisioning_normalizes_phone_and_rejects_legacy_duplicate():
+    """Supabase metadata must not bypass the unique WhatsApp number rule."""
+    db = TestingSessionLocal()
+    db.add(models.User(
+        id="existing-user",
+        name="Existing User",
+        email="existing@example.com",
+        whatsapp_phone="8668429664",  # Legacy unnormalized value
+    ))
+    db.commit()
+
+    token_data = supabase_auth.TokenData(
+        id="new-supabase-user",
+        email="new@example.com",
+        role="authenticated",
+    )
+    with pytest.raises(HTTPException) as error:
+        supabase_auth.provision_supabase_user(db, token_data, {
+            "email": "new@example.com",
+            "user_metadata": {
+                "name": "New User",
+                "whatsapp_phone": "8668429664",
+            },
+        })
+
+    assert error.value.status_code == 409
+    assert "already exists" in error.value.detail
+    assert db.query(models.User).filter(models.User.id == "new-supabase-user").first() is None
+    db.close()
+
+
+def test_supabase_provisioning_stores_normalized_phone():
+    db = TestingSessionLocal()
+    token_data = supabase_auth.TokenData(
+        id="new-supabase-user",
+        email="new@example.com",
+        role="authenticated",
+    )
+    user = supabase_auth.provision_supabase_user(db, token_data, {
+        "email": "new@example.com",
+        "user_metadata": {"name": "New User", "whatsapp_phone": "8668429664"},
+    })
+
+    assert user.whatsapp_phone == "+918668429664"
+    db.close()
 
 
 # ── 2. Registration Tests ────────────────────────────────────────────────────
@@ -224,7 +277,59 @@ def test_profile_phone_persistence(client):
     db = TestingSessionLocal()
     user_db = db.query(models.User).filter(models.User.email == "profile@example.com").first()
     assert user_db.whatsapp_phone == "+917710989533"
-    assert user_db.phone_number == "+917710989533"
+    # Phone values are encrypted at rest while API responses remain normalized
+    # plaintext for the authenticated user.
+    assert crypto.is_encrypted(user_db.phone_number)
+    assert crypto.decrypt_phone(user_db.phone_number) == "+917710989533"
+
+    # A shared contact number must remain synchronized when the user edits
+    # only their mobile number; future SMS and WhatsApp dispatches read these
+    # current persisted fields without a new login/browser session.
+    update_res = client.put("/api/users/me", json={
+        "phone_number": "8812345678"
+    }, headers=headers)
+    assert update_res.status_code == 200
+    data = update_res.json()
+    assert data["phone_number"] == "+918812345678"
+    assert data["whatsapp_phone"] == "+918812345678"
+
+
+def test_profile_phone_update_is_used_by_sms_and_whatsapp_without_relogin(client):
+    """Both notification channels must resolve the just-persisted contact number."""
+    reg = client.post("/api/auth/register", json={
+        "name": "Notification User", "email": "notification-profile@example.com",
+        "password": "passuser123", "phone_number": "7710989533",
+    }).json()
+    headers = {"Authorization": f"Bearer {reg['access_token']}"}
+    update_res = client.put("/api/users/me", json={"phone_number": "8812345678"}, headers=headers)
+    assert update_res.status_code == 200
+
+    db = TestingSessionLocal()
+    user = db.query(models.User).filter(models.User.email == "notification-profile@example.com").first()
+    trip = models.Trip(title="Current Contact Trip", user_id=user.id)
+    db.add(trip)
+    db.commit()
+    db.refresh(trip)
+
+    class FakeWhatsAppClient:
+        def __init__(self):
+            self.recipients = []
+
+        def send_text(self, recipient, text):
+            self.recipients.append(recipient)
+            return {"messages": [{"id": "wamid-current-contact"}]}
+
+    client_stub = FakeWhatsAppClient()
+    service = NotificationService(WhatsAppService(client_stub))
+    disruption = {"id": 9876, "event_type": "FLIGHT_DELAYED", "event_metadata": {"delay_minutes": 30}}
+
+    sms = service.send_disruption_notification(db, NotificationChannel.SMS, trip.id, disruption)
+    whatsapp = service.send_disruption_notification(db, NotificationChannel.WHATSAPP, trip.id, disruption)
+
+    assert sms.recipient == "+918812345678"
+    assert whatsapp.recipient == "+918812345678"
+    assert client_stub.recipients == ["+918812345678"]
+    db.close()
     db.close()
 
 

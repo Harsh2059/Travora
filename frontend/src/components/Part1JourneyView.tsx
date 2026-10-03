@@ -55,8 +55,10 @@ function timeBadge(node: JourneyNode) {
   if (isHotel) {
     return `${sT || '14:00'} Check-in`;
   }
-  if (sT && eT) return `${sT} - ${eT}`;
-  if (sT) return sT;
+  const prefix = node.timeStatus === 'APPROXIMATE' ? 'Approx. ' : '';
+  if (sT && eT) return `${prefix}${sT} - ${eT}`;
+  if (sT) return `${prefix}${sT}`;
+  if (node.timeStatus === 'APPROXIMATE') return 'Approx. time pending';
   return 'Time not set';
 }
 
@@ -213,9 +215,9 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
               
               <div className="text-left sm:text-right shrink-0">
                 <div className="text-[13px] font-medium text-slate-700">{timeBadge(node)}</div>
-                {node.startDate && (
-                  <div className="text-[13px] font-medium text-slate-500 mt-0.5">
-                    {fmtDate(node.startDate)}
+                {(node.startDate || node.startTime) && (
+                  <div className="text-[13px] font-semibold text-slate-500 mt-0.5">
+                    {fmtDate(node.startDate || (node.startTime ? node.startTime.split('T')[0] : ''))}
                   </div>
                 )}
               </div>
@@ -246,18 +248,21 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
               </div>
             )}
             
-            <div className="hidden">
+            {(onDeleteNode || onEditNode) && (
+            <div className="mt-3 pt-3 border-t border-slate-200/70 flex items-center justify-end gap-1">
               {onDeleteNode && (
-                <button onClick={(e) => { e.stopPropagation(); onDeleteNode(node.id); }} className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors">
+                <button type="button" aria-label={`Delete ${node.title}`} onClick={(e) => { e.stopPropagation(); onDeleteNode(node.id); }} className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
               {onEditNode && (
-                <button onClick={(e) => { e.stopPropagation(); onEditNode(node); }} className="p-1.5 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                <button type="button" aria-label={`Edit ${node.title}`} onClick={(e) => { e.stopPropagation(); onEditNode(node); }} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sky-700 bg-white border border-sky-200 hover:bg-sky-50 rounded-lg text-xs font-bold transition-colors">
                   <Pencil className="h-4 w-4" />
+                  Edit stage
                 </button>
               )}
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -284,7 +289,22 @@ export const Part1JourneyView: React.FC<Part1JourneyViewProps> = ({
   });
 
   const displayNodes = routeStats(activeNodes).total > 0 ? timelineItems.map(ti => ti.node) : activeNodes;
-  const itemsToRender = displayNodes.length > 0 ? displayNodes : activeNodes;
+
+  // Deduplicate items to prevent duplicate booking records in timeline
+  const dedupedItems: JourneyNode[] = [];
+  const seenRenderKeys = new Set<string>();
+
+  for (const node of (displayNodes.length > 0 ? displayNodes : activeNodes)) {
+    const key = node.bookingRef
+      ? `ref_${node.bookingRef}`
+      : `${node.backendId || node.id}_${node.type}_${node.title}`;
+    if (!seenRenderKeys.has(key)) {
+      seenRenderKeys.add(key);
+      dedupedItems.push(node);
+    }
+  }
+
+  const itemsToRender = dedupedItems;
 
   return (
     <div className="bg-transparent space-y-4">

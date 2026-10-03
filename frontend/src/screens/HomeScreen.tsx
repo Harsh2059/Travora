@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Settings,
@@ -11,7 +11,6 @@ import {
   PlusCircle,
   RefreshCw,
   Plane,
-  Zap,
   AlertTriangle,
   X,
   CheckCircle2,
@@ -504,7 +503,7 @@ export default function HomeScreen() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/home')}>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
               <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-1.5 rounded-lg text-white shadow-sm">
                 <Compass className="w-4 h-4" />
               </div>
@@ -521,14 +520,6 @@ export default function HomeScreen() {
             >
               <RefreshCw className="h-4 w-4" />
             </button>
-
-            <Link
-              to="/admin"
-              className="text-[12px] font-black px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors flex items-center gap-1.5"
-            >
-              <Zap className="h-3 w-3" />
-              <span className="hidden sm:inline">Admin</span>
-            </Link>
 
             <button
               onClick={() => {

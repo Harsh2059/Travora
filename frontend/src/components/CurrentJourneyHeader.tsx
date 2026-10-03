@@ -27,14 +27,18 @@ export const CurrentJourneyHeader: React.FC<CurrentJourneyHeaderProps> = ({ jour
   const originCity = origin.label.split('(')[0].trim() || origin.label;
   const destCity = destination.label.split('(')[0].trim() || destination.label;
 
-  let earliestDate = '';
+  let validDates: string[] = [];
   for (const node of activeNodes) {
-    if (node.startDate) { earliestDate = node.startDate; break; }
-    else if (node.startTime) { earliestDate = node.startTime.split('T')[0]; break; }
+    const d = node.startDate || (node.startTime ? node.startTime.split('T')[0] : '');
+    if (d) validDates.push(d);
   }
+  validDates.sort();
 
-  const dateStr = earliestDate
-    ? new Date(earliestDate).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
+  const transportNode = activeNodes.find(n => n.type.toLowerCase() === 'flight' || n.type.toLowerCase() === 'train');
+  const primaryDate = transportNode?.startDate || (transportNode?.startTime ? transportNode.startTime.split('T')[0] : '') || validDates[0] || '';
+
+  const dateStr = primaryDate
+    ? new Date(primaryDate.includes('T') ? primaryDate : `${primaryDate}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
     : 'Date not set';
 
   const stageCount = activeNodes.length;
