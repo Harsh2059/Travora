@@ -25,9 +25,10 @@
 6. [Technology Stack](#-technology-stack)
 7. [Step-by-Step Getting Started](#-step-by-step-getting-started)
 8. [Interactive Demo Walkthrough](#-interactive-demo-walkthrough)
-9. [API Reference](#-api-reference)
-10. [Team & Contributors](#-team--contributors)
-11. [Documentation & Deep Dives](#-documentation--deep-dives)
+9. [Platform Showcase & Screenshots](#-platform-showcase--interface-screenshots)
+10. [API Reference](#-api-reference)
+11. [Team & Contributors](#-team--contributors)
+12. [Documentation & Deep Dives](#-documentation--deep-dives)
 
 ---
 
@@ -262,6 +263,47 @@ flutter run
      > `2️⃣ Alternative Flight IndiGo 12:10 PM`
      > `Reply with 1, 2, or 3 to rebook.`
    - Replying `1` automatically confirms the rebooking, generates a new PNR, and updates the traveler's digital timeline!
+
+---
+
+## 📸 Platform Showcase & Interface Screenshots
+
+### 1. Traveler Web Dashboard & Flight Booking
+> *The central hub for travelers to manage active journeys, search flights, and access the Weather Digital Twin.*
+
+![Traveler Web Dashboard](docs/screenshots/01-dashboard.png)
+
+---
+
+### 2. Weather Digital Twin & What-If Simulator
+> *Real-time weather telemetry along flight corridors with interactive stress test sliders (Rainfall, Wind, Visibility, Temp), risk gauges (96% disruption risk, 315 min delay), and Leaflet corridor route maps.*
+
+![Weather Digital Twin Dashboard](docs/screenshots/02-digital-twin.png)
+
+---
+
+### 3. 2-Way Conversational WhatsApp Recovery Bot
+> *Multi-channel interactive recovery via WhatsApp Cloud API — travelers reply with `1`, `2`, or `3` to select alternative flights and instantly receive confirmed booking updates and PNR.*
+
+<div align="center">
+  <img src="docs/screenshots/03-whatsapp-recovery.png" alt="WhatsApp Recovery Bot" width="70%"/>
+</div>
+
+---
+
+### 4. Hardware SMS Gateway Alerts & Mobile Confirmations
+> *On-premise Android hardware SMS Gateway alerts travelers when a hotel or flight is cancelled, delivering instant SMS recovery options.*
+
+<div align="center">
+  <img src="docs/screenshots/04-sms-recovery.png" alt="SMS Gateway Alert" width="45%"/>
+</div>
+
+---
+
+### 5. Popular Destinations & Features UI
+> *Curated travel destinations, real-time alert status badges, smart recovery cards, and 24/7 support.*
+
+![Popular Destinations](docs/screenshots/05-popular-destinations.png)
 
 ---
 
